@@ -36,8 +36,12 @@ pub fn template() -> String {
          # Edit what you need; the rest keeps the default.\n\
          config:\n",
     );
+    // The tree is written by comparing each key with the branch left open, so keys of one branch
+    // have to arrive together: the schema may order them any way it likes.
+    let mut keys: Vec<&'static Key> = config_keys().collect();
+    keys.sort_by(|a, b| a.path.cmp(b.path));
     let mut open: Vec<&str> = Vec::new();
-    for key in config_keys() {
+    for key in keys {
         let segs: Vec<&str> = if key.path.is_empty() {
             Vec::new()
         } else {
