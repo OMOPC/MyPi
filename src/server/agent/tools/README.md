@@ -306,8 +306,8 @@ request cannot name. `scope` is the breadcrumb: the blocks above the changed ite
 the nearest three. `excerpt` is the item itself as it stood before the change — its first old-file
 line and every line of it — or a window around the change: five lines above it and five below,
 counted over the lines the change covers. The window is taken when the item does not hold the whole
-change, and when the item is longer than forty lines, because a card folds a long body and the fold
-would hide the change. A window is not the item, so the item's own declaration joins the breadcrumb.
+change, and when the item is longer than `config.server.agent.tools.edit.fullItembudget` lines
+(default 40), because a card folds a long body and the fold would hide the change. A window is not the item, so the item's own declaration joins the breadcrumb.
 
 The item is the nearest enclosing block that declares something; failing that, the nearest one that
 starts after a blank line, a comment or an attribute; failing that, the nearest block. Blank lines
@@ -468,6 +468,7 @@ not checked here; a bad argument is the server's error to report.
 |---|---|
 | `config.server.agent.tools.bashTimeout` | one shell command's deadline; default 600 s |
 | `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
+| `config.server.agent.tools.edit.fullItembudget` | lines an edited item may take and still be handed over whole, default 40; a longer item hands over the window around the change |
 | `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` keeps its own |
 | `config.server.agent.tools.outputMaxBytes` | inline byte budget, default 32768; `read` keeps its own |
 | `config.server.agent.tools.browser.bin` | the browser executable; empty = `$MYPI_BROWSER_BIN`, else `/opt/helium/helium` |

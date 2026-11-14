@@ -23,6 +23,7 @@ use super::super::schema::{
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_IDLE_SECS, KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_PORT,
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_PROFILE_DIR,
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_USER_AGENT,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_EDIT_FULL_ITEM_BUDGET,
     KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES, KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES,
     KEY_CONFIG_SERVER_API_DEFAULT_MODEL, KEY_CONFIG_SERVER_REQUEST_COMPACT_INSTRUCTION_FILE,
     KEY_CONFIG_SERVER_REQUEST_COMPACT_RETAIN_TAIL, KEY_CONFIG_SERVER_REQUEST_STREAMING,
@@ -53,6 +54,16 @@ impl Config {
             int(KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES),
             int(KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES),
         )
+    }
+
+    /// Lines an edited item may take and still be handed over whole.
+    pub fn full_item_budget(&self) -> usize {
+        self.effective(None)
+            .values
+            .get(KEY_CONFIG_SERVER_AGENT_TOOLS_EDIT_FULL_ITEM_BUDGET)
+            .and_then(Value::as_int)
+            .unwrap_or(40)
+            .max(1) as usize
     }
 
     /// One bash command's wall-clock cap.

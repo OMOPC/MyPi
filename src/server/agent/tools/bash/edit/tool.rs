@@ -46,7 +46,8 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
     env.workspace.with_write(&p, || {
         let text = std::fs::read_to_string(&p).context("failed to read file")?;
-        let (updated, memo, message) = exact_text(&text, &args.str(OLD)?, &args.str(NEW)?)?;
+        let (updated, memo, message) =
+            exact_text(&text, &args.str(OLD)?, &args.str(NEW)?, env.full_item_budget)?;
         write_atomic(&p, &updated)?;
         Ok(ToolOutput::with_memo(
             format!("{message}: {}", p.display()),
@@ -56,7 +57,12 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 }
 
 /// Replace one unique run of text.
-pub(crate) fn exact_text(text: &str, old: &str, new: &str) -> Result<(String, Value, String)> {
+pub(crate) fn exact_text(
+    text: &str,
+    old: &str,
+    new: &str,
+    cap: usize,
+) -> Result<(String, Value, String)> {
     anyhow::ensure!(!old.is_empty(), "`old` must not be empty");
 
     match text.matches(old).count() {
@@ -69,7 +75,7 @@ pub(crate) fn exact_text(text: &str, old: &str, new: &str) -> Result<(String, Va
             let total = text.lines().count() + new_lines - old_lines;
             Ok((
                 text.replacen(old, new, 1),
-                change::context(text, at, old_lines),
+                change::context(text, at, old_lines, cap),
                 change::receipt(at, old_lines, new_lines, total),
             ))
         }

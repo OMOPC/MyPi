@@ -1,8 +1,6 @@
 //! search: the engine in the header, the words below it, one branch per hit.
 
-use ratatui::style::Modifier;
-
-use super::super::super::row::{Ink, Lead, Row, Run};
+use super::super::super::row::{Lead, Row, Run};
 use super::frame::wrap_rows;
 use super::tree;
 use super::{
@@ -46,13 +44,9 @@ impl ToolRenderer for Search {
     }
 }
 
-/// Body text: the terminal's own foreground, bold.
+/// Body text: the terminal's own foreground.
 fn body(text: impl Into<String>) -> Run {
-    Run::with(
-        text,
-        Some(Ink::Fixed(fixed::TOOL_TITLE)),
-        Modifier::BOLD,
-    )
+    Run::fixed(text, fixed::TOOL_TITLE)
 }
 
 /// A hit's title and its note: everything after the first `|`.

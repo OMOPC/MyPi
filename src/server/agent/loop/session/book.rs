@@ -105,6 +105,7 @@ impl Loop {
             },
             aliases: cfg.aliases(),
             default_budget: cfg.subagent_budget(),
+            full_item_budget: cfg.full_item_budget(),
             export,
             paths: crate::server::agent::tools::contract::env::Paths {
                 global_agents: cfg

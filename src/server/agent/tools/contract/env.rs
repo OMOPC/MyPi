@@ -23,6 +23,8 @@ pub struct Env {
     pub aliases: Aliases,
     /// The budget a spawned sub-session gets when the call names none.
     pub default_budget: u32,
+    /// Lines an edited item may take and still be handed over whole.
+    pub full_item_budget: usize,
     pub export: Arc<dyn Export>,
     pub paths: Paths,
     pub source: Arc<dyn Source>,
@@ -116,6 +118,7 @@ pub struct Defaults {
     pub bash: BashEnv,
     pub aliases: BTreeMap<String, String>,
     pub default_budget: u32,
+    pub full_item_budget: usize,
     pub export: Arc<dyn Export>,
     pub paths: Paths,
     pub source: Arc<dyn Source>,
@@ -141,6 +144,7 @@ impl Defaults {
             tools: tools.into_iter().collect(),
             aliases: Aliases::new(self.aliases.clone(), self.source.aliases(session)?),
             default_budget: self.default_budget,
+            full_item_budget: self.full_item_budget,
             export: self.export.clone(),
             paths: self.paths.clone(),
             source: self.source.clone(),

@@ -47,7 +47,8 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     env.workspace.with_write(&p, || {
         let text = std::fs::read_to_string(&p).context("failed to read file")?;
         let (from, to) = parse_range(&args.str(RANGE)?)?;
-        let (updated, memo, message) = mass_text(&text, from, to, &args.str(NEW)?)?;
+        let (updated, memo, message) =
+            mass_text(&text, from, to, &args.str(NEW)?, env.full_item_budget)?;
         write_atomic(&p, &updated)?;
         Ok(ToolOutput::with_memo(
             format!("{message}: {}", p.display()),
@@ -62,6 +63,7 @@ pub(crate) fn mass_text(
     from: usize,
     to: usize,
     new: &str,
+    cap: usize,
 ) -> Result<(String, Value, String)> {
     let lines: Vec<&str> = text.lines().collect();
     let total = lines.len();
@@ -95,7 +97,7 @@ pub(crate) fn mass_text(
 
     let old_text = lines[from - 1..to].join("\n");
     let after = total - old_lines + new_lines;
-    let mut memo = change::context(text, from, old_lines);
+    let mut memo = change::context(text, from, old_lines, cap);
     memo["atLine"] = json!(from);
     memo["old"] = json!(old_text);
     Ok((

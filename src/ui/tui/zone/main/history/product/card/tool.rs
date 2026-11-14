@@ -85,10 +85,9 @@ impl ToolBlock<'_> {
             Run::fixed(format!(" {shown}"), fixed::TOOL_TITLE).bold(),
         ];
         if let Some(title) = self.renderer().title(self) {
-            runs.push(Run::with(
+            runs.push(Run::fixed(
                 format!(": {title}"),
-                Some(Ink::Fixed(fixed::TOOL_TITLE)),
-                Modifier::BOLD,
+                fixed::TOOL_TITLE,
             ));
             return Row::of(Lead::None, runs);
         }

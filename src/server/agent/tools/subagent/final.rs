@@ -73,9 +73,14 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                 Some(range) => {
                     let (from, to) = splice::parse_range(&range)?;
                     let block = args.str(NEW)?;
-                    splice::mass_text(&draft.read()?, from, to, &block)?
+                    splice::mass_text(&draft.read()?, from, to, &block, env.full_item_budget)?
                 }
-                None => edit::exact_text(&draft.read()?, &args.str(OLD)?, &args.str(NEW)?)?,
+                None => edit::exact_text(
+                        &draft.read()?,
+                        &args.str(OLD)?,
+                        &args.str(NEW)?,
+                        env.full_item_budget,
+                    )?,
             };
             draft.write(&text)?;
             Ok(ToolOutput::text(message))
