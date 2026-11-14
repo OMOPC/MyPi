@@ -4,20 +4,9 @@ use anyhow::{Context as _, bail};
 
 use super::super::notice::{ConfigNotice, warn};
 use super::super::paths::{self, ConfigPaths};
-use super::discover::collect;
-use super::types::{DEFAULT_PROFILE, ResolvedProfile};
-
-pub fn system() -> &'static str {
-    super::super::prompts::system()
-}
-
-pub fn compaction() -> &'static str {
-    super::super::prompts::compaction()
-}
-
-fn builtin(name: &str) -> bool {
-    name == DEFAULT_PROFILE
-}
+use super::super::prompts;
+use super::discover::{available, collect};
+use super::types::{ResolvedProfile, builtin};
 
 pub fn resolve(
     paths: &ConfigPaths,
@@ -32,7 +21,7 @@ pub fn resolve(
     if let Some(dir) = found.get(name) {
         match load_dir(dir, compact_file, notices) {
             Ok(profile) => return Ok(profile),
-            Err(error) if builtin(name) => {
+            Err(error) if builtin(name).is_some() => {
                 notices.push(warn(
                     &format!("profile.{name}"),
                     &dir.display().to_string(),
@@ -43,19 +32,17 @@ pub fn resolve(
             Err(error) => return Err(error),
         }
     }
-    if builtin(name) {
+    if let Some(compiled) = builtin(name) {
         return Ok(ResolvedProfile {
-            system: system().to_string(),
+            system: (compiled.system)().to_string(),
             tools: None,
-            compact_instruction: instruction(None, compact_file, notices),
+            compact_instruction: instruction(None, compact_file, (compiled.compact)(), notices),
         });
     }
-    let mut names: Vec<String> = found.keys().cloned().collect();
-    if !names.iter().any(|n| n == DEFAULT_PROFILE) {
-        names.push(DEFAULT_PROFILE.to_string());
-    }
-    names.sort();
-    bail!("unknown profile: {name}. Available: {}", names.join(", "));
+    bail!(
+        "unknown profile: {name}. Available: {}",
+        available(found.keys().cloned()).join(", ")
+    );
 }
 
 fn load_dir(
@@ -78,13 +65,20 @@ fn load_dir(
     Ok(ResolvedProfile {
         system,
         tools,
-        compact_instruction: instruction(compact.as_deref(), compact_file, notices),
+        compact_instruction: instruction(
+            compact.as_deref(),
+            compact_file,
+            prompts::compaction(),
+            notices,
+        ),
     })
 }
 
+/// The compaction instruction: the profile's own file, then the configured one, then `fallback`.
 fn instruction(
     profile: Option<&Path>,
     configured: Option<&Path>,
+    fallback: &'static str,
     notices: &mut Vec<ConfigNotice>,
 ) -> String {
     if let Some(path) = profile {
@@ -109,7 +103,7 @@ fn instruction(
             )),
         }
     }
-    compaction().to_string()
+    fallback.to_string()
 }
 
 fn load_tools(path: &Path, notices: &mut Vec<ConfigNotice>) -> Vec<String> {

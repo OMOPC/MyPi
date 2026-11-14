@@ -37,7 +37,7 @@ impl Config {
             .alphabetical_default()
             .map(|m| format!("{}:{}", m.provider_name, m.entry.id));
         if bootstrap_files {
-            source::bootstrap(&paths, first.as_deref())?;
+            source::bootstrap(&paths, first.as_deref(), &mut notices)?;
         }
         let layers = Layers::read(&paths, &mut notices);
         let web_rules = Arc::new(rules::load(&paths, &mut notices));

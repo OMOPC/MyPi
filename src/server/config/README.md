@@ -38,13 +38,14 @@ open with. A directory without `.mypi` has no project layer at all.
 
 A profile is a directory under `profiles/`; its dotted relative path is its name. `system.md` is the
 prompt, `tools.yaml` is an optional tool list, `compact.md` an optional compaction instruction, and
-`config.yaml` an optional full configuration overlay. `default` is the one built-in profile, and it
-uses the compiled prompt.
+`config.yaml` an optional full configuration overlay. `default` and `ENGINEER` are built in: each
+carries a compiled prompt and a compiled compaction instruction, and runs on the full tool table
+unless a directory of that name supplies its own.
 
 The active profile is chosen by the session, not by a configuration key. The name is resolved
 project-first; the same name in both roots uses the project copy and warns; the same name twice in
-one root makes that name unusable; an unknown name is an error. A missing `default` falls back to
-the compiled prompt.
+one root makes that name unusable; an unknown name is an error. A built-in name with no directory
+falls back to its compiled prompt.
 
 ### The key table
 
@@ -60,9 +61,12 @@ error, never a default.
 ### Bootstrap
 
 When an artifact is missing, it is written next to `models.yml` in the global root: `config.yaml`
-from the table, `profiles/default/system.md` plus `compact.md` from the compiled prompts, and the
-site-rule manifest `web-rules.json` plus every `web-rulesets/` file it names. Nothing existing is
-overwritten. Other profiles are created by the user in the same layout.
+from the table, one directory per built-in profile (`system.md` and `compact.md` from the compiled
+texts), and the site-rule manifest `web-rules.json` plus every `web-rulesets/` file it names.
+Nothing existing is overwritten, and a directory of a profile's name in any root stops that one
+write: the profile list is read per name, so one built-in profile present never hides another. A
+write that fails is a notice, not a failure — the compiled copy answers instead. Other profiles are
+created by the user in the same layout.
 
 ### Site rules
 

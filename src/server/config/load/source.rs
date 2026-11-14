@@ -69,7 +69,11 @@ pub(super) fn unknown_top(path: &Path, notices: &mut Vec<ConfigNotice>) {
     }
 }
 
-pub(super) fn bootstrap(paths: &ConfigPaths, default_model: Option<&str>) -> anyhow::Result<()> {
+pub(super) fn bootstrap(
+    paths: &ConfigPaths,
+    default_model: Option<&str>,
+    notices: &mut Vec<ConfigNotice>,
+) -> anyhow::Result<()> {
     let Some(root) = paths.global_root() else {
         return Ok(());
     };
@@ -85,30 +89,56 @@ pub(super) fn bootstrap(paths: &ConfigPaths, default_model: Option<&str>) -> any
         }
         println!("mypi: wrote {}", config.display());
     }
-    let has_default = paths.profiles_dirs().iter().any(|(_, dir)| {
-        dir.join(profile::DEFAULT_PROFILE)
-            .join(paths::SYSTEM_FILE)
-            .is_file()
-    });
-    if has_default {
-        return Ok(());
-    }
-    let profile = root
-        .join(paths::PROFILES_SUBDIR)
-        .join(profile::DEFAULT_PROFILE);
-    std::fs::create_dir_all(&profile)?;
-    for (name, body) in [
-        (paths::SYSTEM_FILE, profile::system()),
-        (paths::COMPACT_FILE, profile::compaction()),
-    ] {
-        let path = profile.join(name);
-        if !path.exists() {
-            std::fs::write(&path, body)
-                .with_context(|| format!("failed to write {}", path.display()))?;
-            println!("mypi: wrote {}", path.display());
-        }
+    for builtin in profile::BUILTINS {
+        seed(paths, root, builtin, notices);
     }
     Ok(())
+}
+
+/// One built-in profile, written only where no root already carries it: a directory of that name is
+/// the user's, and is never touched. A file that cannot be written leaves the compiled copy in
+/// force, so a read-only root costs a notice and nothing else.
+fn seed(
+    paths: &ConfigPaths,
+    root: &Path,
+    builtin: &profile::Builtin,
+    notices: &mut Vec<ConfigNotice>,
+) {
+    let held = paths
+        .profiles_dirs()
+        .iter()
+        .any(|(_, dir)| dir.join(builtin.name).join(paths::SYSTEM_FILE).is_file());
+    if held {
+        return;
+    }
+    let dir = root.join(paths::PROFILES_SUBDIR).join(builtin.name);
+    if let Err(error) = std::fs::create_dir_all(&dir) {
+        notices.push(warn(
+            &format!("profile.{}", builtin.name),
+            &dir.display().to_string(),
+            &error.to_string(),
+            "built-in copy",
+        ));
+        return;
+    }
+    for (name, body) in [
+        (paths::SYSTEM_FILE, (builtin.system)()),
+        (paths::COMPACT_FILE, (builtin.compact)()),
+    ] {
+        let path = dir.join(name);
+        if path.exists() {
+            continue;
+        }
+        match std::fs::write(&path, body) {
+            Ok(()) => println!("mypi: wrote {}", path.display()),
+            Err(error) => notices.push(warn(
+                &format!("profile.{}", builtin.name),
+                &path.display().to_string(),
+                &error.to_string(),
+                "built-in copy",
+            )),
+        }
+    }
 }
 
 pub(super) fn child<'a>(map: &'a Mapping, path: &str) -> Option<&'a Mapping> {

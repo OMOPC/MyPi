@@ -9,13 +9,13 @@
 | `schema.rs` | the one `keys!` invocation: every `config.*` and `models.*` key with kind, default and comment |
 | `load/` | `types` (`Config`, `Inner`, `Layers`, `Effective`), `entry` (load/reload), `api` (default model, profiles, writes), `source` (layer reading, bootstrap), `effective` (per-key merge), `check` (merged-value checks) |
 | `model/` | `types` (providers, models, prices, currency), `parse` (the file and providers), `entry` (one model), `query` (keyed lookup) |
-| `profile/` | `types` (`ResolvedProfile`), `discover` (scan, precedence, duplicate names), `resolve` (prompts, tools, compaction) |
+| `profile/` | `types` (`ResolvedProfile`, the built-in table), `discover` (scan, precedence, duplicate names, the names on offer), `resolve` (prompts, tools, compaction) |
 | `paths.rs` | `ConfigPaths`: the project's `.mypi` and the global root, the files and folders under them, and `project_dir` |
 | `notice.rs` | `ConfigNotice` and the shared warning constructor |
 | `rules.rs` | the site-rule manifest, the sets it names, their installation and flattening |
 | `web-rulesets/` | one set per site: the rules the built-in manifest names |
 | `write.rs` | textual `write_key` for `config.yaml` |
-| `prompts/` | compiled prompts: `system`, `compaction` |
+| `prompts/` | one folder per built-in profile, each holding `SYSTEM.md` and `COMPACTION.md` |
 
 ## Public surface
 
@@ -31,7 +31,7 @@
 - `ModelsConfig`, `Provider`, `ModelEntry`, `Cost`, `Currency`, `ResolvedModel`
 - `paths::ConfigPaths`
 - `KEY_*` constants from `schema.rs`; `registry::{lookup, template, model_key, provider_key}`
-- `prompts::{system, compaction}`
+- `prompts::{system, compaction, engineer, engineer_compaction}`
 - `rules::load(paths, notices)` — the site rules in force; `rules::install(root)` — the manifest and
   the sets it names, written where the user can edit them. `rules::{Rule, Part}` carry no fields to
   their readers: `Rules::regions`, `Part::selector` and `Part::drops` are the whole surface.
@@ -58,7 +58,8 @@
 2. `profile.rs`'s file names (`system.md`, `tools.yaml`, `compact.md`, `config.yaml`) and
    `paths.rs`'s constants.
 3. `write.rs`'s key path `config.server.api.defaultModel` and the schema entry.
-4. `load.rs`'s bootstrap prompt sources and `prompts/`'s compiled texts.
+4. `load.rs`'s bootstrap seeds one directory per entry of `profile/`'s built-in table, from
+   `prompts/`'s compiled texts.
 5. The README's key table and `schema.rs`.
 
 ## Not wired yet

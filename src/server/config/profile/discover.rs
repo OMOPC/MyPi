@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::super::notice::{ConfigNotice, warn};
 use super::super::paths::{self, ConfigPaths};
-use super::types::DEFAULT_PROFILE;
+use super::types::BUILTINS;
 
 pub fn locate(paths: &ConfigPaths, name: &str, notices: &mut Vec<ConfigNotice>) -> Option<PathBuf> {
     let (found, unusable) = collect(paths, notices);
@@ -15,16 +15,25 @@ pub fn locate(paths: &ConfigPaths, name: &str, notices: &mut Vec<ConfigNotice>) 
 
 pub fn list(paths: &ConfigPaths, notices: &mut Vec<ConfigNotice>) -> Vec<String> {
     let (found, unusable) = collect(paths, notices);
-    let mut names: Vec<String> = found
-        .keys()
-        .filter(|n| !unusable.contains(*n))
-        .cloned()
-        .collect();
-    if !names.iter().any(|n| n == DEFAULT_PROFILE) {
-        names.push(DEFAULT_PROFILE.to_string());
+    available(
+        found
+            .keys()
+            .filter(|n| !unusable.contains(*n))
+            .cloned(),
+    )
+}
+
+/// Every name a session may open with: the directories that hold a prompt, then the built-in names
+/// no directory answers for.
+pub(super) fn available(names: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut out: Vec<String> = names.into_iter().collect();
+    for builtin in BUILTINS {
+        if !out.iter().any(|name| name == builtin.name) {
+            out.push(builtin.name.to_string());
+        }
     }
-    names.sort();
-    names
+    out.sort();
+    out
 }
 
 pub(super) fn collect(
