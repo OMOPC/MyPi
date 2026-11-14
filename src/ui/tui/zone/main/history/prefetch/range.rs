@@ -124,7 +124,9 @@ impl Range {
                         None => None,
                     }
                 }
-                (Start::Latest, _) => Some(Start::Latest),
+                // A move made while the start follows the newest still has to land on a place:
+                // answering with `Latest` again leaves the screen deaf to its own scroll.
+                (Start::Latest, _) => latest_head(local),
             };
             match moved {
                 Some(next) => at = next,
@@ -403,6 +405,13 @@ fn step_up(
         }
     }
     None
+}
+
+/// The place a move away from `Latest` anchors on: the newest position's head. `None` = the
+/// conversation holds no position at all, so there is nowhere to move to.
+fn latest_head(local: &Local) -> Option<Start> {
+    let idx = super::run::last_index(local)?;
+    Some(Start::At(SegId { idx, piece: 0 }, 0))
 }
 
 fn mark() -> Row {

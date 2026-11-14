@@ -171,6 +171,10 @@ content is not in hand is asked for — together with whatever the move itself l
 ask. The block count is `overscan`. A direction already stocked asks nothing, so a page of
 scrolling costs one ask at most, and a wheel notch that leaves the side stocked costs none.
 
+A move made while the start follows the newest anchors on the newest position's head first: a
+start that answers a move with `Latest` again would leave the screen deaf to its own scroll while
+the run holds no rows.
+
 ### Frame
 
 One round belongs to the app: it drains what the terminal said, then what the connection said, then

@@ -344,7 +344,7 @@ fn rank(id: SegId) -> (u8, i64, usize) {
     }
 }
 
-fn last_index(local: &Local) -> Option<Idx> {
+pub(super) fn last_index(local: &Local) -> Option<Idx> {
     if !local.running().is_empty() {
         return Some(Idx::Turn((local.running().len() - 1) as u32));
     }

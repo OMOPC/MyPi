@@ -84,7 +84,8 @@ finished round holds with what its banners read.
 5. A tool's memo shape and its `product/card/` file: the renderer draws what the memo carries, or
    the result text when the tool hands back no memo.
 6. `Range::scroll`, `Local::dry` and the wheel bindings in `zone::deliver_action`: whatever moves
-   the screen must stock the side it moved toward, or the edge draws `…`.
+   the screen must stock the side it moved toward, or the edge draws `…`; and a move away from
+   `Latest` must land on a place, or the screen stops answering.
 7. `Local::note_pair`, `Local::card_at` and every `product::of` that takes a pair: the card is drawn
    from the result its call names, so a new pairing source must reach all of them.
 8. The wire's `stream / arguments` frame, its `name` field, `Mutable::arguments` and the family
