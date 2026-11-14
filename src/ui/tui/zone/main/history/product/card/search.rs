@@ -15,9 +15,14 @@ impl ToolRenderer for Search {
         Some("Search".to_string())
     }
 
-    /// The engine this call ran against.
+    /// The engine this call ran against, and how much it turned up.
     fn title(&self, b: &ToolBlock<'_>) -> Option<String> {
-        arg_str(b.args, "provider").filter(|p| !p.trim().is_empty())
+        let provider = arg_str(b.args, "provider").filter(|p| !p.trim().is_empty())?;
+        let count = hits(b.result.map(|o| o.text).unwrap_or_default()).len();
+        Some(match count {
+            0 => provider,
+            n => format!("{provider} · {n} results"),
+        })
     }
 
     /// The words it searched for, on the header's second line.
