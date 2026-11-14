@@ -122,6 +122,9 @@ const DEFAULT_FOLD: usize = 10;
 /// Rows one wheel notch walks until the config answers.
 const DEFAULT_SCROLL: usize = 10;
 
+/// Blocks kept in hand past the screen's edge until the config answers.
+const DEFAULT_OVERSCAN: usize = 12;
+
 /// The config keys this zone asks for once per attachment.
 pub(super) const CONFIG_KEYS: &[&str] = &[
     "config.ui.lang",
@@ -129,6 +132,7 @@ pub(super) const CONFIG_KEYS: &[&str] = &[
     "config.ui.tui.zone.main.history.cardFoldBudget",
     "config.ui.tui.zone.main.history.cacheMargin",
     "config.ui.tui.zone.main.history.scrollHeight",
+    "config.ui.tui.zone.main.history.overscan",
     "config.ui.tui.zone.main.history.todoFold",
 ];
 
@@ -192,6 +196,8 @@ pub struct HistoryZone {
     pub(super) tool: bool,
     pub(super) fold: usize,
     pub(super) scroll_height: usize,
+    /// Blocks kept in hand past the screen's edge in the direction the reader moves.
+    pub(super) overscan: usize,
     pub(super) placeholder: String,
     pub(super) cwd: String,
     /// The structural window as it last stood.
@@ -248,6 +254,7 @@ impl Default for HistoryZone {
             tool: false,
             fold: DEFAULT_FOLD,
             scroll_height: DEFAULT_SCROLL,
+            overscan: DEFAULT_OVERSCAN,
             placeholder: "thinking…".to_string(),
             cwd: String::new(),
             structure: Turns::default(),
@@ -312,7 +319,11 @@ impl HistoryZone {
             range.rows(run, local, opts, height)
         });
         let top = spend.top;
-        self.with_draw(|_, run, _, _| run.trim(top, top + height));
+        self.with_draw(|local, run, _, _| {
+            run.trim(top, top + height);
+            let reach = run.reach();
+            local.set_reach(reach);
+        });
         self.missing = spend.missing;
         display::lines(&spend.rows, accent)
     }
@@ -340,16 +351,35 @@ impl HistoryZone {
         for (idx, from) in grown {
             self.run.forget_pieces(idx, from);
         }
+        // The reader's window: the places the run laid, the place the range starts, and one
+        // overscan on either side. Without it a fetch is dropped before the draw can lay it, and
+        // the screen can never leave a block whose content just arrived.
+        let window = {
+            let mut span = self.run.reach();
+            if let Start::At(id, _) = self.range.start()
+                && let Idx::Fixed(num) = id.idx
+            {
+                span = Some(match span {
+                    Some((lo, hi)) => (lo.min(num), hi.max(num)),
+                    None => (num, num),
+                });
+            }
+            let pad = self.overscan as i64;
+            span.map(|(lo, hi)| (lo - pad, hi + pad))
+        };
         let HistoryZone {
             local,
             run,
             margin,
             asking,
             pending,
+            missing,
             ..
         } = self;
         let evicted = local.evict(*margin, |id, num| {
             run.holds(Idx::Fixed(num))
+                || missing.contains(&id)
+                || window.is_some_and(|(lo, hi)| (lo..=hi).contains(&num))
                 || asking.iter().any(|[lo, hi]| (*lo..=*hi).contains(&id))
                 || pending
                     .as_ref()
@@ -683,17 +713,17 @@ impl HistoryZone {
         }
     }
 
-    /// One scroll by rows.
+    /// One scroll by rows: the screen moves, and the direction it moved stays stocked.
     pub(super) fn scroll(&mut self, older: bool, rows: usize) {
         let height = usize::from(self.height).max(1);
         let missing = self.with_draw(|local, run, range, opts| {
-            range.scroll(run, local, opts, height, older, rows)
+            let missing = range.scroll(run, local, opts, height, older, rows);
+            // The run's reach moved with the screen; the walk reads it now, not next draw.
+            let reach = run.reach();
+            local.set_reach(reach);
+            missing
         });
-        for block in missing {
-            if let Some(turn) = self.turn_of(block) {
-                self.ask_turn(turn);
-            }
-        }
+        self.look_ahead(older, missing);
     }
 }
 

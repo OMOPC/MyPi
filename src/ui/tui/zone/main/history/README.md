@@ -7,7 +7,7 @@ any of it runs.
 
 | part | holds | hands down | evicts |
 |---|---|---|---|
-| local section | positions, and each position's content plus its product | a position, and what it draws | content past `cacheMargin`, oldest admission first, blocks in use exempt |
+| local section | positions, and each position's content plus its product | a position, and what it draws | content past `cacheMargin`, oldest admission first, the reader's window and blocks in use exempt |
 | prefetch layer | laid segments and gaps | rows, in screen order | by segment, whole segments only |
 | display | nothing | screen lines | nothing |
 | frame | the revision the last draw showed | `None` while nothing changed | nothing |
@@ -164,6 +164,13 @@ The display range is a start plus the rows the screen has. Three starts:
 - `At(SegId, row)`: one fixed place. The screen does not move when content lands elsewhere.
 - `Pin(row)`: a row of the pin. It only happens when the screen is shorter than the pin itself.
 
+A move stocks the side it heads for. The prefetch layer reports the span of finished positions it
+still holds rows for, and the local section keeps it: the run's reach. After a move the zone walks
+past that reach in the direction the reader moved, over the next blocks, and every one whose
+content is not in hand is asked for — together with whatever the move itself landed on, in one
+ask. The block count is `overscan`. A direction already stocked asks nothing, so a page of
+scrolling costs one ask at most, and a wheel notch that leaves the side stocked costs none.
+
 ### Frame
 
 One round belongs to the app: it drains what the terminal said, then what the connection said, then
@@ -201,9 +208,11 @@ opens a natural line), or `Wrapped` (it is a continuation).
   that answers a second time for the same block.
 - **The budget counts content, not positions** so that memory does not follow the length of the
   conversation; a block that leaves comes back through the same ask as one that never arrived.
-- **The budget settles against the window the last draw kept** so that a scroll never takes away a
-  row it is about to draw; a block outside that window comes back through the same ask as one that
-  never arrived.
+- **The budget settles against the window the last draw kept, one overscan wide** so that a scroll
+  never takes away a row it is about to draw, and a block whose content just arrived survives until
+  the draw lays it: an empty window protects nothing, so without the window a fetch would be dropped
+  before it could reach the screen and the same ask would repeat forever. A block outside that
+  window comes back through the same ask as one that never arrived.
 - **Ingest only appends** so that a batch of stream pieces costs one append each, not one layout
   each; the shape of a round is decided once, at the draw that shows it.
 - **One layout per changed position per draw** so that a screen never derives the same block twice
@@ -257,5 +266,6 @@ opens a natural line), or `Wrapped` (it is a continuation).
 | `config.ui.tui.zone.main.history.focusLine` | rows above the sight line when a block is focused |
 | `config.ui.tui.zone.main.history.cardFoldBudget` | rows a card head or tail may take |
 | `config.ui.tui.zone.main.history.scrollHeight` | rows one wheel notch walks |
+| `config.ui.tui.zone.main.history.overscan` | blocks kept in hand past the edge the reader moves toward |
 | `config.ui.tui.zone.main.history.todoFold` | task-list folding policy |
 | `config.ui.lang` | the language a compaction banner's figures read in |

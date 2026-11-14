@@ -266,6 +266,21 @@ impl Run {
         self.segs.iter().find(|laid| laid.id == id)
     }
 
+    /// The oldest and newest finished positions this run still holds rows for.
+    pub fn reach(&self) -> Option<(i64, i64)> {
+        let mut reach: Option<(i64, i64)> = None;
+        for laid in &self.segs {
+            let Idx::Fixed(num) = laid.id.idx else {
+                continue;
+            };
+            reach = Some(match reach {
+                Some((far, near)) => (far.min(num), near.max(num)),
+                None => (num, num),
+            });
+        }
+        reach
+    }
+
     fn insert(&mut self, laid: Laid) {
         let at = self
             .segs

@@ -23,6 +23,8 @@ pub enum Idx {
 pub struct Local {
     fixed: Immutable,
     running: Mutable,
+    /// The oldest and newest finished positions the prefetch layer still holds rows for.
+    reach: Option<(i64, i64)>,
     /// A compaction is in flight: its summary lays as rows, not segments.
     compacting: bool,
     /// The blocks a finished compaction round holds, and what its banners read.
@@ -33,6 +35,7 @@ impl Local {
     pub fn clear(&mut self) {
         self.fixed.clear();
         self.running.clear();
+        self.reach = None;
         self.compacting = false;
         self.marks.clear();
     }
@@ -133,6 +136,37 @@ impl Local {
     /// One slot by number.
     pub fn at(&self, num: i64) -> Option<&Slot> {
         self.fixed.at(num)
+    }
+
+    /// The prefetch layer's reach moved: it is what tells the walk where the screen stops.
+    pub fn set_reach(&mut self, reach: Option<(i64, i64)>) {
+        self.reach = reach;
+    }
+
+    /// The blocks past the prefetch layer's reach in one direction that hold no content: the slot
+    /// itself says it, so nothing here needs an index. A walk that runs into the running region
+    /// stops there, because a running block has no id to ask for.
+    pub fn dry(&self, older: bool, count: usize) -> Vec<i64> {
+        let Some((far, near)) = self.reach else {
+            return Vec::new();
+        };
+        let step = if older { -1 } else { 1 };
+        let mut num = if older { far } else { near };
+        let mut out = Vec::new();
+        let mut seen = 0usize;
+        while seen < count {
+            num += step;
+            let Some(slot) = self.fixed.at(num) else {
+                break;
+            };
+            if let SlotKind::Block { id, held } = &slot.kind {
+                seen += 1;
+                if held.is_none() {
+                    out.push(*id);
+                }
+            }
+        }
+        out
     }
 
     /// Where a result's card is drawn: its request's position, while both sit in the running turn.

@@ -80,7 +80,7 @@ Subscribe: `watch`, `submit`, `compact`.
 |---|---|---|---|
 | `register` | `hello` | `viewer` | an empty `opened` frame |
 | `register` | `bye` | — | nothing |
-| `call` | `init` | `session` | `structure` (`turn` + `ranges` + `compact` per round), `blocks` (newest 32, whole rows), `todo` (the list, or null) |
+| `call` | `init` | `session` | `structure` (`turn` + `ranges` + `compact` per round, the whole list, borrowed rounds left out), `blocks` (newest 32, whole rows), `todo` (the list, or null) |
 | `call` | `blocks` | `session`, `ranges` | `blocks`, whole rows, in request order |
 | `call` | `meta` | `session` | the session row |
 | `call` | `usage` | `session` | session totals, `cache_hit_rate`, `cny`, `usd`, `context`, `estimated`, `baseline_prompt`, and `groups` by `provider:model` |

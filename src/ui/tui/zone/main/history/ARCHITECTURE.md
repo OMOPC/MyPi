@@ -36,6 +36,7 @@ HistoryZone
  ├── run: Run                   ── the laid segments, in render order
  ├── range: Range               ── `Latest` or one fixed place, plus the screen height
  ├── margin: usize              ── blocks that keep their content and product
+ ├── overscan: usize            ── blocks kept in hand past the edge the reader moves toward
  ├── dirty: BTreeSet<Idx>       ── positions a piece or a block touched since the last tick
  ├── grown: BTreeMap<Idx, usize> ── positions whose text grew, and the piece to lay again
  ├── missing: Vec<i64>          ── blocks the last draw lacked
@@ -63,8 +64,9 @@ finished round holds with what its banners read.
 - `zone::tick` applies both sets once: a dirty position loses its laid rows and its product, a grown
   one loses the rows of its tail piece and every piece after it while its product stays, the content
   budget is settled against the window the last draw kept, and the blocks the last draw lacked leave
-  as `Request::Blocks`. `zone::render_rows` rebuilds the pin, spends the window, and
-  trims the run; it changes nothing.
+  as `Request::Blocks`. `zone::render_rows` rebuilds the pin, spends the window, trims the run, and
+  hands the span of finished positions the run still holds to `Local::set_reach`; `zone::scroll`
+  walks past that span in the direction it moved, and `Local::dry` is that walk.
 - `Local::prepare` builds a position's product on first use and keeps it on the block; `Local::shape`
   hands the run what that product is. The run lays only segments it does not hold. A text product's
   tail index and the piece the run lays again are the same number: the closed segments never move.
@@ -81,7 +83,8 @@ finished round holds with what its banners read.
 4. `SlotKind` and `Local::shape`: a new slot kind needs a shape.
 5. A tool's memo shape and its `product/card/` file: the renderer draws what the memo carries, or
    the result text when the tool hands back no memo.
-6. `Range::scroll` and the wheel bindings in `zone::deliver_action`.
+6. `Range::scroll`, `Local::dry` and the wheel bindings in `zone::deliver_action`: whatever moves
+   the screen must stock the side it moved toward, or the edge draws `…`.
 7. `Local::note_pair`, `Local::card_at` and every `product::of` that takes a pair: the card is drawn
    from the result its call names, so a new pairing source must reach all of them.
 8. The wire's `stream / arguments` frame, its `name` field, `Mutable::arguments` and the family

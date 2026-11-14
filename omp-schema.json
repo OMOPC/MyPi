@@ -1,30 +1,4 @@
-{
-  "source": {
-    "repo": "https://github.com/can1357/oh-my-pi",
-    "binary": "omp/18.15.0",
-    "captured": "2026-11-14",
-    "how": "captured from the request body omp sent to a local mock OpenAI-completions endpoint",
-    "model": "dump/probe",
-    "settings": {
-      "astGrep.enabled": true,
-      "astEdit.enabled": true,
-      "checkpoint.enabled": true,
-      "github.enabled": true,
-      "security.enabled": true,
-      "find.enabled": "on",
-      "ask.enabled": true,
-      "autolearn.enabled": true,
-      "memory.backend": "mnemopi",
-      "compaction.experimentalContextManagement": true
-    },
-    "not_captured": [
-      "ask: needs the interactive UI, unavailable in print mode",
-      "ida: needs an IDA install",
-      "browser, computer, image_gen, tts, vibe, ssh: registered outside the built-in catalog",
-      "think, yield, goal: hidden tools, never sent as model-facing schema"
-    ]
-  },
-  "tools": [
+[
     {
       "type": "function",
       "function": {
@@ -1493,5 +1467,4 @@
         }
       }
     }
-  ]
-}
+]

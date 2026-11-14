@@ -23,7 +23,7 @@ parking_lot = "0.12"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 # 停止信号（TERM/QUIT/INT/HUP）：还屏后退出。crossterm 已经带着它，这里只是显式声明
 signal-hook = "0.3"
-# ---- web 工具（内置，不是可选特性）----
+# ---- web 工具 ----
 # WebSocket（CDP 用）：同步、无 tokio，与 ureq 的风格一致。只做帧协议，
 # CDP 的会话/配对逻辑在 src/web/utils/cdp.rs 里手写
 tungstenite = "0.30"

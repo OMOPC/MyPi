@@ -11,34 +11,30 @@ const LATEST: usize = 32;
 pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
     let reader = Reader::open(api.db())?;
     let list = reader.list(session)?;
-    let from = list
-        .iter()
-        .rev()
-        .find(|row| row["is_compaction"].as_bool() == Some(true))
-        .and_then(|row| row["idx"].as_i64())
-        .unwrap_or(0);
 
     let mut structure = Vec::new();
     let mut blocks = Vec::new();
     for row in list.iter().rev() {
-        if row["idx"].as_i64().unwrap_or(0) < from {
-            continue;
-        }
         let turn_id = match row["turn_id"].as_i64() {
             Some(turn_id) => turn_id,
             None => continue,
         };
+        // A borrowed round holds ranges another round already owns: it takes no place of its
+        // own, and its blocks are drawn under the round they were borrowed from.
+        let borrowed = reader
+            .turn(turn_id)?
+            .map(|turn| turn["stop_reason"].as_str() == Some("borrowed"))
+            .unwrap_or(true);
+        if borrowed {
+            continue;
+        }
         let ranges = reader.turn_ranges(turn_id)?;
         structure.push(json!({
             "turn": turn_id,
             "ranges": ranges,
             "compact": row["is_compaction"],
         }));
-        let borrowed = reader
-            .turn(turn_id)?
-            .map(|turn| turn["stop_reason"].as_str() == Some("borrowed"))
-            .unwrap_or(true);
-        if borrowed || blocks.len() >= LATEST {
+        if blocks.len() >= LATEST {
             continue;
         }
         for block in reader.blocks(&ranges)?.into_iter().rev() {

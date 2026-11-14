@@ -480,6 +480,11 @@ fn read_config(zone: &mut HistoryZone, content: &Value) {
                 zone.scroll_height = (n as usize).max(1);
             }
         }
+        "config.ui.tui.zone.main.history.overscan" => {
+            if let Some(n) = number {
+                zone.overscan = n as usize;
+            }
+        }
         "config.ui.tui.zone.main.history.todoFold" => {
             if let Some(value) = content.get("value") {
                 zone.todo_fold = match value {

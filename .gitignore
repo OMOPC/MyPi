@@ -3,3 +3,5 @@ models.yml
 target/
 *.db
 HANDOFF.md
+design/
+ABOUT*
