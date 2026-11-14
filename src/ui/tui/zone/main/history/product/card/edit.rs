@@ -397,5 +397,3 @@ fn gap(out: &mut Vec<Row>, prev: Option<usize>, next: Option<usize>) {
         ));
     }
 }
-
-

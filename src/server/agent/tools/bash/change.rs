@@ -105,10 +105,19 @@ fn header_start(lines: &[&str], mut at: usize) -> usize {
     at
 }
 
-/// The context of one changed line: `{"scope": [...], "excerpt": {"from": n, "lines": [...]}}`.
+/// Lines a window keeps above and below the change.
+const WINDOW: usize = 5;
+
+/// An item longer than this is handed over as a window: a card folds a long excerpt, and the
+/// folded head would hide the change.
+const CAP: usize = 40;
+
+/// The context of one change: `{"scope": [...], "excerpt": {"from": n, "lines": [...]}}`.
 ///
-/// `at` is 1-based and the excerpt is the enclosing item as it stood before the change.
-pub(crate) fn context(text: &str, at: usize) -> Value {
+/// `at` is the first changed line, 1-based; `span` is how many old lines the change covers. The
+/// excerpt is the enclosing item, or a window around the change when the item does not hold it or
+/// is longer than [`CAP`].
+pub(crate) fn context(text: &str, at: usize, span: usize) -> Value {
     let lines: Vec<&str> = text.lines().collect();
     if lines.is_empty() {
         return json!({ "scope": [], "excerpt": { "from": 1, "lines": [] } });
@@ -153,6 +162,10 @@ pub(crate) fn context(text: &str, at: usize) -> Value {
     let mut last = lines.len() - 1;
     for i in first + 1..lines.len() {
         let line = lines[i];
+        // A blank line holds no indent of its own: it never ends a block.
+        if line.trim().is_empty() {
+            continue;
+        }
         if !opened {
             if line.contains('{') {
                 opened = true;
@@ -174,14 +187,32 @@ pub(crate) fn context(text: &str, at: usize) -> Value {
             break;
         }
     }
-    let last = last.max(first);
+    let mut last = last.max(first);
+    // Trailing blank lines belong to the gap after the item, not to the item.
+    while last > first && lines[last].trim().is_empty() {
+        last -= 1;
+    }
+
+    // The item holds the change: its first line is at or above it, its last line at or below the
+    // change's end. An item that fails either test lost the change, and no diff would show.
+    let end = (at + span.max(1) - 1).min(lines.len());
+    let holds = first + 1 <= at && last + 1 >= end && last - first + 1 <= CAP;
+    let (from, to) = if holds {
+        (first, last)
+    } else {
+        (at.saturating_sub(WINDOW).max(1) - 1, (end + WINDOW).min(lines.len()) - 1)
+    };
 
     // The breadcrumb: the blocks above the item, outermost first, the nearest three of them.
+    // A window is not the item, so the item's own head joins the breadcrumb.
     let mut scope: Vec<String> = chain
         .iter()
         .filter(|i| **i < first)
         .map(|i| lines[*i].trim().trim_end_matches('{').trim().to_string())
         .collect();
+    if !holds {
+        scope.insert(0, lines[first].trim().trim_end_matches('{').trim().to_string());
+    }
     let cut = scope.len() > 3;
     scope.truncate(3);
     scope.reverse();
@@ -191,7 +222,7 @@ pub(crate) fn context(text: &str, at: usize) -> Value {
 
     json!({
         "scope": scope,
-        "excerpt": { "from": first + 1, "lines": lines[first..=last] },
+        "excerpt": { "from": from + 1, "lines": lines[from..=to] },
     })
 }
 
@@ -221,5 +252,6 @@ pub(crate) fn lines_of(text: &str) -> Vec<String> {
     }
     lines
 }
+
 
 

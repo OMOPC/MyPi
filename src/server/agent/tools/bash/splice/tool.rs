@@ -95,7 +95,7 @@ pub(crate) fn mass_text(
 
     let old_text = lines[from - 1..to].join("\n");
     let after = total - old_lines + new_lines;
-    let mut memo = change::context(text, from);
+    let mut memo = change::context(text, from, old_lines);
     memo["atLine"] = json!(from);
     memo["old"] = json!(old_text);
     Ok((

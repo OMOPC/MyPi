@@ -69,7 +69,7 @@ pub(crate) fn exact_text(text: &str, old: &str, new: &str) -> Result<(String, Va
             let total = text.lines().count() + new_lines - old_lines;
             Ok((
                 text.replacen(old, new, 1),
-                change::context(text, at),
+                change::context(text, at, old_lines),
                 change::receipt(at, old_lines, new_lines, total),
             ))
         }

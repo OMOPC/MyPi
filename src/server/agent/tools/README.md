@@ -304,9 +304,15 @@ splice: { "atLine": 12, "old": "<the replaced lines, no trailing newline>", "sco
 `atLine` is the old-file line the change starts on. `old` is the text that went, which `splice`'s
 request cannot name. `scope` is the breadcrumb: the blocks above the changed item, outermost first,
 the nearest three. `excerpt` is the item itself as it stood before the change — its first old-file
-line and every line of it. The item is the nearest enclosing block that declares something; failing
-that, the nearest one that starts after a blank line, a comment or an attribute; failing that, the
-nearest block. The front end renders the excerpt, signs the changed lines, and paints the rest.
+line and every line of it — or a window around the change: five lines above it and five below,
+counted over the lines the change covers. The window is taken when the item does not hold the whole
+change, and when the item is longer than forty lines, because a card folds a long body and the fold
+would hide the change. A window is not the item, so the item's own declaration joins the breadcrumb.
+
+The item is the nearest enclosing block that declares something; failing that, the nearest one that
+starts after a blank line, a comment or an attribute; failing that, the nearest block. Blank lines
+never end an item, and an item's own closing brace belongs to it. The front end renders the excerpt,
+signs the changed lines, and paints the rest.
 
 New line numbers, counts and the shift after the change are the front end's arithmetic.
 
