@@ -58,7 +58,7 @@ impl ToolBlock<'_> {
         self.width.saturating_sub(4)
     }
 
-    fn renderer(&self) -> &'static dyn ToolRenderer {
+    pub(super) fn renderer(&self) -> &'static dyn ToolRenderer {
         renderer_for(self.name)
     }
 
@@ -159,6 +159,11 @@ pub(crate) trait ToolRenderer {
     /// The text after the header's colon, when the card names it itself.
     fn title(&self, _b: &ToolBlock<'_>) -> Option<String> {
         None
+    }
+
+    /// Whether a long body may fold. A list is read whole: it never does.
+    fn folds(&self) -> bool {
+        true
     }
 
     fn meta(&self, _b: &ToolBlock<'_>) -> Vec<String> {
