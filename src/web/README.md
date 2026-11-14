@@ -1,8 +1,9 @@
 # web
 
 A self-contained domain for reading pages, searching, and driving a browser. The tool layer maps a
-call's arguments into `WebArgs` and hands it over; everything below that line — Chromium, CDP, tabs,
-providers, HTML conversion — belongs here and nowhere else.
+call's arguments into `WebArgs` and hands it over: `web` for the work tab, `search` for searches.
+Everything below that line — Chromium, CDP, tabs, providers, HTML conversion — belongs here and
+nowhere else.
 
 It is not part of the tool layer. It decides for itself when the browser starts and when it dies,
 which is why it reads its own configuration instead of receiving it through `Env`.

@@ -50,7 +50,8 @@ pub(crate) const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "kairos",
-    about: "Hold background tasks and return their ids.",
+    about: "Hold background tasks and return their ids; never blocks this message. Independent \
+            tasks belong in one call.",
     fields: "type is always needed. now: tasks (kind=command only). after: every task names \
              delay and content. every: every task names expr and content, and count limits the \
              runs. status, result, cancel: id. list: nothing else. kind and timeout apply to \

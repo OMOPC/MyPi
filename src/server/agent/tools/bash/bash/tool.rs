@@ -19,8 +19,10 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "bash",
-    about: "Run non-interactive shell commands (bash/zsh on unix, pwsh on windows).",
-    fields: "command is the only field.",
+    about: "Run non-interactive shell commands (bash/zsh on unix, pwsh on windows). Blocks the \
+            rest of this message until it exits: long work → `kairos`. Search with `rg`/`fd`; \
+            files → `read`/`edit`/`write`.",
+    fields: "command is the only field; its lines run in order.",
     params: PARAMS,
     run,
     summary,

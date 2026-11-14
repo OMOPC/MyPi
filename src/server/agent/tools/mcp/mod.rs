@@ -54,9 +54,9 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "mcp",
-    about: "MCP servers and their tools. `list` names the servers and their tools; naming one \
-            server also prints each tool's parameters. `call` runs the tools its items name, each \
-            with `args` of that shape.",
+    about: "MCP servers and their tools. `list` before `call`: the parameters a call needs are \
+            what `list` prints. `call` runs the tools its items name, each with `args` of that \
+            shape.",
     fields: "type is always needed. list: server is optional. call: calls, one item per call \
             with server, tool and args built from the parameters `list` printed.",
     params: PARAMS,

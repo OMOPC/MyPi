@@ -1,12 +1,13 @@
-//! The table: fourteen tools, one line each. The roster and the front door both derive from it, so
+//! The table: fifteen tools, one line each. The roster and the front door both derive from it, so
 //! the two readers cannot disagree.
 
 use std::collections::BTreeSet;
 
-use super::bash::{alias, bash as bash_tool, cd, context, edit, read, write};
+use super::bash::{alias, bash as bash_tool, cd, context, edit, read, splice, write};
 use super::kairos::tool;
 use super::mcp;
 use super::memo::{memo as memo_tool, todo};
+use super::search;
 use super::spec::Tool;
 use super::subagent;
 use crate::server::agent::request::message::ToolDef;
@@ -17,6 +18,7 @@ use super::web;
 pub const TOOLS: &[Tool] = &[
     read::TOOL,
     edit::TOOL,
+    splice::TOOL,
     write::TOOL,
     cd::TOOL,
     bash_tool::TOOL,
@@ -26,6 +28,7 @@ pub const TOOLS: &[Tool] = &[
     subagent::FINAL,
     mcp::TOOL,
     web::TOOL,
+    search::TOOL,
     memo_tool::TOOL,
     todo::TOOL,
     context::TOOL,
@@ -50,3 +53,4 @@ pub fn roster(names: &[String]) -> Vec<ToolDef> {
 pub fn names() -> Vec<String> {
     TOOLS.iter().map(|tool| tool.name.to_string()).collect()
 }
+

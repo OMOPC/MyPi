@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::server::agent::tools::bash::edit;
+use crate::server::agent::tools::bash::{edit, splice};
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -71,9 +71,9 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
             );
             let (text, _, message) = match range {
                 Some(range) => {
-                    let (from, to) = edit::parse_range(&range)?;
+                    let (from, to) = splice::parse_range(&range)?;
                     let block = args.str(NEW)?;
-                    edit::mass_text(&draft.read()?, from, to, &block)?
+                    splice::mass_text(&draft.read()?, from, to, &block)?
                 }
                 None => edit::exact_text(&draft.read()?, &args.str(OLD)?, &args.str(NEW)?)?,
             };

@@ -7,7 +7,7 @@ use super::super::super::local::content::ItemOk;
 use super::super::super::row::{Ink, Lead, Row, Run};
 use super::frame::{default_call, error_body, non_empty_lines, one_line, output_lines};
 use super::state::State;
-use super::{bash, context, draft, edit, fallback, file, kairos, mcp, memo, web};
+use super::{bash, context, draft, edit, fallback, file, kairos, mcp, memo, search, web};
 use crate::ui::tui::text::duration;
 use crate::ui::tui::text::glyphs as g;
 use crate::ui::tui::theme::fixed;
@@ -190,9 +190,10 @@ pub(crate) trait ToolRenderer {
 fn renderer_for(name: &str) -> &'static dyn ToolRenderer {
     match name {
         "bash" => &bash::Bash,
-        "edit" => &edit::Edit,
+        "edit" | "splice" => &edit::Edit,
         "read" | "write" | "cd" => &file::FileTools,
         "web" => &web::Web,
+        "search" => &search::Search,
         "context" => &context::Context,
         "memo" => &memo::Memo,
         "mcp" => &mcp::Call,
@@ -248,8 +249,15 @@ pub(crate) struct Numbered {
     pub text: String,
 }
 
-/// What an `edit` result leaves for the card to line up: the start line when the request cannot
-/// name it, and the replaced text when the request does not carry it.
+/// The item a change sits in, as the tool found it: its first old-file line and its text.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Excerpt {
+    pub from: usize,
+    pub lines: Vec<String>,
+}
+
+/// What a change leaves for the card to line up: the line it sits on, the text that went when the
+/// request cannot name it, the item around it, and the blocks above that item.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ToolView {
     Plain {
@@ -258,18 +266,45 @@ pub(crate) enum ToolView {
     Diff {
         at: Option<usize>,
         old: Option<String>,
+        scope: Vec<String>,
+        excerpt: Option<Excerpt>,
     },
 }
 
 impl ToolView {
     pub(crate) fn from_details(details: Option<&Value>, text: &str) -> ToolView {
-        let diff = details.filter(|d| d.get("kind").and_then(|k| k.as_str()) == Some("diff"));
-        if let Some(d) = diff {
-            let at = d.get("atLine").and_then(Value::as_u64).map(|n| n as usize);
-            let old = d.get("old").and_then(Value::as_str).map(str::to_string);
-            if at.is_some() || old.is_some() {
-                return ToolView::Diff { at, old };
-            }
+        let Some(d) = details else {
+            return ToolView::Plain {
+                text: text.to_string(),
+            };
+        };
+        let at = d.get("atLine").and_then(Value::as_u64).map(|n| n as usize);
+        let old = d.get("old").and_then(Value::as_str).map(str::to_string);
+        let strings = |value: Option<&Value>| -> Vec<String> {
+            value
+                .and_then(Value::as_array)
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|line| line.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let scope = strings(d.get("scope"));
+        let excerpt = d.get("excerpt").and_then(|e| {
+            let from = e.get("from").and_then(Value::as_u64)? as usize;
+            Some(Excerpt {
+                from,
+                lines: strings(e.get("lines")),
+            })
+        });
+        if at.is_some() || old.is_some() || excerpt.is_some() {
+            return ToolView::Diff {
+                at,
+                old,
+                scope,
+                excerpt,
+            };
         }
         ToolView::Plain {
             text: text.to_string(),

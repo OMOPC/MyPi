@@ -33,10 +33,9 @@ pub(super) const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "todo",
-    about: "Keep a short checklist for a long task, outside your head; it survives compaction. `set` \
-            replaces the whole list in order; an empty `items` clears it. `tick` marks the given item \
-            numbers done, or clears their tick with `done: false`. `view` prints the list with the \
-            numbers `tick` takes, 1-based; an unknown number fails the call and changes nothing.",
+    about: "Keep a short checklist for a long task, outside your head; it survives compaction. \
+            Send it in the same message as your next real call: a message whose only call is \
+            `todo` wastes a whole round trip.",
     fields: "type is always needed. set: items, the whole list; send [] to clear it. tick: ids, \
             and done=false to clear their tick. view: nothing else.",
     params: PARAMS,

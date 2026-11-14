@@ -27,7 +27,9 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/bash/shell.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc` |
 | `bash/read/{mod,tool}.rs` | `read`: the file array, the shared line and byte caps, the per-file header |
 | `bash/write/{mod,tool}.rs` | `write` |
-| `bash/edit/{mod,tool}.rs` | `edit` with `exact` and `mass`; `exact_text`, `mass_text`, `parse_range`, the one-line receipt |
+| `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
+| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, with `mass_text` and `parse_range` |
+| `bash/change.rs` | `context` (the item around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
 | `bash/cd/{mod,tool}.rs` | `cd` |
 | `bash/alias/{mod,tool}.rs` | `alias` add/list/remove; the config layer is read-only here |
 | `bash/context/{mod,tool}.rs` | `context`: `query` through `Source::history`, `show` through `Source::block`, long listings to `Export::dir` |
@@ -53,7 +55,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `subagent/final.rs` | the `final` tool: the child's draft, its edits, the one submit |
 | `subagent/template.rs` | template lookup (project, then global, then the named path), front matter, `{{var}}` rendering, roster subset checks, the stem |
 | `subagent/answer.rs` | the answer file: the first free name inside the project's `answers` folder, taken against the names one call already handed out, and the one stamped write |
-| `web/mod.rs` | the `web` tool entry: arguments to `WebArgs`, one call to the domain; built only with the `web` feature |
+| `web/mod.rs` | the `web` tool entry: arguments to `WebArgs`, one call to the domain |
+| `search/mod.rs` | the `search` tool entry: the same `WebArgs`, one query against one engine |
 
 ## What it talks to
 
@@ -84,7 +87,7 @@ Engine::run
       task            ── template, answer name ── Effect::Child
       final           ── Source::child (a Child) ── draft, answer file
       mcp             ── mcp::sync ── mcp::stdio
-      web             ── crate::web
+      web, search     ── crate::web
       memo/todo       ── Source, and the pure todo replay
   → effect stamping → spill → ToolOutput
 ```
@@ -117,7 +120,8 @@ Engine::run
 7. `subagent::template` and the parent roster: a template may only name tools the parent has.
 8. `contract::job::JobHost` and `loop/job`: the port is the whole surface a tool sees; a new job
    field starts there.
-9. `web` feature and two places: the `mod.rs` declaration and the `TOOLS` row.
+9. `Args::fill`'s field check and every tool's parameter table: a name the table does not hold is
+   refused, so a new argument is added to the table or it cannot be passed.
 10. `mcp::setup::table` and `loop/session/source`: the loop supplies the global path and the session's
     cwd; the domain never decides where the session stands.
 11. The web domain's config keys and `src/web/README.md`: it reads them itself, so a rename here is

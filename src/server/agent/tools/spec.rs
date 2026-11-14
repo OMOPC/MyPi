@@ -128,7 +128,8 @@ fn properties_of(tool: &Tool) -> serde_json::Map<String, Value> {
         "intent".to_string(),
         json!({
             "type": "string",
-            "description": "Capitalized 2-6 word present-participle intent, e.g. Reading model role settings. Shown to the user while the call runs. Emit it first."
+            "description": "Capitalized 2-6 word present participle; shown while the call runs. \
+                            Emit it first."
         }),
     );
     for p in tool.params {
@@ -149,6 +150,13 @@ pub fn schema_of(tool: &Tool) -> Value {
 }
 
 // ---- reading values ----
+
+/// The argument names a call may carry: `intent` plus the table, in table order.
+fn taken(params: &'static [Param]) -> String {
+    let mut names: Vec<&str> = vec!["intent"];
+    names.extend(params.iter().map(|p| p.name));
+    names.join(", ")
+}
 
 /// One call's arguments, laid out by the parameter table's positions.
 pub struct Args {
@@ -174,6 +182,13 @@ impl Args {
     /// A table + one object → ordered arguments. A value for an object parameter that arrived as a
     /// string is read once as JSON, so a host that stringifies nested values costs nothing.
     fn from_map(params: &'static [Param], map: &serde_json::Map<String, Value>) -> Result<Self> {
+        // A field the table does not hold is a mistake about this tool, never a guess to drop.
+        for key in map.keys() {
+            if key == "intent" || params.iter().any(|p| p.name == key) {
+                continue;
+            }
+            bail!("this tool has no argument `{key}`; it takes {}", taken(params));
+        }
         let mut values = Vec::with_capacity(params.len());
         for p in params {
             let mut value = map.get(p.name).cloned().unwrap_or(Value::Null);
@@ -243,6 +258,17 @@ impl Args {
                 },
                 _ => return Err(self.wrong(i, "an array of objects")),
             };
+            for key in map.keys() {
+                if fields.iter().any(|p| p.name == key) {
+                    continue;
+                }
+                let names: Vec<&str> = fields.iter().map(|p| p.name).collect();
+                bail!(
+                    "`{outer}[{}]` has no field `{key}`; it takes {}",
+                    at + 1,
+                    names.join(", ")
+                );
+            }
             out.push(Item {
                 outer,
                 at: at + 1,
@@ -479,3 +505,4 @@ impl Tool {
         )
     }
 }
+

@@ -40,7 +40,8 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "alias",
-    about: "Maintain shell aliases for this session.",
+    about: "Maintain shell aliases for this session. `bash` and `kairos` pick them up; nothing \
+            else does.",
     fields: "type is always needed. type=add: aliases, one item per alias with name and command. \
             type=del: names. type=list: nothing else.",
     params: PARAMS,

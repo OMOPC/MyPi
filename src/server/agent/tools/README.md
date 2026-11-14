@@ -14,18 +14,20 @@ opens the database, the config file, or the loop.
 |---|---|---|
 | 1 | `read` | `bash/read/tool.rs` |
 | 2 | `edit` | `bash/edit/tool.rs` |
-| 3 | `write` | `bash/write/tool.rs` |
-| 4 | `cd` | `bash/cd/tool.rs` |
-| 5 | `bash` | `bash/bash/tool.rs` |
-| 6 | `alias` | `bash/alias/tool.rs` |
-| 7 | `kairos` | `kairos/tool.rs` |
-| 8 | `task` | `subagent/task.rs` |
-| 9 | `final` | `subagent/final.rs` |
-| 10 | `mcp` | `mcp/mod.rs` |
-| 11 | `web` | `web/mod.rs` |
-| 12 | `memo` | `memo/memo/tool.rs` |
-| 13 | `todo` | `memo/todo/tool.rs` |
-| 14 | `context` | `bash/context/tool.rs` |
+| 3 | `splice` | `bash/splice/tool.rs` |
+| 4 | `write` | `bash/write/tool.rs` |
+| 5 | `cd` | `bash/cd/tool.rs` |
+| 6 | `bash` | `bash/bash/tool.rs` |
+| 7 | `alias` | `bash/alias/tool.rs` |
+| 8 | `kairos` | `kairos/tool.rs` |
+| 9 | `task` | `subagent/task.rs` |
+| 10 | `final` | `subagent/final.rs` |
+| 11 | `mcp` | `mcp/mod.rs` |
+| 12 | `web` | `web/mod.rs` |
+| 13 | `search` | `search/mod.rs` |
+| 14 | `memo` | `memo/memo/tool.rs` |
+| 15 | `todo` | `memo/todo/tool.rs` |
+| 16 | `context` | `bash/context/tool.rs` |
 
 **The session's list is the only gate.** `roster(names)` expands a list into manuals, keeping the
 rows whose names appear in it and nothing else. `engine` reads the same list through
@@ -39,8 +41,8 @@ Two names are settled when a child is spawned, in `loop/turn/cycle.rs`:
 - `final` is appended to every child's list. The parent does not name it and does not know it
   exists.
 
-`web` is absent from a build without the `web` feature: the row is gone from the table itself, so
-no list can reach it.
+`web` drives the session's work tab, so its operations sit in separate calls; `search` holds the
+session's search tab and names nothing else.
 
 ### One call
 
@@ -74,12 +76,15 @@ position indexes a call's top level only. Its own `Param` table is rendered unde
 from that same table. An item error names itself, `files[2].path`.
 
 - `about` says what the tool does and what it answers. No field list.
-- The schema's `description` is the tool's `fields` text: per `type`, which fields a call needs and
-  what an omission means.
+- `fields` says what the fields are and which ones a call needs per `type`. No prose the schema
+  already carries: a field's own `about` says what its value is.
 - Each field says what its value is; its type and enum come from the table.
 - Only `intent` is `required`: which other fields are needed depends on `type`, and only the tool
   knows that. `Args::fill` reads the fields by table and fills defaults; a tool that needs one
   errors where it reads it, naming the field.
+- A name the table does not hold is refused by `Args::fill` before the tool runs, and an object
+  array refuses one of its items' unknown fields the same way: a call that names `range` to `edit`
+  hears back the names `edit` takes.
 - The front door refuses a call whose `intent` is missing or blank.
 
 Every field but `intent` is optional in the schema; `always` below marks the ones every call of
@@ -88,7 +93,8 @@ that tool needs (the tool checks them, not the schema).
 | tool | parameters, in index order |
 |---|---|
 | `read` | `files` always: one item per file, with `path` and its own `offset` (1-based, default 1) and `limit` (default 200); each file gets its own 200-line and 64 KiB budget |
-| `edit` | `type` always (`exact`/`mass`), `path` always, `old`, `range` (1-based, `12-14` or `12`), `new` always |
+| `edit` | `path` always, `old` always (one unique run), `new` always |
+| `splice` | `path` always, `range` always (1-based, `12-14` or `12`), `new` always |
 | `write` | `path` always, `content` always |
 | `cd` | `path` always |
 | `bash` | `command` always |
@@ -97,13 +103,14 @@ that tool needs (the tool checks them, not the schema).
 | `task` | `tasks` always: one item per child, with `template`, `vars` (object of strings), `cwd`, `maxToolCalls`, `name` |
 | `final` | `type` (`write`/`edit`/`read`/`submit`), `content`, `old`, `new`, `range` |
 | `mcp` | `type` (`list`/`call`), `calls` (type=call: one item per call, `server`, `tool`, `args` (object)), `server` (type=list) |
-| `web` | `type` (`read`/`search`/`open`/`click`/`fill`/`select`/`scroll`/`eval`/`screenshot`), `url`, `raw` (default false), `query`, `provider`, `pages` (default 1), `selector`, `value`, `pixels` (default 600), `full_page` (default false) |
+| `web` | `type` (`read`/`open`/`click`/`fill`/`select`/`scroll`/`eval`/`screenshot`), `url`, `raw` (default false), `selector`, `value`, `pixels` (default 600), `full_page` (default false) |
+| `search` | `query` always, `provider` always, `pages` (default 1) |
 | `memo` | `type` (`add`/`mod`/`del`/`show`/`history`/`list`), `scope` (`current`/`global`, default `current`), `name`, `content` |
 | `todo` | `type` (`set`/`tick`/`view`), `items` (the whole list), `ids` (item numbers, 1-based), `done` (default true) |
 | `context` | `type` (`query`/`show`), `anchor` (a `#<ref>` hash or a block id), `direction` (`before`/`after`, default `after`), `limit` (default 3), `tool` (a name or `all`, default `bash`), `ids` |
 
-`provider` is read by `search` only: one search runs against exactly one provider, so a call that
-names none is refused rather than spread across several tabs, and the other operations leave it out.
+`provider` is `search`'s alone: one search runs against exactly one provider, so a call that names
+none is refused rather than spread across several tabs.
 
 `cd` lands its result with `memo {kind: "cwd", path, from}`: the history card relativizes from it
 and the front end marks the directory as a temporary move.
@@ -111,8 +118,8 @@ and the front end marks the directory as a temporary move.
 ### Batched calls
 
 Five tools take an array where they used to take one item: `read`, `alias`, `kairos`, `mcp` and
-`task`. `edit`, `write`, `memo`, `context`, `final` and `web` stay single, because their payloads
-are large enough that a batch would only move the same bytes into one argument.
+`task`. `edit`, `splice`, `write`, `memo`, `context`, `final` and `web` stay single, because their
+payloads are large enough that a batch would only move the same bytes into one argument.
 
 - Items run in the array's order, one after another; the answer is laid out in the same order.
 - Items are isolated: one item's failure is written where that item would have answered, and the
@@ -268,34 +275,40 @@ parse the text.
 
 Every tool declares `summary`, one line that names the call in a history listing; the field is not
 optional, so no tool joins the table without one. It carries only the least that locates the call:
-the first path plus a count for `read`, the path for `write`, `edit` and `cd`, the truncated
+the first path plus a count for `read`, the path for `write`, `edit`, `splice` and `cd`, the truncated
 command for `bash`, the first name and command for `alias`, the operation for the tools whose
 parameters are the interesting part (`memo`, `todo`, `context`, `kairos`, `final`), the first
-server and tool for `mcp`, the first template and its answer name for `task`, and for `web` the
-operation plus the argument it names: URL, query, selector or expression.
+server and tool for `mcp`, the first template and its answer name for `task`, the query for
+`search`, and for `web` the operation plus the argument it names: URL, selector or expression.
 A tool name the table no longer holds shows its clipped arguments.
 
-### edit
+### edit and splice
 
-`type: exact` needs `old` (one unique run) and `new`; `type: mass` needs `range` (`12-14` or `12`)
-and `new`, which may be empty to remove the range. The other group's fields are refused.
+`edit` needs `old` (one unique run) and `new`. `splice` needs `range` (`12-14` or `12`) and `new`,
+which may be empty to remove the range. A field the table does not hold is refused, so `range` in
+an `edit` call and `old` in a `splice` call both fail on the name.
 
-The answer names the lines that went, the lines that took their place, and how far the rest moved:
+Both answer the same line, naming what went, what took its place, and how far the rest moved:
 
 ```text
 replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.rs
 ```
 
-### edit's memo
+### edit's and splice's memo
 
 ```text
-exact: { "kind": "diff", "atLine": 12 }
-mass:  { "kind": "diff", "old": "<the replaced lines, no trailing newline>" }
+edit:   { "atLine": 12, "scope": ["impl Greeter"], "excerpt": { "from": 8, "lines": [...] } }
+splice: { "atLine": 12, "old": "<the replaced lines, no trailing newline>", "scope": [...], "excerpt": {...} }
 ```
 
-A memo holds only what the request cannot supply: `exact` already carries `old` and `new`, so it
-names the line the match sat on; `mass` already carries the range, so it carries the text that was
-there. New line numbers, counts and the shift are the front end's arithmetic.
+`atLine` is the old-file line the change starts on. `old` is the text that went, which `splice`'s
+request cannot name. `scope` is the breadcrumb: the blocks above the changed item, outermost first,
+the nearest three. `excerpt` is the item itself as it stood before the change — its first old-file
+line and every line of it. The item is the nearest enclosing block that declares something; failing
+that, the nearest one that starts after a blank line, a comment or an attribute; failing that, the
+nearest block. The front end renders the excerpt, signs the changed lines, and paints the rest.
+
+New line numbers, counts and the shift after the change are the front end's arithmetic.
 
 ### Stopping
 

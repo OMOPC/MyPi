@@ -51,11 +51,9 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "context",
-    about: "Look at what this session has already recorded; nothing is executed. `query` walks the \
-            calls around an anchor in one direction, for one tool or all of them, and answers one \
-            JSON row per call: id, tool, ok, summary. `show` answers each block's request arguments \
-            and result as JSON. A listing past ten calls, and a `show` past three block numbers, is \
-            written to a file and the reply names that file.",
+    about: "Replay what this session already recorded; nothing is executed. `query` finds the \
+            call around an anchor, `show` hands back its arguments and result. Before running a \
+            command or reading a file this session already handled, query first, then show.",
     fields: "type is always needed. query: anchor and direction, plus limit and tool to narrow \
             it. show: ids, one or more block ids; the request arguments and result come back as \
             JSON.",

@@ -55,9 +55,10 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "task",
-    about: "Spawn subagents from templates and return at once. Each child works in its own \
-            session and writes an answer file; a wake reports when it ends. A child never gets \
-            `task`: the tool cannot be handed down, so a template's tool list must not name it.",
+    about: "Spawn subagents from templates and return at once; every independent slice belongs in \
+            the same call. Each child works in its own session and writes an answer file; a wake \
+            reports when it ends. A child never gets `task`: the tool cannot be handed down, so a \
+            template's tool list must not name it.",
     fields: "tasks is the only field a call needs: one item per child, with `template`, the \
             `vars` that fill its slots, the child's `cwd` (needs the parent's cd), its \
             `maxToolCalls` budget, and the `name` its answer file lands under.",

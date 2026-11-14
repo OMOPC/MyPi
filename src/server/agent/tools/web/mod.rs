@@ -11,18 +11,14 @@ use super::summary;
 const TYPE: usize = 0;
 const URL: usize = 1;
 const RAW: usize = 2;
-const QUERY: usize = 3;
-const PROVIDER: usize = 4;
-const PAGES: usize = 5;
-const SELECTOR: usize = 6;
-const VALUE: usize = 7;
-const PIXELS: usize = 8;
-const FULL_PAGE: usize = 9;
+const SELECTOR: usize = 3;
+const VALUE: usize = 4;
+const PIXELS: usize = 5;
+const FULL_PAGE: usize = 6;
 
 /// Every operation; the schema and the dispatch read this one list.
 const OPS: &[&str] = &[
     "read",
-    "search",
     "open",
     "click",
     "fill",
@@ -41,22 +37,6 @@ const PARAMS: &[Param] = &[
         "Read the DOM itself instead of Markdown; it is written to a file and the answer is its path",
         "false",
     ),
-    Param::new(
-        "query",
-        Kind::Text,
-        "The search words, passed through verbatim.",
-    ),
-    Param::new(
-        "provider",
-        Kind::Choice(crate::web::ENGINES),
-        "The one engine this query runs against.",
-    ),
-    Param::df(
-        "pages",
-        Kind::Number,
-        "How many result pages to merge, starting at 1",
-        "1",
-    ),
     Param::new("selector", Kind::Text, "CSS selector."),
     Param::new(
         "value",
@@ -74,15 +54,15 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "web",
-    about: "Read, search, and drive a real browser. `read` answers Markdown, or the DOM as a file \
-            with `raw`; `search` runs one engine and merges pages 1..N; `open`/`click`/`fill`/\
-            `select`/`scroll`/`eval` operate the work tab; `screenshot` writes a PNG. Files land \
-            under the system temp directory.",
+    about: "Read a URL, and drive the work tab of a real browser. `read` answers Markdown, or the \
+            DOM as a file with `raw`; `open`/`click`/`fill`/`select`/`scroll`/`eval` operate the \
+            work tab; `screenshot` writes a PNG. Files land under the system temp directory. \
+            Search → `search`.",
     fields: "type is always needed. read: url, or nothing to read the work tab as it stands; raw \
             writes the DOM to a file and answers its path. open: url, or nothing for a blank tab. \
-            search: query and provider, pages to merge more than the first. click: selector. \
-            fill, select: selector and value. scroll: pixels. eval: value, the JavaScript to run. \
-            screenshot: full_page for the whole page.",
+            click: selector. fill, select: selector and value. scroll: pixels. eval: value, the \
+            JavaScript to run. screenshot: full_page for the whole page. Tab operations run in \
+            order.",
     params: PARAMS,
     run,
     summary,
@@ -90,11 +70,6 @@ pub(crate) const TOOL: Tool = Tool {
 
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
     let kind = args.choice(TYPE)?;
-    let pages = args.int(PAGES)?;
-    anyhow::ensure!(
-        (1..=u32::MAX as i64).contains(&pages),
-        "`pages` must be at least 1"
-    );
     let value = match kind.as_str() {
         "scroll" => Some(serde_json::Value::from(args.int(PIXELS)?)),
         _ => args.opt_str(VALUE)?.map(serde_json::Value::from),
@@ -103,9 +78,9 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         op: kind,
         url: args.opt_str(URL)?,
         raw: args.flag(RAW)?,
-        query: args.opt_str(QUERY)?,
-        provider: args.opt_str(PROVIDER)?,
-        pages: pages as u32,
+        query: None,
+        provider: None,
+        pages: 1,
         selector: args.opt_str(SELECTOR)?,
         value,
         full_page: args.flag(FULL_PAGE)?,
@@ -120,7 +95,6 @@ fn summary(call: &CallRecord) -> String {
     let at = match op.as_str() {
         "read" => summary::field(call, "url").unwrap_or_else(|| "page".to_string()),
         "open" => summary::field(call, "url").unwrap_or_default(),
-        "search" => summary::field(call, "query").unwrap_or_default(),
         "click" | "fill" | "select" => summary::field(call, "selector").unwrap_or_default(),
         "eval" => summary::field(call, "value").unwrap_or_default(),
         _ => String::new(),

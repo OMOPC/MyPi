@@ -19,7 +19,8 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "cd",
-    about: "Change the working directory for the rest of the session.",
+    about: "Move the session's working directory. It stays moved for every later call, this \
+            message's included; calls after it resolve against the new directory.",
     fields: "path is the only field.",
     params: PARAMS,
     run,

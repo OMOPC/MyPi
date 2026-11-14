@@ -34,7 +34,8 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "memo",
-    about: "Named notes shared with the user.",
+    about: "Named notes shared with the user; they outlive compaction. Writes are current-scope \
+            only; reads take both scopes.",
     fields: "type is always needed. add and mod take name and content; del takes name. \
              show and history take name. list takes scope only.",
     params: PARAMS,

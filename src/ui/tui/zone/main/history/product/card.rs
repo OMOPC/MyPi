@@ -20,6 +20,7 @@ pub(crate) mod kairos;
 pub(crate) mod mcp;
 pub(crate) mod memo;
 pub(crate) mod partial;
+pub(crate) mod search;
 pub(crate) mod task;
 pub(crate) mod todo;
 pub(crate) mod tree;

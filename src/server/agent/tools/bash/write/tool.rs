@@ -22,8 +22,9 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "write",
-    about: "Write the whole file, **overwriting** any existing one.",
-    fields: "both fields are always needed: the path, and the whole content.",
+    about: "Write the whole file, **overwriting** any existing one. A small change → `edit`.",
+    fields: "both fields are always needed: the path, and the whole content. The parent folder \
+             must already exist.",
     params: PARAMS,
     run,
     summary,

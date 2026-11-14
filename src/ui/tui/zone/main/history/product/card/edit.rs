@@ -1,14 +1,16 @@
-//! edit: the replaced text as it streams, or the numbered diff of what changed.
+//! edit and splice: the call as it streams, then the item around the change with its diff.
 
 use std::ops::Range;
 
 use ratatui::style::Modifier;
 
+use super::super::super::prefetch::color::code;
 use super::super::super::row::{Ink, Lead, Row, Run};
 use super::{
-    Numbered, Section, ToolBlock, ToolOutcome, ToolRenderer, ToolView, error_body, gutter,
+    Excerpt, Numbered, Section, ToolBlock, ToolOutcome, ToolRenderer, ToolView, error_body, gutter,
     indentation, output_lines, partial, path_of,
 };
+use crate::ui::tui::text::glyphs as g;
 use crate::ui::tui::theme::fixed;
 
 pub(crate) struct Edit;
@@ -19,7 +21,11 @@ impl ToolRenderer for Edit {
     }
 
     fn call_body(&self, b: &ToolBlock<'_>) -> Vec<Row> {
-        edit_call(b)
+        let mut out = breadcrumb(b);
+        if b.result.is_none() {
+            out.extend(streaming(b));
+        }
+        out
     }
 
     fn result_sections(&self, b: &ToolBlock<'_>, o: ToolOutcome<'_>) -> Vec<Section> {
@@ -30,11 +36,26 @@ impl ToolRenderer for Edit {
     }
 }
 
-/// The call as it arrives: the text going, then the text coming.
-fn edit_call(b: &ToolBlock<'_>) -> Vec<Row> {
-    if b.result.is_some() {
+/// The blocks the changed item sits in: the call's own body, since the result is the diff.
+fn breadcrumb(b: &ToolBlock<'_>) -> Vec<Row> {
+    let Some(o) = b.result else {
+        return Vec::new();
+    };
+    let ToolView::Diff { scope, .. } = ToolView::from_details(o.details, o.text) else {
+        return Vec::new();
+    };
+    if scope.is_empty() {
         return Vec::new();
     }
+    let text = scope.join(&format!(" {} ", g::SEP));
+    vec![Row::of(
+        Lead::None,
+        vec![Run::fixed(text, fixed::DIM)],
+    )]
+}
+
+/// The call as it arrives: the text going, then the text coming.
+fn streaming(b: &ToolBlock<'_>) -> Vec<Row> {
     let old = partial::text(b.args, "old").filter(|text| !text.is_empty());
     let new = partial::text(b.args, "new").filter(|text| !text.is_empty());
     let changed = match (old.as_deref(), new.as_deref()) {
@@ -101,6 +122,16 @@ fn diff_row(
     Row::of(Lead::None, runs)
 }
 
+/// One unchanged line of the item: its old number, and the text painted by its language.
+fn context_row(painter: &mut code::Painter, at: usize, text: &str, width: usize) -> Row {
+    let mut runs = vec![Run::fixed(gutter(' ', Some(at), width), fixed::DIFF_CONTEXT)];
+    for mut run in painter.runs(text) {
+        run.attrs |= Modifier::DIM;
+        runs.push(run);
+    }
+    Row::of(Lead::None, runs)
+}
+
 /// The two single lines' changed runs; the indentation is never part of them.
 fn pair_spans(old: &str, new: &str) -> Option<(Range<usize>, Range<usize>)> {
     if old.lines().count() != 1 || new.lines().count() != 1 {
@@ -141,16 +172,111 @@ fn edit_result(b: &ToolBlock<'_>, o: ToolOutcome<'_>) -> Vec<Row> {
         return error_body(&o.failure_text());
     }
     match ToolView::from_details(o.details, o.text) {
-        ToolView::Diff { at, old } => {
+        ToolView::Diff {
+            at,
+            old,
+            excerpt,
+            ..
+        } => {
             let at = at.or_else(|| range_start(b.args));
             let old = old.or_else(|| partial::text(b.args, "old"));
-            diff_rows(b.args, at, old)
+            match excerpt {
+                Some(excerpt) => item_rows(b, at, old, excerpt),
+                None => diff_rows(b.args, at, old),
+            }
         }
         ToolView::Plain { text } => match from_args(b.args) {
             Some(rows) => rows,
             None => output_lines(&text),
         },
     }
+}
+
+/// The whole item, with only the changed lines signed: everything else is context.
+fn item_rows(
+    b: &ToolBlock<'_>,
+    at: Option<usize>,
+    old: Option<String>,
+    excerpt: Excerpt,
+) -> Vec<Row> {
+    let new = partial::text(b.args, "new").unwrap_or_default();
+    let before = excerpt.lines.join("\n");
+    let after = match b.name {
+        "splice" => {
+            let at = at.or_else(|| range_start(b.args)).unwrap_or(excerpt.from);
+            let start = at.saturating_sub(excerpt.from).min(excerpt.lines.len());
+            let removed = old.as_deref().map(|text| text.lines().count()).unwrap_or(0);
+            replaced(&excerpt.lines, start, removed, &new)
+        }
+        _ => match old.as_deref() {
+            Some(old) => before.replacen(old, &new, 1),
+            None => before.clone(),
+        },
+    };
+
+    let old_lines: Vec<&str> = before.lines().collect();
+    let new_lines: Vec<&str> = after.lines().collect();
+    let mut pre = 0;
+    while pre < old_lines.len() && pre < new_lines.len() && old_lines[pre] == new_lines[pre] {
+        pre += 1;
+    }
+    let mut suf = 0;
+    while suf < old_lines.len().saturating_sub(pre)
+        && suf < new_lines.len().saturating_sub(pre)
+        && old_lines[old_lines.len() - 1 - suf] == new_lines[new_lines.len() - 1 - suf]
+    {
+        suf += 1;
+    }
+
+    let lang = path_of(b).as_deref().and_then(code::language_for_path);
+    let mut painter = code::Painter::new(lang);
+    let width = (excerpt.from + old_lines.len()).to_string().len().max(3);
+    let mut rows: Vec<Row> = Vec::with_capacity(old_lines.len() + new_lines.len());
+
+    for (i, line) in old_lines[..pre].iter().enumerate() {
+        rows.push(context_row(&mut painter, excerpt.from + i, line, width));
+    }
+
+    let removed = &old_lines[pre..old_lines.len() - suf];
+    let added = &new_lines[pre..new_lines.len() - suf];
+    let paired = removed.len() == added.len();
+    for (i, line) in removed.iter().enumerate() {
+        let span = paired
+            .then(|| changed_spans(&indentation(line).1, &indentation(added[i]).1))
+            .flatten()
+            .map(|(gone, _)| gone);
+        rows.push(diff_row('-', Some(excerpt.from + pre + i), line, span, width));
+    }
+    for (i, line) in added.iter().enumerate() {
+        let span = paired
+            .then(|| changed_spans(&indentation(&removed[i]).1, &indentation(line).1))
+            .flatten()
+            .map(|(_, came)| came);
+        rows.push(diff_row('+', Some(excerpt.from + pre + i), line, span, width));
+    }
+
+    let delta = new_lines.len() as isize - old_lines.len() as isize;
+    for (i, line) in old_lines[old_lines.len() - suf..].iter().enumerate() {
+        let number = excerpt.from as isize + (old_lines.len() - suf + i) as isize + delta;
+        rows.push(context_row(&mut painter, number as usize, line, width));
+    }
+    if rows.is_empty() {
+        rows.push(Row::text(
+            Lead::None,
+            "(no changes)",
+            Some(Ink::Fixed(fixed::DIFF_CONTEXT)),
+        ));
+    }
+    rows
+}
+
+/// The item's lines with one region replaced, as `splice` wrote them.
+fn replaced(lines: &[String], start: usize, removed: usize, new: &str) -> String {
+    let mut out: Vec<&str> = lines[..start].iter().map(String::as_str).collect();
+    out.extend(new.lines());
+    let end = (start + removed).min(lines.len());
+    out.extend(lines[end..].iter().map(String::as_str));
+    out.join("\n")
 }
 
 /// A call that hands back no memo — `final`'s edit — draws the change from its own arguments.
@@ -160,7 +286,7 @@ fn from_args(args: &str) -> Option<Vec<Row>> {
     (at.is_some() || old.is_some()).then(|| diff_rows(args, at, old))
 }
 
-/// The first line a `mass` call names.
+/// The first line the call names.
 fn range_start(args: &str) -> Option<usize> {
     let range = partial::text(args, "range")?;
     range.trim().split('-').next()?.trim().parse().ok()
@@ -271,3 +397,5 @@ fn gap(out: &mut Vec<Row>, prev: Option<usize>, next: Option<usize>) {
         ));
     }
 }
+
+

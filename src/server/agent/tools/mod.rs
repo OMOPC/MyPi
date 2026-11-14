@@ -7,6 +7,7 @@ mod kairos;
 pub(crate) mod mcp;
 pub(crate) mod memo;
 pub(crate) mod registry;
+pub(crate) mod search;
 pub(crate) mod spec;
 pub(crate) mod subagent;
 mod summary;
