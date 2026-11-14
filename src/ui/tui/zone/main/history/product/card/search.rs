@@ -1,11 +1,13 @@
-//! search: the query as a title, then one branch per hit.
+//! search: the engine in the header, the words below it, one branch per hit.
 
-use super::super::super::row::{Lead, Row, Run};
+use ratatui::style::Modifier;
+
+use super::super::super::row::{Ink, Lead, Row, Run};
+use super::frame::wrap_rows;
 use super::tree;
 use super::{
-    Section, ToolBlock, ToolOutcome, ToolRenderer, arg_str, error_body, one_line, truncate,
+    Section, ToolBlock, ToolOutcome, ToolRenderer, arg_str, error_body, one_line,
 };
-use crate::ui::tui::text::display_width;
 use crate::ui::tui::theme::fixed;
 
 pub(crate) struct Search;
@@ -15,29 +17,19 @@ impl ToolRenderer for Search {
         Some("Search".to_string())
     }
 
-    /// The engine, and how much it turned up.
+    /// The engine this call ran against.
     fn title(&self, b: &ToolBlock<'_>) -> Option<String> {
-        let provider = arg_str(b.args, "provider").filter(|p| !p.trim().is_empty())?;
-        let mut parts = vec![provider];
-        let count = hits(b.result.map(|o| o.text).unwrap_or_default()).len();
-        if count > 0 {
-            parts.push(format!("{count} results"));
-        }
-        Some(parts.join(" · "))
+        arg_str(b.args, "provider").filter(|p| !p.trim().is_empty())
     }
 
-    /// The words this call searched for, on the header's second line.
+    /// The words it searched for, on the header's second line.
     fn call_body(&self, b: &ToolBlock<'_>) -> Vec<Row> {
         let Some(query) = arg_str(b.args, "query").filter(|q| !q.trim().is_empty()) else {
             return Vec::new();
         };
-        vec![Row::of(
-            Lead::None,
-            vec![
-                Run::fixed("Query: ", fixed::DIM),
-                Run::fixed(truncate(&one_line(&query), 60), fixed::MUTED),
-            ],
-        )]
+        let mut runs = vec![Run::fixed("Query: ", fixed::DIM)];
+        runs.push(body(one_line(&query)));
+        wrap_rows(vec![Row::of(Lead::None, runs)], b.inner_width())
     }
 
     fn result_sections(&self, b: &ToolBlock<'_>, o: ToolOutcome<'_>) -> Vec<Section> {
@@ -49,9 +41,47 @@ impl ToolRenderer for Search {
         }
         vec![Section {
             label: None,
-            lines: search_lines(hits(o.text), b.inner_width()),
+            lines: wrap_rows(branches(hits(o.text)), b.inner_width()),
         }]
     }
+}
+
+/// Body text: the terminal's own foreground, bold.
+fn body(text: impl Into<String>) -> Run {
+    Run::with(
+        text,
+        Some(Ink::Fixed(fixed::TOOL_TITLE)),
+        Modifier::BOLD,
+    )
+}
+
+/// A hit's title and its note: everything after the first `|`.
+fn split(title: &str) -> (&str, Option<&str>) {
+    match title.split_once('|') {
+        Some((head, note)) => (head.trim_end(), Some(note.trim())),
+        None => (title.trim(), None),
+    }
+}
+
+/// One branch per hit: the title, then the page it opens.
+fn branches(hits: Vec<(String, String)>) -> Vec<Row> {
+    let last = hits.len().saturating_sub(1);
+    let mut rows = Vec::new();
+    for (at, (title, url)) in hits.iter().enumerate() {
+        let (head, note) = split(title);
+        let mut runs = vec![body(head)];
+        if let Some(note) = note {
+            runs.push(Run::fixed(format!(" | {note}"), fixed::MUTED));
+        }
+        rows.push(tree::entry(at == last, runs));
+        if !url.is_empty() {
+            rows.push(tree::child(
+                at == last,
+                vec![Run::fixed(url, fixed::TOOL_PATH)],
+            ));
+        }
+    }
+    rows
 }
 
 /// A hit's title and URL, in the text a search prints.
@@ -82,36 +112,3 @@ fn numbered(line: &str) -> Option<String> {
     }
     Some(trimmed[digits + 2..].to_string())
 }
-
-fn domain_of(url: &str) -> String {
-    let rest = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-        .unwrap_or(url);
-    let host = rest.split('/').next().unwrap_or_default();
-    host.strip_prefix("www.").unwrap_or(host).to_string()
-}
-
-/// One branch per hit: the title, then the domain it came from.
-fn search_lines(hits: Vec<(String, String)>, inner: usize) -> Vec<Row> {
-    let last = hits.len().saturating_sub(1);
-    hits.iter()
-        .enumerate()
-        .map(|(at, (title, url))| {
-            let domain = domain_of(url);
-            let tail = if domain.is_empty() {
-                String::new()
-            } else {
-                format!(" ({domain})")
-            };
-            let budget = inner.saturating_sub(4 + display_width(&tail) + 1).max(12);
-            let mut runs = vec![Run::fixed(truncate(title, budget), fixed::TOOL_OUTPUT)];
-            if !tail.is_empty() {
-                runs.push(tree::value(tail));
-            }
-            tree::entry(at == last, runs)
-        })
-        .collect()
-}
-
-
