@@ -167,14 +167,9 @@ fn card(block: ToolBlock<'_>, tail: bool, budget: usize, width: usize) -> Vec<Ro
     let bg = block.bg();
     let mut out = vec![card_edge_labeled(edge, bg, width, block.header())];
     let mut sections = block.sections();
-    let folding = block.renderer().folds();
     for (index, section) in sections.iter_mut().enumerate() {
         let rows = std::mem::take(&mut section.lines);
-        section.lines = if folding {
-            fold::fold(rows, budget, block.expanded, tail && index > 0)
-        } else {
-            rows
-        };
+        section.lines = fold::fold(rows, budget, block.expanded, tail && index > 0);
     }
     for (i, section) in sections.into_iter().enumerate() {
         if i > 0 || section.label.is_some() {

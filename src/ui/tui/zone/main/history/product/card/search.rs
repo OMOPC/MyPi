@@ -15,10 +15,6 @@ impl ToolRenderer for Search {
         Some("Search".to_string())
     }
 
-    fn folds(&self) -> bool {
-        false
-    }
-
     /// The engine this call ran against, and how much it turned up.
     fn title(&self, b: &ToolBlock<'_>) -> Option<String> {
         let provider = arg_str(b.args, "provider").filter(|p| !p.trim().is_empty())?;
