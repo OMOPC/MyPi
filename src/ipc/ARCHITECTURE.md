@@ -23,7 +23,9 @@
 - The writer thread shuts the socket when its queue ends. That is what wakes a reader blocked
   on a peer that died without closing: the read returns end of file, the guard releases the
   entry, and `serve` can stop.
-- `serve` stops when `Api::idle_for` reports no connection for a whole grace period.
+- `serve` stops when `Api::idle_for` reports no connection for a whole grace period. A server
+  that has not seen its first front end yet waits `BOOT` for it, because the front end starts
+  the server and reaches for its socket a moment later.
 - `client.rs` is used by `ui::session`, which sends frames and drains the connection. `ask`
   remains for a caller that waits on one answer; stream frames carry another kind and never
   match it.

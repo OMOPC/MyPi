@@ -170,6 +170,11 @@ impl Api {
         self.relay.detach(conn.id);
     }
 
+    /// Front ends connected right now.
+    pub(crate) fn live(&self) -> usize {
+        self.relay.live()
+    }
+
     /// No connection for a whole grace period.
     pub fn idle_for(&self, grace: Duration) -> bool {
         if self.relay.live() > 0 {

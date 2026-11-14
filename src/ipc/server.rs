@@ -6,7 +6,7 @@ use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 
@@ -19,6 +19,9 @@ use crate::server::api::{Api, Conn};
 
 /// A connection is watched for silence this long before the server may stop.
 const GRACE: Duration = Duration::from_millis(300);
+
+/// How long a server with no front end yet waits for one before it stops on its own.
+const BOOT: Duration = Duration::from_secs(10);
 
 /// The database lock, held while this process is the server.
 pub struct Claim(#[allow(dead_code)] File);
@@ -95,6 +98,13 @@ pub fn serve(bound: Bound) -> Result<()> {
             .name("ipc-accept".to_string())
             .spawn(move || accept_loop(listener, api, stopping))
             .context("cannot start the accept loop")?;
+    }
+
+    // A front end starts a server and then reaches for its socket: the idle clock may not start
+    // before it arrives, or the server would take the socket away from under it.
+    let started = Instant::now();
+    while api.live() == 0 && started.elapsed() < BOOT {
+        std::thread::sleep(Duration::from_millis(50));
     }
 
     while !api.idle_for(GRACE) {

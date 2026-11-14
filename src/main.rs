@@ -1,7 +1,7 @@
 //! Where every binary mode fans out: the two processes, and the one-shot queries.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 
@@ -27,39 +27,66 @@ fn main() -> anyhow::Result<()> {
     if cli.server {
         return run_server(&db);
     }
-    if let Some(file) = std::env::var_os("MYPI_ENDPOINT") {
-        return front_end(PathBuf::from(file), &cli);
-    }
+    let cfg = Config::load()?;
+    init_time(&cfg);
+    let file = Endpoint::file_path(&db);
     // A leftover endpoint file whose server is gone is no reason to refuse to start.
-    if let Ok(endpoint) = endpoint::read(&Endpoint::file_path(&db))
-        && let Ok(session) = mypi::ui::session::Session::connect(endpoint)
+    if let Ok(running) = endpoint::read(&file)
+        && let Ok(session) = mypi::ui::session::Session::connect(running)
     {
         return run(session, &cli);
     }
+    let session = spawn_server(&file)?;
+    run(session, &cli)
+}
 
-    let cfg = Config::load()?;
-    let endpoint = Endpoint::for_db(&db, ipc_kind(&cfg));
-    let file = Endpoint::file_path(&db);
-    let Some(claim) = server::claim(&db)? else {
-        anyhow::bail!("another mypi owns {}", db.display());
-    };
-    init_time(&cfg);
-    let api = Arc::new(Api::open(db.clone(), cfg)?);
-    let bound = server::bind(api, &db, endpoint, claim)?;
-    // The front end is this same executable: its own flags must survive the spawn.
-    let mut front = std::process::Command::new(std::env::current_exe()?)
-        .args(std::env::args().skip(1))
-        .env("MYPI_ENDPOINT", &file)
+/// The server is a background child: it takes no terminal, prints nothing, and leaves with the
+/// last front end. This process waits for its socket, then owns the screen.
+fn spawn_server(file: &Path) -> anyhow::Result<mypi::ui::session::Session> {
+    std::process::Command::new(std::env::current_exe()?)
+        .arg("--server")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
-        .context("cannot start the front end")?;
-    let served = server::serve(bound);
-    let _ = front.wait();
-    mypi::web::shutdown();
-    served
+        .context("cannot start the server")?;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Ok(endpoint) = endpoint::read(file)
+            && let Ok(session) = mypi::ui::session::Session::connect(endpoint)
+        {
+            return Ok(session);
+        }
+        if Instant::now() >= deadline {
+            anyhow::bail!("the server did not answer at {}", file.display());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+/// A server has no terminal to complain on: its last words land beside the launch directory.
+fn log_panics(dir: PathBuf) {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        use std::io::Write;
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let stamp = time::now_stamp();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("mypi-server.log"))
+        {
+            let _ = writeln!(file, "{stamp} {info}\n{backtrace}\n");
+        }
+        previous(info);
+    }));
 }
 
 /// `mypi --server`: the server alone.
 fn run_server(db: &Path) -> anyhow::Result<()> {
+    if let Ok(cwd) = std::env::current_dir() {
+        log_panics(cwd);
+    }
     let cfg = Config::load()?;
     let Some(claim) = server::claim(db)? else {
         anyhow::bail!("another mypi owns {}", db.display());
@@ -92,14 +119,6 @@ fn init_time(cfg: &Config) {
         .ok()
         .and_then(|value| value.as_text().map(str::to_string));
     time::init(zone.as_deref());
-}
-
-/// The front end's own process, once the server is reachable.
-fn front_end(file: PathBuf, cli: &Cli) -> anyhow::Result<()> {
-    let endpoint =
-        endpoint::read(&file).with_context(|| format!("cannot read {}", file.display()))?;
-    let session = mypi::ui::session::Session::connect(endpoint)?;
-    run(session, cli)
 }
 
 /// The front end on an open connection: read the launch directory, pick the first zone, go.

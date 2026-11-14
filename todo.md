@@ -98,11 +98,6 @@ history.db，欸不是，大姐，什么叫[[1,1],[2,2],[3,3]]
 服务端CPU异常与退出问题（另开会话处理，调研结论2026-11-08）：
 1. CDP泵线程轮询：`src/web/browser/devtools/cdp.rs:22` 每条连接 read timeout 50ms（20Hz空转唤醒），连接随tab存活；附着型浏览器（`Browser::attach`，`src/web/browser/process/mod.rs:44`）被 `idle::sweep` 永不关闭（`idle.rs:27` 直接return），泵跟着活到进程死。修法：去掉50ms轮询（阻塞读+Drop关socket唤醒），或退一步拉到500ms。
 
-服务端与终端的脱钩（调研结论2026-11-11）：
-1. 服务端是前端的主进程，拉起前端之后仍持有终端 fd 0/1/2；它自己的 `eprintln!`（ipc 连接出错那几处）会直接落到前端的画面上。服务端本身不读 stdin，全仓只有 crossterm 读。
-2. 工具层的两处入口已收口：bash 的 shell 与浏览器进程都拿到空设备 stdin（`tools/bash/bash/shell.rs`、`web/browser/process/launch.rs`）。
-3. 待做：前端起来后把服务端的 0/1/2 换成空设备。阻塞点：服务端的诊断信息需要一个去处（日志文件，或接受静默），尚未决定；`mypi --server` 单独跑时不适用。
-
 ## 一、历史区
 
 ### 本轮接线（2026-11-11）
