@@ -15,10 +15,10 @@ impl ToolRenderer for Search {
         Some("Search".to_string())
     }
 
-    /// The query, and how much it turned up.
+    /// The engine, and how much it turned up.
     fn title(&self, b: &ToolBlock<'_>) -> Option<String> {
-        let query = arg_str(b.args, "query").filter(|q| !q.trim().is_empty())?;
-        let mut parts = vec![truncate(&one_line(&query), 60)];
+        let provider = arg_str(b.args, "provider").filter(|p| !p.trim().is_empty())?;
+        let mut parts = vec![provider];
         let count = hits(b.result.map(|o| o.text).unwrap_or_default()).len();
         if count > 0 {
             parts.push(format!("{count} results"));
@@ -26,16 +26,16 @@ impl ToolRenderer for Search {
         Some(parts.join(" · "))
     }
 
-    /// The engine, on the header's second line.
+    /// The words this call searched for, on the header's second line.
     fn call_body(&self, b: &ToolBlock<'_>) -> Vec<Row> {
-        let Some(provider) = arg_str(b.args, "provider").filter(|p| !p.trim().is_empty()) else {
+        let Some(query) = arg_str(b.args, "query").filter(|q| !q.trim().is_empty()) else {
             return Vec::new();
         };
         vec![Row::of(
             Lead::None,
             vec![
-                Run::fixed("From provider: ", fixed::DIM),
-                Run::fixed(provider, fixed::MUTED),
+                Run::fixed("Query: ", fixed::DIM),
+                Run::fixed(truncate(&one_line(&query), 60), fixed::MUTED),
             ],
         )]
     }
@@ -113,4 +113,5 @@ fn search_lines(hits: Vec<(String, String)>, inner: usize) -> Vec<Row> {
         })
         .collect()
 }
+
 
