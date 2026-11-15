@@ -257,7 +257,7 @@ struct Body {
 
 /// The window's lines, prefixed by a gutter as wide as the file's own numbers, capped by bytes.
 ///
-/// The gutter is `total`'s digit count plus one space, so a numbered line and an unnumbered one
+/// The gutter is `total`'s digit count plus one pipe, so a numbered line and an unnumbered one
 /// start in the same column and an empty line costs a newline and nothing else.
 fn assemble<'a>(
     first: usize,
@@ -307,7 +307,7 @@ fn assemble<'a>(
     Body { text, status }
 }
 
-/// One line: its number, or the same width of blanks, or nothing at all.
+/// One line: its number, or the same width of blanks, then the pipe that ends the gutter.
 fn push(out: &mut String, at: usize, line: &str, number: bool, on: bool, width: usize) {
     if !on {
         // Without numbers the body is the file itself, so a line of spaces stays a line of spaces.
@@ -320,11 +320,12 @@ fn push(out: &mut String, at: usize, line: &str, number: bool, on: bool, width: 
         return;
     }
     if number {
-        out.push_str(&format!("{at:>width$} {line}\n"));
+        out.push_str(&format!("{at:>width$}|{line}\n"));
     } else {
-        for _ in 0..=width {
+        for _ in 0..width {
             out.push(' ');
         }
+        out.push('|');
         out.push_str(line);
         out.push('\n');
     }

@@ -307,10 +307,10 @@ Other languages keep a number on every line: only Rust is read this way.
 `edit` locates a change by text, so a session with `edit` and without `splice` gets no numbers at
 all: the body is the file, ready to be copied into `old`.
 
-The gutter is as wide as the file's own last line number plus one space, so a three-digit file
-reserves four columns on every line. A numbered line writes its number over those columns, an
-unnumbered one leaves them blank, and an empty line is a newline and nothing else. The gutter's
-bytes are part of the body's budget.
+The gutter is as wide as the file's own last line number plus one pipe, so a three-digit file
+writes `123|` and an unnumbered line writes `   |`: the pipe keeps the body in one column and makes
+the boundary between gutter and code visible. An empty line is a newline and nothing else. The
+gutter's bytes are part of the body's budget.
 
 A status line opens the body when the file continues: `[800 of 900 lines; next offset 801]`, or
 `[256 KiB cap; 161 of 200 lines; next offset 162]` when bytes ran out first. A line longer than the
