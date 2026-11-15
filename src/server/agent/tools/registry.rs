@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use super::bash::{alias, bash as bash_tool, cd, context, edit, read, splice, write};
+use super::bash::{alias, bash as bash_tool, cd, context, edit, grep, read, splice, write};
 use super::kairos::tool;
 use super::mcp;
 use super::memo::{memo as memo_tool, todo};
@@ -17,6 +17,7 @@ use super::web;
 /// Every built-in tool, in the order the model reads them.
 pub const TOOLS: &[Tool] = &[
     read::TOOL,
+    grep::TOOL,
     edit::TOOL,
     splice::TOOL,
     write::TOOL,

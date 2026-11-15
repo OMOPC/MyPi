@@ -24,6 +24,9 @@ use super::super::schema::{
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_PROFILE_DIR,
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_USER_AGENT,
     KEY_CONFIG_SERVER_AGENT_TOOLS_EDIT_FULL_ITEM_BUDGET,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FILE_MAX,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS,
     KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES, KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES,
     KEY_CONFIG_SERVER_API_DEFAULT_MODEL, KEY_CONFIG_SERVER_REQUEST_COMPACT_INSTRUCTION_FILE,
     KEY_CONFIG_SERVER_REQUEST_COMPACT_RETAIN_TAIL, KEY_CONFIG_SERVER_REQUEST_STREAMING,
@@ -64,6 +67,26 @@ impl Config {
             .and_then(Value::as_int)
             .unwrap_or(40)
             .max(1) as usize
+    }
+
+    /// What `grep` expands and what it folds. Every count is a threshold, never a target.
+    pub fn grep_limits(&self) -> crate::server::config::GrepLimits {
+        let effective = self.effective(None);
+        let count = |key: &'static str, fallback: usize| {
+            effective
+                .values
+                .get(key)
+                .and_then(Value::as_int)
+                .map(|n| n.max(0) as usize)
+                .unwrap_or(fallback)
+        };
+        crate::server::config::GrepLimits {
+            deep: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX, 6),
+            fold: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX, 25),
+            file: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FILE_MAX, 6),
+            impls: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS, 8),
+            items: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS, 12),
+        }
     }
 
     /// One bash command's wall-clock cap.

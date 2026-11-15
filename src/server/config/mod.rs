@@ -19,6 +19,15 @@ pub use profile::{DEFAULT_PROFILE, ResolvedProfile};
 pub use registry::{BoolOrInt, DefaultValue, Key, Kind, Value, model_key, provider_key, template};
 pub use schema::*;
 
+/// What `grep` folds by: five counts, three for the hits and two for the x-ray.
+pub struct GrepLimits {
+    pub deep: usize,
+    pub fold: usize,
+    pub file: usize,
+    pub impls: usize,
+    pub items: usize,
+}
+
 /// What the web domain needs when it starts or reclaims a browser.
 #[derive(Debug)]
 pub struct BrowserOptions {

@@ -13,21 +13,22 @@ opens the database, the config file, or the loop.
 | # | tool | file |
 |---|---|---|
 | 1 | `read` | `bash/read/tool.rs` |
-| 2 | `edit` | `bash/edit/tool.rs` |
-| 3 | `splice` | `bash/splice/tool.rs` |
-| 4 | `write` | `bash/write/tool.rs` |
-| 5 | `cd` | `bash/cd/tool.rs` |
-| 6 | `bash` | `bash/bash/tool.rs` |
-| 7 | `alias` | `bash/alias/tool.rs` |
-| 8 | `kairos` | `kairos/tool.rs` |
-| 9 | `task` | `subagent/task.rs` |
-| 10 | `final` | `subagent/final.rs` |
-| 11 | `mcp` | `mcp/mod.rs` |
-| 12 | `web` | `web/mod.rs` |
-| 13 | `search` | `search/mod.rs` |
-| 14 | `memo` | `memo/memo/tool.rs` |
-| 15 | `todo` | `memo/todo/tool.rs` |
-| 16 | `context` | `bash/context/tool.rs` |
+| 2 | `grep` | `bash/grep/tool.rs` |
+| 3 | `edit` | `bash/edit/tool.rs` |
+| 4 | `splice` | `bash/splice/tool.rs` |
+| 5 | `write` | `bash/write/tool.rs` |
+| 6 | `cd` | `bash/cd/tool.rs` |
+| 7 | `bash` | `bash/bash/tool.rs` |
+| 8 | `alias` | `bash/alias/tool.rs` |
+| 9 | `kairos` | `kairos/tool.rs` |
+| 10 | `task` | `subagent/task.rs` |
+| 11 | `final` | `subagent/final.rs` |
+| 12 | `mcp` | `mcp/mod.rs` |
+| 13 | `web` | `web/mod.rs` |
+| 14 | `search` | `search/mod.rs` |
+| 15 | `memo` | `memo/memo/tool.rs` |
+| 16 | `todo` | `memo/todo/tool.rs` |
+| 17 | `context` | `bash/context/tool.rs` |
 
 **The session's list is the only gate.** `roster(names)` expands a list into manuals, keeping the
 rows whose names appear in it and nothing else. `engine` reads the same list through
@@ -356,6 +357,52 @@ it, one whole level at a time, and stops at the crate root or when its 100 ms bu
 level it could not finish is dropped whole, because half a level reads as "nobody imports this".
 The downward side never walks: it reads the names the entry declares and nothing inside them.
 
+### grep
+
+`grep` answers one query over the crate's own `src/`. The crate is the nearest `Cargo.toml` above
+the session's directory, and only `.rs` files under its `src/` are read: no ignore rules and no
+external binary, so the answer is the same on every platform. `target/` is out of reach by
+construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the root documents — is one
+`read` away and never searched.
+
+The query is text unless `regex` is on: every character stands for itself, so `AppState::new(` is a
+string rather than a broken pattern, and `foo.bar` matches neither `foo_bar` nor `fooXbar`. A
+pattern that does not compile is refused with the engine's own position and a reminder that the
+switch is off by default.
+
+Structure comes from the passes `read` already runs: comments and literals blanked, braces paired,
+head words recognized. A header runs to its own `{` or `;` with `(`, `[` and angle brackets
+counted, so a wrapped signature, a `where` clause and nested generics stay inside one header, and
+`->` contributes no closing angle. An `impl` type is the text after `for`, or after `impl` when
+there is none, with `&`, `&mut`, `!`, lifetimes, `dyn` and generics stripped.
+
+Three sections precede the hits:
+
+- `[type]` — `A::b` where `A` is declared here: the `b` inside `impl A`, `impl Tr for A`, `trait
+  A`, `impl Tr for A` on a trait's behalf, and the variants or fields of `enum A` and `struct A`.
+  A name this crate does not declare says so in one line, and the hits still follow, so a
+  standard-library type never answers "nothing".
+- `[module]` — `A::b` where `A` is a `mod`: the item `b` the module's own files declare. The module
+  is found through its `mod a;` declaration, never by guessing a directory from the session's path.
+- `[x-ray]` — when the query is a lone `struct`, `enum` or `trait` name: its declaration, then
+  every `impl` block for it across the crate, each with its members' spans. It is a map, not a hit
+  list, and it has two caps of its own (`xrayImpls`, `xrayItems`) that take no share of the hit
+  caps.
+
+Hits are answered at the density their count allows, by `deepMax` and `foldMax`. Up to `deepMax`,
+each hit comes with its innermost item whole — or a six-line window when that item is longer than
+forty lines — under an `in:` breadcrumb of every item around it, every excerpt line numbered so a
+`splice` can name its range. Up to `foldMax`, each hit is one line with the innermost item's span.
+Past that, only per-file counts and a line saying the query is too wide. `fileMax` caps one file's
+hits in one answer. Every cap that bites states what it left out; nothing is dropped silently.
+
+Every file whose lines an answer showed is stamped in `env.seen` — line count and content hash, the
+stamp `read` writes — so `splice` works on it without a second `read`.
+
+What it does not read: anything a macro generates, the `impl`s a derive writes, `include!`,
+`#[path]`, and a type renamed by `use … as`. A hit inside such code is still a hit; only its
+breadcrumb is coarser.
+
 ### edit and splice
 
 `edit` needs `old` (one unique run) and `new`. `splice` needs `edits`: one item per range, each
@@ -560,7 +607,8 @@ not checked here; a bad argument is the server's error to report.
 
 1. A tool reads only `Env`; no database, no config file, no loop.
 2. A tool never measures or trims output; the front door does — `read` alone bounds its own files,
-   which is why the front door does not measure it.
+   which is why the front door does not measure it. `grep` caps its own hit lines by the same
+   line budget and is still measured, so a wide answer spills rather than overflowing.
 3. A tool names an effect kind; the front door stamps `call_id` and `ts`.
 4. File tools read and write only inside the licensed zones; atomically, under a per-path lock.
 5. The roster is the only way the model learns a tool exists.
@@ -619,6 +667,7 @@ not checked here; a bad argument is the server's error to report.
 | `config.server.agent.tools.bashTimeout` | one shell command's deadline; default 600 s |
 | `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
 | `config.server.agent.tools.edit.fullItembudget` | lines an edited item may take and still be handed over whole, default 40; a longer item hands over the window around the change |
+| `config.server.agent.tools.grep.*` | `deepMax` 6, `foldMax` 25, `fileMax` 6: the three hit thresholds. `xrayImpls` 8, `xrayItems` 12: the x-ray's own caps, which the hit thresholds do not charge |
 | `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` keeps its own |
 | `config.server.agent.tools.outputMaxBytes` | inline byte budget, default 32768; `read` keeps its own |
 | `config.server.agent.tools.browser.bin` | the browser executable; empty = `$MYPI_BROWSER_BIN`, else `/opt/helium/helium` |

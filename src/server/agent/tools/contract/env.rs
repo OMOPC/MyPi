@@ -14,6 +14,8 @@ pub struct Env {
     /// The working directory handle every call reads.
     pub workspace: Workspace,
     pub limits: Limits,
+    /// What `grep` expands and what it folds.
+    pub grep: GrepLimits,
     pub bash: BashEnv,
     /// The session's stop signal; a tool that blocks registers what stopping it means.
     pub stop: Arc<crate::server::platform::stop::Stop>,
@@ -145,10 +147,26 @@ pub struct Limits {
     pub bytes: usize,
 }
 
+/// What `grep` folds by: five counts, three for the hits and two for the x-ray.
+#[derive(Debug, Clone, Copy)]
+pub struct GrepLimits {
+    /// Hits an answer expands whole, item and all.
+    pub deep: usize,
+    /// Hits it lists one line each; more than this folds to per-file counts.
+    pub fold: usize,
+    /// Hits one file may show.
+    pub file: usize,
+    /// `impl` blocks one x-ray may list.
+    pub impls: usize,
+    /// Members one block may list.
+    pub items: usize,
+}
+
 /// What every session's [`Env`] starts from: the process-level facts, read once.
 #[derive(Clone)]
 pub struct Defaults {
     pub limits: Limits,
+    pub grep: GrepLimits,
     pub bash: BashEnv,
     pub aliases: BTreeMap<String, String>,
     pub default_budget: u32,
@@ -171,6 +189,7 @@ impl Defaults {
         Ok(Env {
             workspace: Workspace::new(cwd),
             limits: self.limits,
+            grep: self.grep,
             bash: self.bash.clone(),
             stop,
             session,

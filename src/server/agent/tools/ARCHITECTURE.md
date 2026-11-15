@@ -29,6 +29,10 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/read/sparse.rs` | the sparse anchor scan: comments and literals blanked, block edges numbered |
 | `bash/read/hub.rs` | the module graph: entry files, exports, the edges inside one directory, the `pub use` index, the upward importer scan |
 | `bash/read/dir.rs` | directory listings: one level, `src/` a section of its own, entry counts, junk named but never opened |
+| `bash/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its two parameters, its summary |
+| `bash/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the `.rs` files under its `src/`, the matcher, each file's hits |
+| `bash/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
+| `bash/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, and the stamps |
 | `bash/write/{mod,tool}.rs` | `write` |
 | `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
 | `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the batch's calls on one file merged into one write; `mass_text` and `parse_range` for `final` |
@@ -89,6 +93,7 @@ Engine::run
   → Args::fill
   → Tool::run
       bash/*          ── shell, file tools, alias, context
+      grep            ── scan (the walk) ── rust (sparse's blanker and frames)
       kairos          ── Source::jobs (a JobHost) ── loop/job
       task            ── template, answer name ── Effect::Child
       final           ── Source::child (a Child) ── draft, answer file
