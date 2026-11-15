@@ -31,6 +31,8 @@ impl Batch for Engine {
         out: Sender<Event>,
     ) -> Result<Vec<ToolResult>> {
         env.batch_len = calls.len();
+        env.batch = calls.to_vec();
+        env.handed.clear();
         let child = env.source.child(env.session);
         let mut halted = false;
         let mut results = Vec::with_capacity(calls.len());
@@ -63,6 +65,7 @@ impl Engine {
         started: Instant,
         halted: &mut bool,
     ) -> ToolResult {
+        env.current = call.call_id.clone();
         let Some(tool) = registry::spec(&call.name) else {
             let why = format!("unknown tool: {}", call.name);
             return self.refused(env, call, out, &why, started);

@@ -31,7 +31,10 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/read/dir.rs` | directory listings: one level, `src/` expanded, many files folded |
 | `bash/write/{mod,tool}.rs` | `write` |
 | `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
-| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, with `mass_text` and `parse_range` |
+| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the batch's calls on one file merged into one write; `mass_text` and `parse_range` for `final` |
+| `bash/splice/edit.rs` | one change: its range, its block, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
+| `bash/splice/fmt.rs` | rustfmt as the gate and the formatter: the binary beside the executable or on PATH, the edition from the nearest `Cargo.toml`, the bottom-up walk that finds the change that broke the file, and the comment walk that finds where each change landed |
+| `bash/splice/receipt.rs` | the two-level receipt: the file's skeleton at its new line numbers, the seam each change sits in, the block of every change left out, and the segment memo a front end draws |
 | `bash/change.rs` | `context` (the item around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
 | `bash/cd/{mod,tool}.rs` | `cd` |
 | `bash/alias/{mod,tool}.rs` | `alias` add/list/remove; the config layer is read-only here |

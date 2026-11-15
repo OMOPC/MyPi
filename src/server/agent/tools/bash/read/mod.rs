@@ -2,7 +2,7 @@
 
 mod dir;
 mod hub;
-mod sparse;
+pub(crate) mod sparse;
 mod tool;
 
 pub(crate) use tool::TOOL;

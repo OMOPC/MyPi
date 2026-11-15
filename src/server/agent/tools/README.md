@@ -94,7 +94,7 @@ that tool needs (the tool checks them, not the schema).
 |---|---|
 | `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (default 800); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
-| `splice` | `path` always, `range` always (1-based, `12-14` or `12`), `new` always |
+| `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
 | `write` | `path` always, `content` always |
 | `cd` | `path` always |
 | `bash` | `command` always |
@@ -118,8 +118,10 @@ and the front end marks the directory as a temporary move.
 ### Batched calls
 
 Five tools take an array where they used to take one item: `read`, `alias`, `kairos`, `mcp` and
-`task`. `edit`, `splice`, `write`, `memo`, `context`, `final` and `web` stay single, because their
-payloads are large enough that a batch would only move the same bytes into one argument.
+`task`. `edit`, `write`, `memo`, `context`, `final` and `web` stay single, because their
+payloads are large enough that a batch would only move the same bytes into one argument. `splice`
+takes an array for a different reason: its items are ranges of one file, applied to one snapshot,
+so a batch is one write instead of several that would each need the file read again.
 
 - Items run in the array's order, one after another; the answer is laid out in the same order.
 - Items are isolated: one item's failure is written where that item would have answered, and the
@@ -168,7 +170,7 @@ re-exported at the `tools` root; callers write the group they mean.
 |---|---|
 | `contract::call` | `Batch`, `Cwd` |
 | `contract::output` | `ToolResult`, `ToolOutput`, `Effect`, `MemoOp`, `AliasOp` |
-| `contract::env` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths` |
+| `contract::env` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp`, `Answer` |
 | `contract::view` | `Source`, `Export`, `Child`, `Draft`, `MemoRead`, `MemoScope`, `MemoReadOp`, `MemoVersion`, `MemoView`, and the history shapes `CallRecord`, `BlockPair`, `Direction` |
 | `contract::job` | `JobSpec`, `Schedule`, `JobHost`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink` |
 
@@ -188,8 +190,16 @@ Env {
   export: Arc<dyn Export>,   // a full text out of the database as a file
   paths: Paths,              // the user's templates; the project's folders come from the live cwd
   source: Arc<dyn Source>,   // reads the loop owns
+  seen: Seen,                // the module cards shown, and every file's read stamp
+  batch: Vec<ToolCall>,      // the calls now running, so one can merge its siblings
+  current: String,           // the call now running
+  handed: BTreeMap<String, Answer>, // what a merged run already answered for a later sibling
 }
 ```
+
+`batch`, `current` and `handed` are per batch, not per session: the front door fills them before
+the first call and clears the ledger with it. A tool that merges work (only `splice` does) answers
+for its siblings once and hands each of them its own result when its turn comes.
 
 Ports are traits in `contract::view`: `Source` (memos, aliases, history, calls, jobs, child, and
 the MCP bridge), `Export` and `Child`. A tool that needs a port fails when it is `None`; it never
@@ -325,41 +335,113 @@ so on to the crate root. Its first level always finishes; a later level that run
 
 ### edit and splice
 
-`edit` needs `old` (one unique run) and `new`. `splice` needs `range` (`12-14` or `12`) and `new`,
-which may be empty to remove the range. A field the table does not hold is refused, so `range` in
-an `edit` call and `old` in a `splice` call both fail on the name.
+`edit` needs `old` (one unique run) and `new`. `splice` needs `edits`: one item per range, each
+with `start`, `end` and `new`; `new` may be empty to remove the range, and `end = start - 1`
+inserts instead of replacing. A field the table does not hold is refused, so `range` in an `edit`
+call and `old` in a `splice` call both fail on the name.
 
 A session gets one of the two, because two ways of locating one change pull the model apart. A
 profile's `tools.yaml` may name either; naming both keeps `splice` and drops `edit`, with a notice.
 A profile that names no list gets every tool but `edit` and `final`.
 
-Both answer the same line, naming what went, what took its place, and how far the rest moved:
+`edit` answers one line naming what went, what took its place, and how far the rest moved:
 
 ```text
 replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.rs
+```
+
+### splice
+
+A Rust file goes through rustfmt, and the formatting is also the gate: a text the parser refuses is
+never written. The whole file is formatted, not the changed lines, so every line number in the
+answer is a line number on disk.
+
+The ranges are applied to one snapshot, from the bottom up, so the lines above keep their numbers
+while they are still being used. Two ranges of one call may not overlap; that is the model
+contradicting itself and the file is left alone. Every `splice` call on the same file in one message
+is one write: the calls are merged in arrival order, and a range that overlaps one from an earlier
+call is refused while the rest still land.
+
+One pass applies everything. When the file does not parse, the changes are re-applied from the file
+as it was, one station at a time from the bottom up: each station adds one change and the whole file
+is parsed again; the stations that parse stay, and the one that does not is left out with its own
+error. That is how a broken range is named without guessing from an error line, which a missing
+brace would put anywhere below it.
+
+Every parse is one `rustfmt` run over stdin. The binary is looked for beside this executable first,
+then on PATH, and its edition comes from the nearest `Cargo.toml` above the file. A missing rustfmt
+refuses the write rather than skipping the format.
+
+Anything that is not a `.rs` file is spliced without a parse and without a format: there is no
+formatter to call, and no line numbers are trusted beyond the ones `read` gave.
+
+`splice` refuses a file that changed on disk after `read` described it, and it refuses it first:
+the session remembers every file's line count and content hash, and the call's first act after
+reading the bytes is to compare them. A mismatch ends the call there — no range is parsed, nothing
+is formatted — and the model is sent back for a fresh read instead of writing a range at
+coordinates that moved.
+
+#### splice's answer
+
+The answer carries the file's skeleton at its new line numbers, then the seam each change sits in:
+
+```text
+[Splice OK] 2 edit(s) applied, formatted by rustfmt; 24 lines: /p/src/foo.rs
+--- Skeleton (post-format line numbers) ---
+   3..  3 | use std::fmt;
+   5..  7 | pub struct Greeter
+   9.. 17 | impl Greeter <- modified
+      10.. 12 | pub fn new() -> Self <- edit 1
+      14.. 16 | pub fn greet(&self)
+  19.. 21 | pub fn main()
+--- edit 1 · was line 11 · now 11..11 ---
+```
+
+The change's own top-level block is expanded to its items; every other block is one line. Seams
+show two lines above and two below, with a long change folded in the middle. The whole outline is
+capped so an answer stays small; the seams stop when the cap is reached.
+
+A change left out is expanded instead: its range, the line of its own block that broke, what the
+parser said, and the block exactly as the model wrote it. The calls of one file answer in arrival
+order, and only the one that ran the write carries the skeleton; the others carry their own ranges
+and refusals.
+
+```text
+[Splice Partial] 2/3 edits applied, 1 left out, formatted by rustfmt; 21 lines: /p/src/foo.rs
+--- edit 2 left out · was line 14 ---
+your block, line 2: expected `;`, found keyword `self`
+   1 |     pub fn three(&self) -> u8 {
+   2 |         self.x + 2
 ```
 
 ### edit's and splice's memo
 
 ```text
 edit:   { "atLine": 12, "scope": ["impl Greeter"], "excerpt": { "from": 8, "lines": [...] } }
-splice: { "atLine": 12, "old": "<the replaced lines, no trailing newline>", "scope": [...], "excerpt": {...} }
+splice: { "segments": [ { "edit": 1, "state": "applied", "fromLine": 11, "atLine": 11,
+                          "old": "<lines that went>", "new": "<lines that took their place>" }, … ] }
 ```
 
-`atLine` is the old-file line the change starts on. `old` is the text that went, which `splice`'s
-request cannot name. `scope` is the breadcrumb: the blocks above the changed item, outermost first,
-the nearest three. `excerpt` is the item itself as it stood before the change — its first old-file
-line and every line of it — or a window around the change: five lines above it and five below,
-counted over the lines the change covers. The window is taken when the item does not hold the whole
-change, and when the item is longer than `config.server.agent.tools.edit.fullItembudget` lines
-(default 40), because a card folds a long body and the fold would hide the change. A window is not the item, so the item's own declaration joins the breadcrumb.
+`edit`'s memo describes one change: `atLine` is the old-file line it starts on, `scope` the
+breadcrumb of the blocks above the item, `excerpt` the item as it stood before the change — its
+first old-file line and every line of it — or a window around the change: five lines above it and
+five below, counted over the lines the change covers. The window is taken when the item does not
+hold the whole change, and when the item is longer than
+`config.server.agent.tools.edit.fullItembudget` lines (default 40), because a card folds a long body
+and the fold would hide the change. A window is not the item, so the item's own declaration joins
+the breadcrumb.
 
 The item is the nearest enclosing block that declares something; failing that, the nearest one that
 starts after a blank line, a comment or an attribute; failing that, the nearest block. Blank lines
 never end an item, and an item's own closing brace belongs to it. The front end renders the excerpt,
 signs the changed lines, and paints the rest.
 
-New line numbers, counts and the shift after the change are the front end's arithmetic.
+`splice`'s memo is one segment per range, in the call's order: the old lines it took and the lines
+that stand there now, numbered on both sides. A range left out carries its block and why instead.
+Segments that are not neighbours are drawn apart, and the card folds what it does not need.
+
+`edit`'s new line numbers, counts and the shift after the change are the front end's arithmetic.
+`splice`'s are not: the formatter moved them, so the tool carries them in the memo.
 
 ### Stopping
 

@@ -32,6 +32,21 @@ pub struct Env {
     pub rules: Arc<Rules>,
     /// What this conversation's reads have already shown the model.
     pub seen: Seen,
+    /// The batch now running, so a tool can merge the siblings that touch its own file.
+    pub batch: Vec<crate::server::agent::request::contract::ToolCall>,
+    /// The call now running; empty outside a run.
+    pub current: String,
+    /// What a merged run has already produced for the siblings after it, by call id.
+    pub handed: BTreeMap<String, Answer>,
+}
+
+/// One finished call's answer, kept for its own turn in the batch.
+#[derive(Debug, Clone)]
+pub struct Answer {
+    pub text: String,
+    pub memo: Option<serde_json::Value>,
+    /// Why the call was refused before any of its ranges could be read.
+    pub refusal: Option<String>,
 }
 
 /// The session's reading memory: one module card per directory, and the stamp of every file it
@@ -169,6 +184,9 @@ impl Defaults {
             source: self.source.clone(),
             rules: Arc::clone(&self.rules),
             seen: Seen::default(),
+            batch: Vec::new(),
+            current: String::new(),
+            handed: BTreeMap::new(),
         })
     }
 }

@@ -155,7 +155,7 @@ fn control_head(line: &str) -> bool {
 }
 
 /// Every `{`-`}` pair, in the order the braces open.
-fn frames(code: &[String]) -> Vec<(usize, usize)> {
+pub(crate) fn frames(code: &[String]) -> Vec<(usize, usize)> {
     let mut stack: Vec<usize> = Vec::new();
     let mut out = Vec::new();
     for (i, line) in code.iter().enumerate() {
@@ -175,7 +175,7 @@ fn frames(code: &[String]) -> Vec<(usize, usize)> {
 }
 
 /// The text with comments and literals blanked: braces survive only where code opened them.
-fn stripped(text: &str) -> Vec<String> {
+pub(crate) fn stripped(text: &str) -> Vec<String> {
     Lex::new(text).run()
 }
 

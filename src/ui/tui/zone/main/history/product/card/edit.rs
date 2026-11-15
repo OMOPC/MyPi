@@ -3,6 +3,7 @@
 use std::ops::Range;
 
 use ratatui::style::Modifier;
+use serde_json::Value;
 
 use super::super::super::prefetch::color::code;
 use super::super::super::row::{Ink, Lead, Row, Run};
@@ -54,8 +55,15 @@ fn breadcrumb(b: &ToolBlock<'_>) -> Vec<Row> {
     )]
 }
 
-/// The call as it arrives: the text going, then the text coming.
+/// The call as it arrives: the text going, then the text coming. A `splice` call names its ranges
+/// as an array, so each one arrives whole and they are told apart by an ellipsis.
 fn streaming(b: &ToolBlock<'_>) -> Vec<Row> {
+    if b.name == "splice"
+        && let rows = splice_streaming(b)
+        && !rows.is_empty()
+    {
+        return rows;
+    }
     let old = partial::text(b.args, "old").filter(|text| !text.is_empty());
     let new = partial::text(b.args, "new").filter(|text| !text.is_empty());
     let changed = match (old.as_deref(), new.as_deref()) {
@@ -75,6 +83,76 @@ fn streaming(b: &ToolBlock<'_>) -> Vec<Row> {
         push_text(&mut out, '+', new, changed.map(|(_, added)| added));
     }
     out
+}
+
+/// One `splice` call's ranges as they arrive, each with its own text.
+fn splice_streaming(b: &ToolBlock<'_>) -> Vec<Row> {
+    let mut out = Vec::new();
+    for (at, item) in partial::items(b.args, "edits").iter().enumerate() {
+        if at > 0 {
+            out.push(Row::text(
+                Lead::None,
+                "…",
+                Some(Ink::Fixed(fixed::DIFF_CONTEXT)),
+            ));
+        }
+        if let Some(text) = item.get("new").and_then(Value::as_str) {
+            push_text(&mut out, '+', text, None);
+        }
+    }
+    out
+}
+
+/// A splice's memo: one segment per range, in the call's order.
+fn segments(details: &Value) -> Option<Vec<Row>> {
+    let list = details.get("segments")?.as_array()?;
+    let width = list
+        .iter()
+        .flat_map(|seg| [number(seg, "fromLine"), number(seg, "atLine")])
+        .max()
+        .unwrap_or(0)
+        .to_string()
+        .len()
+        .max(3);
+    let mut rows: Vec<Row> = Vec::new();
+    for (at, seg) in list.iter().enumerate() {
+        if at > 0 {
+            rows.push(Row::text(
+                Lead::None,
+                "…",
+                Some(Ink::Fixed(fixed::DIFF_CONTEXT)),
+            ));
+        }
+        let state = seg.get("state").and_then(Value::as_str).unwrap_or_default();
+        if state == "rejected" {
+            let why = seg
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("left out");
+            rows.push(Row::text(
+                Lead::None,
+                format!("left out: {why}"),
+                Some(Ink::Fixed(fixed::DIFF_REMOVED)),
+            ));
+        }
+        let old = seg.get("old").and_then(Value::as_str).unwrap_or_default();
+        let new = seg.get("new").and_then(Value::as_str).unwrap_or_default();
+        for line in numbered(Some(number(seg, "fromLine")), old) {
+            rows.push(diff_row('-', line.at, &line.text, None, width));
+        }
+        for line in numbered(Some(number(seg, "atLine")), new) {
+            rows.push(diff_row('+', line.at, &line.text, None, width));
+        }
+    }
+    Some(rows)
+}
+
+/// One number a segment carries; 0 when it carries none.
+fn number(seg: &Value, key: &str) -> usize {
+    seg.get(key)
+        .and_then(Value::as_u64)
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(0)
 }
 
 /// Text that arrived whole: every line signed, without a number.
@@ -170,6 +248,9 @@ fn changed_spans(old: &str, new: &str) -> Option<(Range<usize>, Range<usize>)> {
 fn edit_result(b: &ToolBlock<'_>, o: ToolOutcome<'_>) -> Vec<Row> {
     if o.ok == Some(false) {
         return error_body(&o.failure_text());
+    }
+    if let Some(rows) = o.details.and_then(segments) {
+        return rows;
     }
     match ToolView::from_details(o.details, o.text) {
         ToolView::Diff {
