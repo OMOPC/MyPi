@@ -6,7 +6,7 @@ use anyhow::{Result, bail};
 
 use super::hub;
 
-/// Direct files at or past this count fold into one line.
+/// Direct files at or past this count fold into counts.
 const FOLD_AT: usize = 10;
 
 /// The most lines one listing may take.
@@ -15,118 +15,122 @@ const MAX_LINES: usize = 800;
 /// A file this big is not counted line by line.
 const LARGE: u64 = 4 * 1024 * 1024;
 
-/// One directory's listing. The root is special: `src/` is expanded in place of a bare name.
+/// One directory's listing. The root is special: `src/` becomes a section of its own.
 pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool) -> Result<String> {
     let root = hub::canonical(cwd);
     let target = hub::canonical(path);
-    let mut out = String::new();
-    let mut left = MAX_LINES;
+    let mut list = List::new();
     if target == root {
         if titled {
-            line(&mut out, &mut left, "./".to_string());
+            list.line(format!("./  {}", counts(&root)));
         }
         let src = root.join("src");
-        let mut ok = fill(&root, 1, false, Some(&src), &mut out, &mut left);
-        if ok && hub::src_of(&src).is_some() {
-            if titled {
-                ok = line(&mut out, &mut left, "src/".to_string());
+        fill(&mut list, &root, 1, false, Some(&src));
+        if hub::src_of(&src).is_some() {
+            if !list.out.is_empty() {
+                list.out.push('\n');
             }
-            if ok {
-                ok = fill(&src, 1, true, None, &mut out, &mut left);
-            }
+            list.line(format!("src/  {}", counts(&src)));
+            fill(&mut list, &src, 1, true, None);
         }
-        if !ok {
-            out.push_str("[more entries]\n");
-        }
-        return Ok(out);
+        return Ok(list.finish());
     }
     if hub::src_of(&target).is_none() {
         bail!("`read` lists directories at the session root and inside a crate's `src/` only");
     }
     if titled {
-        line(&mut out, &mut left, format!("{}/", shown(cwd, &target)));
+        list.line(format!("{}/  {}", shown(cwd, &target), counts(&target)));
     }
-    if !fill(&target, 1, true, None, &mut out, &mut left) {
-        out.push_str("[more entries]\n");
-    }
-    Ok(out)
+    fill(&mut list, &target, 1, true, None);
+    Ok(list.finish())
 }
 
-/// One printed line, unless the listing is already as long as it may be.
-fn line(out: &mut String, left: &mut usize, text: String) -> bool {
-    if *left == 0 {
-        return false;
-    }
-    *left -= 1;
-    out.push_str(&text);
-    out.push('\n');
-    true
+/// The listing being built: its lines, and how many the budget pushed away.
+struct List {
+    out: String,
+    left: usize,
+    over: usize,
 }
 
-/// One level: files carry their line count, directories follow the expansion rule.
-fn fill(
-    dir: &Path,
-    depth: usize,
-    expand: bool,
-    skip: Option<&Path>,
-    out: &mut String,
-    left: &mut usize,
-) -> bool {
+impl List {
+    fn new() -> Self {
+        List {
+            out: String::new(),
+            left: MAX_LINES,
+            over: 0,
+        }
+    }
+
+    /// One printed line, or one counted away when the budget is spent.
+    fn line(&mut self, text: String) {
+        if self.left == 0 {
+            self.over += 1;
+            return;
+        }
+        self.left -= 1;
+        self.out.push_str(&text);
+        self.out.push('\n');
+    }
+
+    fn finish(mut self) -> String {
+        if self.over > 0 {
+            self.out.push_str(&format!("[+{} entries]\n", self.over));
+        }
+        self.out
+    }
+}
+
+/// One level: files carry their line count, directories their entry counts.
+fn fill(list: &mut List, dir: &Path, depth: usize, expand: bool, skip: Option<&Path>) {
     let pad = "  ".repeat(depth);
-    for (name, path, is_dir) in hub::entries(dir) {
+    for (name, path, is_dir) in hub::entries_all(dir) {
         if skip.is_some_and(|skip| skip == path) {
             continue;
         }
-        let ok = if !is_dir {
-            line(out, left, format!("{pad}{name} ({})", size_of(&path)))
+        if !is_dir {
+            list.line(format!("{pad}{name}  {}", size_of(&path)));
         } else if expand {
-            expand_one(&name, &path, depth, out, left)
+            expand_one(list, &name, &path, depth);
         } else {
-            line(out, left, format!("{pad}{name}/ (dir)"))
-        };
-        if !ok {
-            return false;
+            list.line(format!("{pad}{name}/  {}", counts(&path)));
         }
     }
-    true
 }
 
 /// A child directory, one level deep: few files are listed, many are counted.
-fn expand_one(name: &str, dir: &Path, depth: usize, out: &mut String, left: &mut usize) -> bool {
-    let kids = hub::entries(dir);
+fn expand_one(list: &mut List, name: &str, dir: &Path, depth: usize) {
+    let kids = hub::entries_all(dir);
     let files: Vec<_> = kids.iter().filter(|kid| !kid.2).collect();
     let dirs: Vec<_> = kids.iter().filter(|kid| kid.2).collect();
     let pad = "  ".repeat(depth);
     let folded = files.len() >= FOLD_AT;
-    let header = if folded {
-        let mut counts = format!("{} files", files.len());
-        if !dirs.is_empty() {
-            counts.push_str(&format!(", {} folders", dirs.len()));
-        }
-        format!("{pad}{name}/ ({counts})")
-    } else if dirs.is_empty() {
-        format!("{pad}{name}/")
-    } else {
-        format!("{pad}{name}/ ({} folders)", dirs.len())
-    };
-    if !line(out, left, header) {
-        return false;
-    }
+    list.line(format!(
+        "{pad}{name}/  {} files, {} dirs",
+        files.len(),
+        dirs.len()
+    ));
     if folded {
-        return true;
+        return;
     }
     let inner = "  ".repeat(depth + 1);
     for (child, path, _) in files {
-        if !line(out, left, format!("{inner}{child} ({})", size_of(path))) {
-            return false;
-        }
+        list.line(format!("{inner}{child}  {}", size_of(path)));
     }
-    for (child, _, _) in dirs {
-        if !line(out, left, format!("{inner}{child}/ (dir)")) {
-            return false;
-        }
+    for (child, path, _) in dirs {
+        list.line(format!("{inner}{child}/  {}", counts(path)));
     }
-    true
+}
+
+/// A directory's own entry counts, without opening what it holds.
+fn counts(dir: &Path) -> String {
+    let kids = hub::entries_all(dir);
+    let files = kids.iter().filter(|kid| !kid.2).count();
+    let dirs = kids.len() - files;
+    format!(
+        "{}, {}",
+        hub::plural(files, "file"),
+        hub::plural(dirs, "dir")
+    )
 }
 
 /// A file's total line count, without opening a file too big to count.

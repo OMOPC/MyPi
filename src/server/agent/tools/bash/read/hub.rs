@@ -85,9 +85,18 @@ pub(crate) fn canonical(path: &Path) -> PathBuf {
     canonicalize_lenient(path)
 }
 
-/// One directory's entries: names, paths, and which are directories. Junk and dot entries are
-/// dropped, directories come first, and the order is case-insensitive.
+/// One directory's entries for a scan: junk and dot entries are dropped, so no walk enters a
+/// build tree. Directories come first, and the order is case-insensitive.
 pub(crate) fn entries(dir: &Path) -> Vec<(String, PathBuf, bool)> {
+    entries_where(dir, false)
+}
+
+/// One directory's entries as a listing shows them: every name, junk included, never entered.
+pub(crate) fn entries_all(dir: &Path) -> Vec<(String, PathBuf, bool)> {
+    entries_where(dir, true)
+}
+
+fn entries_where(dir: &Path, all: bool) -> Vec<(String, PathBuf, bool)> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -95,14 +104,17 @@ pub(crate) fn entries(dir: &Path) -> Vec<(String, PathBuf, bool)> {
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if junk(&name) {
+            if !all && junk(&name) {
                 return None;
             }
             let is_dir = entry.file_type().ok()?.is_dir();
             Some((name, entry.path(), is_dir))
         })
         .collect();
-    out.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.to_lowercase().cmp(&b.0.to_lowercase())));
+    out.sort_by(|a, b| {
+        b.2.cmp(&a.2)
+            .then(a.0.to_lowercase().cmp(&b.0.to_lowercase()))
+    });
     out
 }
 
@@ -122,14 +134,18 @@ pub(crate) fn declares_modules(text: &str) -> bool {
     })
 }
 
-/// The whole view: exports, submodules, and who imports this module.
-pub(crate) fn view(module: &Module, batch: &BTreeSet<PathBuf>) -> String {
+/// The whole view: exports, the modules the entry declares, and who imports this module.
+pub(crate) fn view(module: &Module, batch: &BTreeSet<PathBuf>, primer: bool) -> String {
     let title = if module.chain.is_empty() {
         "crate".to_string()
     } else {
         module.chain.join("::")
     };
-    let mut out = format!("--- module {title} ({}/) ---\n", rel(module, &module.dir));
+    let tag = if primer { "primer" } else { "entry file" };
+    let mut out = format!(
+        "--- module {title} ({}/) · {tag} ---\n",
+        rel(module, &module.dir)
+    );
     let hub_text = module
         .hub
         .as_ref()
@@ -137,45 +153,43 @@ pub(crate) fn view(module: &Module, batch: &BTreeSet<PathBuf>) -> String {
         .unwrap_or_default();
 
     let exports = re_exports(&hub_text);
-    out.push_str("exports: ");
-    out.push_str(&if exports.is_empty() {
-        "none".to_string()
-    } else {
-        exports.join("; ")
-    });
-    out.push('\n');
+    out.push_str(&format!(
+        "exports ({}): {}\n",
+        exports.len(),
+        joined(&exports)
+    ));
 
-    let children = children(module, &hub_text);
+    let (children, by_name) = children(module, &hub_text);
     if children.is_empty() {
-        out.push_str("submodules: none\n");
+        out.push_str("down (0): none\n");
     } else {
-        out.push_str("submodules:\n");
+        out.push_str(&format!("down ({}):\n", children.len()));
         for child in &children {
             out.push_str(&child_line(child, batch));
             out.push('\n');
         }
     }
 
-    out.push_str("upstream:\n");
-    let mut any = false;
+    let forwards = forwards(module);
+    let radar = radar(module, &forwards);
+    let mut up: Vec<String> = Vec::new();
     if let Some(line) = parent_decl(module) {
-        out.push_str(&format!("  {line}\n"));
-        any = true;
+        up.push(line);
     }
-    let radar = radar(module);
-    let lines = if radar.hits.len() > GROUP_AT {
-        grouped(module, &radar.hits)
+    if radar.hits.len() > GROUP_AT {
+        up.extend(grouped(module, &radar.hits));
     } else {
-        radar.hits.iter().map(|hit| hit_line(module, hit)).collect()
-    };
-    for line in &lines {
-        out.push_str(&format!("  {line}\n"));
-        any = true;
+        up.extend(radar.hits.iter().map(|hit| hit_line(module, hit)));
     }
-    if !any {
-        out.push_str("  none\n");
+    if up.is_empty() {
+        out.push_str("up (0): none\n");
+    } else {
+        out.push_str(&format!("up ({}):\n", up.len()));
+        for line in &up {
+            out.push_str(&format!("  {line}\n"));
+        }
     }
-    out.push_str(&radar.boundary.line(module));
+    out.push_str(&scan_line(module, &radar.boundary, by_name));
     out.push('\n');
     cut(out)
 }
@@ -185,17 +199,18 @@ pub(crate) fn view(module: &Module, batch: &BTreeSet<PathBuf>) -> String {
 struct Child {
     label: String,
     path: PathBuf,
-    /// The directory a sub-module owns, for the label and the role.
-    lines: usize,
+    /// How big it is: a directory counts its files, a leaf its own lines.
+    size: String,
     vis: String,
     hub: bool,
     exports: Vec<String>,
     deps: Vec<String>,
 }
 
-fn children(module: &Module, hub_text: &str) -> Vec<Child> {
+fn children(module: &Module, hub_text: &str) -> (Vec<Child>, bool) {
     let mut declared = declarations(hub_text);
-    if declared.is_empty() {
+    let by_name = declared.is_empty();
+    if by_name {
         declared = entries(&module.dir)
             .into_iter()
             .filter_map(|(name, _, is_dir)| {
@@ -223,7 +238,18 @@ fn children(module: &Module, hub_text: &str) -> Vec<Child> {
         };
         let mut chain = module.chain.clone();
         chain.push(name.clone());
-        let deps = deps(&text, &chain, module);
+        let (dir_chain, place) = if dir {
+            (chain.as_slice(), module.dir.join(&name))
+        } else {
+            (&chain[..chain.len() - 1], module.dir.clone())
+        };
+        let deps = deps(&text, &chain, dir_chain, &place);
+        let size = if dir {
+            let kids = entries(&module.dir.join(&name));
+            plural(kids.iter().filter(|kid| !kid.2).count(), "file")
+        } else {
+            format!("{}L", text.lines().count())
+        };
         out.push(Child {
             label: if dir {
                 format!("{name}/")
@@ -231,14 +257,14 @@ fn children(module: &Module, hub_text: &str) -> Vec<Child> {
                 format!("{name}.rs")
             },
             path,
-            lines: text.lines().count(),
+            size,
             vis,
             hub,
             exports,
             deps,
         });
     }
-    out
+    (out, by_name)
 }
 
 fn resolve_child(dir: &Path, name: &str) -> Option<(PathBuf, bool)> {
@@ -253,19 +279,19 @@ fn resolve_child(dir: &Path, name: &str) -> Option<(PathBuf, bool)> {
 
 fn child_line(child: &Child, batch: &BTreeSet<PathBuf>) -> String {
     let mut line = format!(
-        "  {} ({}L, {}, {})",
+        "  {} {} {} {} exports ({}): {}",
         child.label,
-        child.lines,
+        child.size,
         child.vis,
-        if child.hub { "sub-hub" } else { "leaf" }
+        if child.hub { "hub" } else { "leaf" },
+        child.exports.len(),
+        joined(&child.exports),
     );
     if batch.contains(&child.path) {
         line.push_str(" [body in this batch]");
-    } else if !child.exports.is_empty() {
-        line.push_str(&format!(" exports: {}", child.exports.join("; ")));
     }
     if !child.deps.is_empty() {
-        line.push_str(&format!("; depends on: {}", child.deps.join(", ")));
+        line.push_str(&format!(" deps: {}", child.deps.join(", ")));
     }
     clip(line)
 }
@@ -278,9 +304,10 @@ fn declarations(text: &str) -> Vec<(String, String)> {
         let vis = if raw.starts_with("pub") {
             let rest = strip_vis(raw);
             if rest.len() < raw.len() {
-                let end = raw.find(')').map(|i| i + 1).unwrap_or_else(|| {
-                    raw.find(' ').unwrap_or(raw.len())
-                });
+                let end = raw
+                    .find(')')
+                    .map(|i| i + 1)
+                    .unwrap_or_else(|| raw.find(' ').unwrap_or(raw.len()));
                 raw[..end].trim().to_string()
             } else {
                 "pub".to_string()
@@ -333,7 +360,14 @@ fn export_items(text: &str) -> Vec<String> {
             buf.push_str(lines[j].trim());
         }
         let cut = buf.find(|c| c == '{' || c == ';').unwrap_or(buf.len());
-        out.push(clip(buf[..cut].trim().to_string()));
+        let signature = buf[..cut]
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("( ", "(")
+            .replace(" )", ")")
+            .replace(",)", ")");
+        out.push(clip(signature));
         i = j + 1;
     }
     out
@@ -363,23 +397,28 @@ fn re_exports(text: &str) -> Vec<String> {
     out
 }
 
-// ---- the sibling edges ----
+// ---- the edges inside one module directory ----
 
-/// Which siblings this file reaches into, and for which symbols.
-fn deps(text: &str, chain: &[String], module: &Module) -> Vec<String> {
+/// Which modules of this file's own directory it reaches into, and for which symbols.
+///
+/// `chain` is the file's own module, `dir_chain` the directory that holds it, and `place` that
+/// directory: only names living there count, and the file's own module never does.
+fn deps(text: &str, chain: &[String], dir_chain: &[String], place: &Path) -> Vec<String> {
     let mut map: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (_, paths) in uses(text) {
+    for (_, paths, _) in uses(text) {
         for path in paths {
             let Some(full) = absolute(&path, chain) else {
                 continue;
             };
-            if full.len() <= module.chain.len() || full[..module.chain.len()] != module.chain[..] {
+            if full.len() <= dir_chain.len() || full[..dir_chain.len()] != dir_chain[..] {
                 continue;
             }
-            let rest = &full[module.chain.len()..];
+            if full.starts_with(chain) {
+                continue;
+            }
+            let rest = &full[dir_chain.len()..];
             let sibling = rest[0].clone();
-            let sibling_dir = module.dir.join(&sibling);
-            if !module.dir.join(format!("{sibling}.rs")).is_file() && !sibling_dir.is_dir() {
+            if !place.join(format!("{sibling}.rs")).is_file() && !place.join(&sibling).is_dir() {
                 continue;
             }
             let symbol = if rest.len() == 1 {
@@ -404,13 +443,15 @@ fn deps(text: &str, chain: &[String], module: &Module) -> Vec<String> {
         .collect()
 }
 
-/// Every `use` statement in a file: the line it starts on and the full paths it names.
-fn uses(text: &str) -> Vec<(usize, Vec<Vec<String>>)> {
+/// Every `use` statement in a file: the line it starts on, the full paths it names, and whether
+/// it forwards those names rather than consuming them.
+fn uses(text: &str) -> Vec<(usize, Vec<Vec<String>>, bool)> {
     let lines: Vec<&str> = text.lines().collect();
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let raw = strip_attrs(lines[i].trim_start());
+        let public = raw.starts_with("pub");
         let stripped = strip_vis(raw);
         let Some(rest) = stripped.strip_prefix("use ") else {
             i += 1;
@@ -424,7 +465,7 @@ fn uses(text: &str) -> Vec<(usize, Vec<Vec<String>>)> {
             buf.push_str(lines[i].trim());
         }
         let body = buf.split(';').next().unwrap_or("");
-        out.push((start + 1, expand(body)));
+        out.push((start + 1, expand(body), public));
         i += 1;
     }
     out
@@ -432,11 +473,20 @@ fn uses(text: &str) -> Vec<(usize, Vec<Vec<String>>)> {
 
 /// One use tree → the full paths it names. `crate::a::{B, c::D}` → `crate::a::B`, `crate::a::c::D`.
 fn expand(tree: &str) -> Vec<Vec<String>> {
+    expand_named(tree)
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect()
+}
+
+/// The same, each path carrying the name it is visible under: `a::B as C` names `C`, and a glob
+/// names nothing that can be traced.
+fn expand_named(tree: &str) -> Vec<(Vec<String>, String)> {
     let tree = tree.trim();
     if tree.is_empty() {
         return Vec::new();
     }
-    let mut out = Vec::new();
+    let mut out: Vec<(Vec<String>, String)> = Vec::new();
     match split_group(tree) {
         Some((head, inner)) => {
             for part in split_top(inner) {
@@ -444,22 +494,151 @@ fn expand(tree: &str) -> Vec<Vec<String>> {
                 if part.is_empty() {
                     continue;
                 }
-                let mut prefix: Vec<String> = segments(head);
                 match split_group(part) {
-                    Some((nested, inner)) => {
+                    Some((nested, body)) => {
+                        let mut prefix: Vec<String> = segments(head);
                         prefix.extend(segments(nested));
-                        out.extend(expand(&format!("{}::{{{inner}}}", prefix.join("::"))));
+                        out.extend(expand_named(&format!("{}::{{{body}}}", prefix.join("::"))));
                     }
                     None => {
-                        prefix.extend(segments(part));
-                        out.push(prefix);
+                        let mut prefix: Vec<String> = segments(head);
+                        let (tail, name) = split_alias(part);
+                        prefix.extend(segments(tail));
+                        if named(&name) {
+                            out.push((prefix, name));
+                        }
                     }
                 }
             }
         }
-        None => out.push(segments(tree)),
+        None => {
+            let (tail, name) = split_alias(tree);
+            if named(&name) {
+                out.push((segments(tail), name));
+            }
+        }
     }
     out
+}
+
+/// A name a consumer can write: not empty, not a glob.
+fn named(name: &str) -> bool {
+    !name.is_empty() && name != "*"
+}
+
+/// A leaf tree and the name it is seen under: `B as C` → (`B`, `C`), `a::B` → (`a::B`, `B`).
+fn split_alias(text: &str) -> (&str, String) {
+    let text = text.trim();
+    match text.split_once(" as ") {
+        Some((left, right)) => (left.trim(), right.trim().to_string()),
+        None => {
+            let name = text
+                .rsplit("::")
+                .find(|part| !part.is_empty())
+                .unwrap_or("");
+            (text, name.to_string())
+        }
+    }
+}
+
+/// One forwarded name: where a consumer writes it, where it really lives, and who forwards it.
+struct Forward {
+    /// The path a consumer writes, from the crate root: `a::read::TOOL`.
+    at: Vec<String>,
+    /// The path it stands for: `a::read::tool::TOOL`.
+    to: Vec<String>,
+    /// The entry file holding the `pub use`.
+    from: PathBuf,
+}
+
+/// Every `pub use` on the way from this module up to the crate: each is a name a consumer may
+/// write instead of the real one.
+fn forwards(module: &Module) -> Vec<Forward> {
+    let mut out = Vec::new();
+    let mut place = Some(module.dir.clone());
+    while let Some(dir) = place {
+        if !dir.starts_with(&module.src) {
+            break;
+        }
+        if let Some(hub) = hub_of(&dir, &module.src)
+            && let Some(chain) = chain_of(&hub, &module.src)
+            && let Ok(text) = std::fs::read_to_string(&hub)
+        {
+            for (path, name) in pub_uses(&text) {
+                let Some(to) = written(&path, &chain, &dir) else {
+                    continue;
+                };
+                let mut at = chain.clone();
+                at.push(name);
+                out.push(Forward {
+                    at,
+                    to,
+                    from: hub.clone(),
+                });
+            }
+        }
+        if dir == module.src {
+            break;
+        }
+        place = dir.parent().map(Path::to_path_buf);
+    }
+    out
+}
+
+/// A file's `pub use` statements: the target path and the name it is visible under there.
+fn pub_uses(text: &str) -> Vec<(Vec<String>, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let raw = strip_attrs(lines[i].trim_start());
+        if !raw.starts_with("pub") || !strip_vis(raw).starts_with("use ") {
+            i += 1;
+            continue;
+        }
+        let mut buf = strip_vis(raw).trim_start().to_string();
+        while !buf.contains(';') && i + 1 < lines.len() {
+            i += 1;
+            buf.push(' ');
+            buf.push_str(lines[i].trim());
+        }
+        out.extend(expand_named(buf.split(';').next().unwrap_or("")));
+        i += 1;
+    }
+    out
+}
+
+/// A consumer's path as it really points, through any forwarding on the way.
+fn trace(path: &[String], forwards: &[Forward]) -> Option<(Vec<String>, PathBuf)> {
+    let mut current = path.to_vec();
+    let mut via: Option<PathBuf> = None;
+    for _ in 0..8 {
+        let mut found: Option<&Forward> = None;
+        for forward in forwards {
+            if current.len() < forward.at.len() || current[..forward.at.len()] != forward.at[..] {
+                continue;
+            }
+            if found.is_none_or(|old| old.at.len() < forward.at.len()) {
+                found = Some(forward);
+            }
+        }
+        let Some(forward) = found else {
+            break;
+        };
+        let mut next = forward.to.clone();
+        next.extend(current[forward.at.len()..].iter().cloned());
+        if next == current {
+            break;
+        }
+        current = next;
+        via = Some(forward.from.clone());
+    }
+    Some((current, via?))
+}
+
+/// Does this path name the module, or something inside it?
+fn names_module(path: &[String], module: &Module) -> bool {
+    path.len() >= module.chain.len() && path[..module.chain.len()] == module.chain[..]
 }
 
 /// A path's segments, minus an `as` alias.
@@ -514,6 +693,20 @@ fn split_top(inner: &str) -> Vec<&str> {
     out
 }
 
+/// A use path as written inside `dir`: `crate`/`self`/`super`, or a module sitting beside it.
+fn written(path: &[String], chain: &[String], dir: &Path) -> Option<Vec<String>> {
+    if let Some(absolute) = absolute(path, chain) {
+        return Some(absolute);
+    }
+    let first = path.first()?;
+    let beside = dir.join(format!("{first}.rs")).is_file() || dir.join(first).is_dir();
+    beside.then(|| {
+        let mut base = chain.to_vec();
+        base.extend(path.iter().cloned());
+        base
+    })
+}
+
 /// A use path → the path from the crate root, when it names one.
 fn absolute(path: &[String], chain: &[String]) -> Option<Vec<String>> {
     let (mut base, rest) = match path.first().map(String::as_str)? {
@@ -541,6 +734,8 @@ struct Hit {
     file: PathBuf,
     line: usize,
     symbols: Vec<String>,
+    /// The entry file whose `pub use` made this consumer visible under another name.
+    via: Option<PathBuf>,
 }
 
 struct Radar {
@@ -551,23 +746,31 @@ struct Radar {
 enum Boundary {
     CrateRoot,
     Stopped(PathBuf),
+    /// The module is the crate root: there is nothing above it to scan.
+    NoAbove,
 }
 
-impl Boundary {
-    fn line(&self, module: &Module) -> String {
-        match self {
-            Boundary::CrateRoot => "[scan: crate root]".to_string(),
-            Boundary::Stopped(dir) => format!("[scan: stopped at {}]", rel(module, dir)),
-        }
-    }
+/// One line for both directions: how far up the walk went, and how deep the listing went.
+fn scan_line(module: &Module, boundary: &Boundary, by_name: bool) -> String {
+    let up = match boundary {
+        Boundary::CrateRoot => "crate root (complete)".to_string(),
+        Boundary::Stopped(dir) => format!("{} (budget)", rel(module, dir)),
+        Boundary::NoAbove => "none (this is the crate root)".to_string(),
+    };
+    let down = if by_name {
+        "this directory (by file name)"
+    } else {
+        "this directory (nothing deeper)"
+    };
+    format!("[scan: up→{up} | down→{down}]")
 }
 
-fn radar(module: &Module) -> Radar {
+fn radar(module: &Module, forwards: &[Forward]) -> Radar {
     let mut hits: Vec<Hit> = Vec::new();
     if module.chain.is_empty() {
         return Radar {
             hits,
-            boundary: Boundary::CrateRoot,
+            boundary: Boundary::NoAbove,
         };
     }
     let mut seen: HashSet<PathBuf> = HashSet::new();
@@ -575,7 +778,7 @@ fn radar(module: &Module) -> Radar {
     if let Some(hub) = &module.hub {
         seen.insert(hub.clone());
     }
-    // Inside a module's own directory is not "outside": those edges are the sibling graph.
+    // Inside a module's own directory is not "outside": those edges are the directory graph.
     let skip_dir = (module.dir != module.src).then(|| module.dir.clone());
     let deadline = Instant::now() + BUDGET;
     let mut boundary = Boundary::Stopped(module.dir.clone());
@@ -601,7 +804,9 @@ fn radar(module: &Module) -> Radar {
         let mut found: Vec<Hit> = Vec::new();
         let mut complete = true;
         for root in &roots {
-            if !walk(root, &skip_dir, &mut seen, module, &mut found, deadline, first) {
+            if !walk(
+                root, &skip_dir, &mut seen, module, forwards, &mut found, deadline, first,
+            ) {
                 complete = false;
                 break;
             }
@@ -638,6 +843,7 @@ fn walk(
     skip_dir: &Option<PathBuf>,
     seen: &mut HashSet<PathBuf>,
     module: &Module,
+    forwards: &[Forward],
     hits: &mut Vec<Hit>,
     deadline: Instant,
     first: bool,
@@ -664,7 +870,7 @@ fn walk(
             if !seen.insert(path.clone()) {
                 continue;
             }
-            if let Some(hit) = hit(&path, module) {
+            if let Some(hit) = hit(&path, module, forwards) {
                 hits.push(hit);
             }
         }
@@ -672,28 +878,45 @@ fn walk(
     true
 }
 
-fn hit(path: &Path, module: &Module) -> Option<Hit> {
+fn hit(path: &Path, module: &Module, forwards: &[Forward]) -> Option<Hit> {
     let text = std::fs::read_to_string(path).ok()?;
     let chain = chain_of(path, &module.src)?;
+    let dir = path.parent()?;
     let mut symbols: Vec<String> = Vec::new();
     let mut line = 0;
-    for (at, paths) in uses(&text) {
+    let mut via: Option<PathBuf> = None;
+    for (at, paths, public) in uses(&text) {
+        // A `pub use` is a forwarding edge, not a consumer: the index already holds it.
+        if public {
+            continue;
+        }
         let mut found = false;
         for path in paths {
-            let Some(full) = absolute(&path, &chain) else {
+            let Some(full) = written(&path, &chain, dir) else {
                 continue;
             };
-            if full.len() < module.chain.len() || full[..module.chain.len()] != module.chain[..] {
+            let (resolved, through) = if names_module(&full, module) {
+                (full, None)
+            } else {
+                match trace(&full, forwards) {
+                    Some((resolved, from)) => (resolved, Some(from)),
+                    None => continue,
+                }
+            };
+            if !names_module(&resolved, module) {
                 continue;
             }
             found = true;
-            let symbol = if full.len() == module.chain.len() {
+            let symbol = if resolved.len() == module.chain.len() {
                 module.chain.last().cloned().unwrap_or_default()
             } else {
-                full.last().cloned().unwrap_or_default()
+                resolved.last().cloned().unwrap_or_default()
             };
             if !symbols.contains(&symbol) {
                 symbols.push(symbol);
+            }
+            if through.is_some() {
+                via = through;
             }
         }
         if found && line == 0 {
@@ -704,6 +927,7 @@ fn hit(path: &Path, module: &Module) -> Option<Hit> {
         file: path.to_path_buf(),
         line,
         symbols,
+        via,
     })
 }
 
@@ -726,12 +950,16 @@ fn chain_of(file: &Path, src: &Path) -> Option<Vec<String>> {
 }
 
 fn hit_line(module: &Module, hit: &Hit) -> String {
-    clip(format!(
+    let mut line = format!(
         "{}:{} imports {}",
         rel(module, &hit.file),
         hit.line,
         hit.symbols.join(", ")
-    ))
+    );
+    if let Some(via) = &hit.via {
+        line.push_str(&format!(" via {}", rel(module, via)));
+    }
+    clip(line)
 }
 
 fn grouped(module: &Module, hits: &[Hit]) -> Vec<String> {
@@ -833,22 +1061,61 @@ fn strip_attrs(mut line: &str) -> &str {
     }
 }
 
+/// A count and its word: `1 file`, `3 files`.
+pub(crate) fn plural(count: usize, word: &str) -> String {
+    if count == 1 {
+        format!("1 {word}")
+    } else {
+        format!("{count} {word}s")
+    }
+}
+
 fn rel(module: &Module, path: &Path) -> String {
     let path = path.strip_prefix(&module.root).unwrap_or(path);
     let text = path.to_string_lossy().replace('\\', "/");
-    if text.is_empty() { ".".to_string() } else { text }
+    if text.is_empty() {
+        ".".to_string()
+    } else {
+        text
+    }
 }
 
+/// A list on one line, cut at a character budget with the rest counted.
+fn joined(items: &[String]) -> String {
+    if items.is_empty() {
+        return "none".to_string();
+    }
+    const MAX: usize = 300;
+    let mut out = String::new();
+    let mut used = 0usize;
+    for (at, item) in items.iter().enumerate() {
+        let add = item.chars().count() + usize::from(at > 0) * 2;
+        if used + add > MAX {
+            out.push_str(&format!(" [+{} more]", items.len() - at));
+            break;
+        }
+        if at > 0 {
+            out.push_str("; ");
+        }
+        out.push_str(item);
+        used += add;
+    }
+    out
+}
+
+/// A line over the view's own width: its tail counted, never a silent ellipsis.
 fn clip(text: String) -> String {
-    if text.chars().count() <= 400 {
+    const MAX: usize = 400;
+    let count = text.chars().count();
+    if count <= MAX {
         return text;
     }
     let cut = text
         .char_indices()
-        .nth(400)
+        .nth(MAX)
         .map(|(at, _)| at)
         .unwrap_or(text.len());
-    format!("{}…", &text[..cut])
+    format!("{}[+{}]", &text[..cut], count - MAX)
 }
 
 fn cut(text: String) -> String {
@@ -865,6 +1132,6 @@ fn cut(text: String) -> String {
         out.push('\n');
     }
     let kept = out.lines().count();
-    out.push_str(&format!("[truncated: {} lines]\n", lines.saturating_sub(kept)));
+    out.push_str(&format!("[+{} lines]\n", lines.saturating_sub(kept)));
     out
 }

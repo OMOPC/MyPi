@@ -92,7 +92,7 @@ that tool needs (the tool checks them, not the schema).
 
 | tool | parameters, in index order |
 |---|---|
-| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (default 800); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
+| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (default 200); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
 | `write` | `path` always, `content` always |
@@ -130,7 +130,7 @@ so a batch is one write instead of several that would each need the file read ag
   never reads a status out of the text.
 - `read` budgets belong to each path, not to the call: a Rust file gets its own 800-line and
   256 KiB allowance, anything else 200 lines and 64 KiB; a line over the byte cap is cut where the
-  characters still fit, and that file's footer points at bash instead of an offset.
+  characters still fit, and that file's status line names the byte cap with no offset.
 - A query operation — `alias list`, `kairos list/status/result/cancel`, `mcp list` — takes no
   array and refuses one.
 - A batch whose items produce structured payloads answers a memo array, and the history cards
@@ -191,15 +191,15 @@ Env {
   paths: Paths,              // the user's templates; the project's folders come from the live cwd
   source: Arc<dyn Source>,   // reads the loop owns
   seen: Seen,                // the module cards shown, and every file's read stamp
-  batch: Vec<ToolCall>,      // the calls now running, so one can merge its siblings
+  batch: Vec<ToolCall>,      // the calls now running, so one can merge with another in the same batch
   current: String,           // the call now running
-  handed: BTreeMap<String, Answer>, // what a merged run already answered for a later sibling
+  handed: BTreeMap<String, Answer>, // what a merged run already answered for a later call in the batch
 }
 ```
 
 `batch`, `current` and `handed` are per batch, not per session: the front door fills them before
 the first call and clears the ledger with it. A tool that merges work (only `splice` does) answers
-for its siblings once and hands each of them its own result when its turn comes.
+for the other calls once and hands each its own result when its turn comes.
 
 Ports are traits in `contract::view`: `Source` (memos, aliases, history, calls, jobs, child, and
 the MCP bridge), `Export` and `Child`. A tool that needs a port fails when it is `None`; it never
@@ -225,7 +225,7 @@ Workspace { shared }
   `may_stand_in`; a row whose directory has since gone lands there too), and `cd` refuses it
   outright. `/cdp` asks only whether the directory exists.
 - `with_write(path, f)` takes a process-wide write lock keyed by that path; `write_atomic` writes a
-  sibling temp file and renames it over the target. `read` takes no lock.
+  temp file beside the target and renames it into place. `read` takes no lock.
 - `bash` takes no lock.
 
 ### Memo and todo
@@ -307,31 +307,51 @@ Other languages keep a number on every line: only Rust is read this way.
 `edit` locates a change by text, so a session with `edit` and without `splice` gets no numbers at
 all: the body is the file, ready to be copied into `old`.
 
-A Rust file gets 800 lines and 256 KiB; every other file 200 lines and 64 KiB. The footer appears
-only when something is left: the offset to continue from, or the byte cap that sent the rest to
-`bash`. A file that ended, and a window that starts past its end, answer nothing.
+The gutter is as wide as the file's own last line number plus one space, so a three-digit file
+reserves four columns on every line. A numbered line writes its number over those columns, an
+unnumbered one leaves them blank, and an empty line is a newline and nothing else. The gutter's
+bytes are part of the body's budget.
 
-A directory answers one level: files with their total line count, directories by name. Inside
-`src/`, each direct child directory is expanded one level too; one with ten or more files folds into
-counts instead. The session root lists the same way, with `src/` expanded in place. A build tree's
-junk — `target`, `node_modules`, anything dot-prefixed — is never listed.
+A status line opens the body when the file continues: `[800 of 900 lines; next offset 801]`, or
+`[256 KiB cap; 161 of 200 lines; next offset 162]` when bytes ran out first. A line longer than the
+room left is cut at a character boundary and not counted, so the next read starts at that same
+line. A file that ended, and a window that starts past its end, answer no status line at all.
+
+A directory answers one level: `name  N lines` for a file, `name/  K files, F dirs` for a
+directory. Inside `src/` each child directory is opened one level too, folding to counts at ten
+files. The session root lists its own entries, then `src/` as a section of its own with `src/`'s
+children beneath it. Build junk — `target`, `node_modules`, dot entries — is named like anything
+else and never opened. A listing past 800 lines ends with `[+N entries]`.
 
 ### The module view
 
 A Rust file read inside a crate arrives with its module's context, because a module is edited as a
-whole far more often than a file is. The view names the module's exports, its submodules with their
-size, visibility, role, exported signatures and the siblings each one reaches into, and its
-upstream: the parent that declares it, and every file outside the module that imports it, with line
-numbers and the symbols it takes.
+whole far more often than a file is. The view follows the body, opens with
+`--- module a::b (src/a/b/) · primer ---`, and holds four parts:
 
-The first read in a module directory carries the view; later reads there do not, because the
-conversation already holds it. Reading the module's own entry file (`mod.rs`, a dual-track `x.rs`,
-`lib.rs`) always carries it. A compaction clears that memory, so a view can come again.
+- `exports (N):` — the entry file's `pub use` statements, or its `pub` items when it forwards none.
+- `down (N):` — the modules the entry declares, one line each: label, size (files for a directory,
+  lines for a leaf), visibility, `hub` or `leaf`, its exports, and the modules of its own directory
+  it reaches into.
+- `up (N):` — the entry that declares this module, then every file outside the module that imports
+  it, with the line and the symbols it takes.
+- One `[scan: up→… | down→…]` line naming where each search stopped.
 
-The upstream scan walks upward: the next directory up and its peers first, then one more up, and
-so on to the crate root. Its first level always finishes; a later level that runs out of its
-100 ms budget is dropped whole, and the view says where the walk stopped. Direct importers only: a
-`pub use` that forwards a name is not followed.
+The tag on the opening line says why the view is there: `primer` when it rode along on the first
+read in a module directory, `entry file` when the entry file itself was read. Each directory gets
+one primer per conversation, and a compaction clears that memory. A file this same call already
+answered shows `[body in this batch]` instead of its exports.
+
+A consumer writing a forwarded name is followed through the `pub use` on the way up, and the hit
+says `via src/a/b/mod.rs`. `pub use x::*` cannot be followed and is skipped; `include!`, `#[path]`
+and `cfg` are not followed either. A line over 400 characters ends with `[+N]`, and a list cut
+short ends with `[+N more]`.
+
+The view has its own 800-line and 256 KiB budget, apart from the body's: a body that fills its cap
+still comes with a whole view. The upward walk covers the next directory up and everything beside
+it, one whole level at a time, and stops at the crate root or when its 100 ms budget runs out. A
+level it could not finish is dropped whole, because half a level reads as "nobody imports this".
+The downward side never walks: it reads the names the entry declares and nothing inside them.
 
 ### edit and splice
 

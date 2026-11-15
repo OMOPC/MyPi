@@ -30,7 +30,12 @@ const MAX_BYTES: usize = 64 * 1024;
 const FILE_FIELDS: &[Param] = &[
     Param::new("path", Kind::Text, "File or directory path."),
     Param::df("offset", Kind::Line, "First line to read (1-based).", "1"),
-    Param::df("limit", Kind::Number, "Max lines this file may take.", "800"),
+    Param::df(
+        "limit",
+        Kind::Number,
+        "Max lines this file may take.",
+        "200",
+    ),
 ];
 
 const PARAMS: &[Param] = &[Param::new(
@@ -41,12 +46,13 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "read",
-    about: "Read files (directory paths list entries), so later turns can cite exact lines. MUST \
-            read before editing; NEVER guess the current text.",
-    fields: "files is the only field a call needs: one item per path, with `offset` (1-based, \
-             default 1) and `limit` (default 800). A Rust file gets 800 lines and 256 KiB; any \
-             other file gets 200 lines and 64 KiB. In a session with `splice`, a Rust file's \
-             numbers sit on block edges only; without it, lines carry no numbers at all.",
+    about: "Read files or directories; .rs files answer with anchor line numbers under splice, a \
+            4x budget, and a module view on their entry file.",
+    fields: "`files` takes one item per path, with `offset` (1-based, default 1) and `limit` \
+             (default 200). The normal budget is 200 lines and 64 KiB. A file answers its lines. A \
+             directory answers its immediate children, files with their line counts and \
+             directories by name, then opens each child one level further, folding a directory \
+             of ten files or more into counts. The session root carries a bonus.",
     params: PARAMS,
     run,
     summary,
@@ -63,7 +69,10 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     for item in &items {
         targets.push(resolved(env, item));
     }
-    let batch: BTreeSet<PathBuf> = targets.iter().filter_map(|one| one.as_ref().ok().cloned()).collect();
+    let batch: BTreeSet<PathBuf> = targets
+        .iter()
+        .filter_map(|one| one.as_ref().ok().cloned())
+        .collect();
 
     let mut out = String::new();
     let mut outcomes: Vec<ItemOk> = Vec::with_capacity(total);
@@ -110,7 +119,7 @@ fn resolved(env: &Env, item: &Item) -> Result<PathBuf> {
     env.workspace.resolve_any(&raw, true)
 }
 
-/// One path's answer: a listing, or a body plus its module view.
+/// One path's answer: a listing, or a body with its module view.
 fn block(
     env: &mut Env,
     batch: &BTreeSet<PathBuf>,
@@ -140,15 +149,40 @@ fn block(
     } else {
         None
     };
-    let (body, total, more, by_bytes) = match &whole {
+    let body = match &whole {
         Some(text) => {
-            let window = windowed(text, offset, limit, splice);
-            let total = text.lines().count();
-            (window.text, total, window.more, window.by_bytes)
+            let lines: Vec<&str> = text.lines().collect();
+            let total = lines.len();
+            let anchors = if splice {
+                sparse::anchors(text)
+            } else {
+                Vec::new()
+            };
+            let numbers = if splice {
+                Numbers::Anchors(&anchors)
+            } else {
+                Numbers::None
+            };
+            assemble(
+                offset,
+                total,
+                limit.min(MAX_LINES_RS),
+                lines.into_iter().skip(offset.saturating_sub(1)),
+                &numbers,
+                MAX_BYTES_RS,
+            )
         }
         None => {
-            let body = streamed(path, offset, limit, splice)?;
-            (body.text, body.lines, body.more, body.by_bytes)
+            let streamed = streamed(path, offset, limit)?;
+            let numbers = if splice { Numbers::All } else { Numbers::None };
+            assemble(
+                offset,
+                streamed.total,
+                limit.min(MAX_LINES),
+                streamed.lines.iter().map(String::as_str),
+                &numbers,
+                MAX_BYTES,
+            )
         }
     };
 
@@ -158,24 +192,28 @@ fn block(
         env.seen.files.insert(
             path.to_path_buf(),
             Stamp {
-                lines: total,
+                lines: text.lines().count(),
                 hash: hasher.finish(),
             },
         );
     }
 
-    let cap_bytes = if rust { MAX_BYTES_RS } else { MAX_BYTES };
-    let mut text = finished(body, offset, total, more, by_bytes, cap_bytes);
+    // The status line is part of the body: it comes first, so the body is known before it is read.
+    let mut text = String::new();
+    if let Some(status) = &body.status {
+        text.push_str(status);
+        text.push('\n');
+    }
+    text.push_str(&body.text);
 
     if rust && let Some(module) = hub::locate(path) {
         let is_hub = module.hub.as_deref() == Some(path)
             || whole.as_deref().is_some_and(hub::declares_modules);
         if is_hub {
-            let view = hub::view(&module, batch);
-            text.push_str(&view);
+            text.push_str(&hub::view(&module, batch, false));
             env.seen.dirs.insert(module.dir.clone());
         } else if env.seen.dirs.insert(module.dir.clone()) {
-            text = format!("{}{text}", hub::view(&module, batch));
+            text.push_str(&hub::view(&module, batch, true));
         }
     }
 
@@ -186,157 +224,144 @@ fn block(
     })
 }
 
-struct Window {
-    text: String,
-    more: bool,
-    by_bytes: bool,
+/// How a file's lines are prefixed, if at all.
+enum Numbers<'a> {
+    /// A session with `edit` and without `splice`: no numbers.
+    None,
+    /// Another language under `splice`: every line carries one.
+    All,
+    /// Rust under `splice`: only the anchors do.
+    Anchors(&'a [bool]),
 }
 
-/// A whole Rust file, windowed and numbered: sparse numbers in splice mode, none without it.
-fn windowed(text: &str, offset: usize, limit: usize, splice: bool) -> Window {
-    let lines: Vec<&str> = text.lines().collect();
-    let total = lines.len();
-    let max_lines = limit.min(MAX_LINES_RS);
-    let anchors = if splice {
-        sparse::anchors(text)
-    } else {
-        Vec::new()
-    };
-    let mut out = String::new();
-    let mut shown = 0usize;
-    let mut bytes = 0usize;
-    let mut by_bytes = false;
-    for at in offset.saturating_sub(1)..total {
-        if shown >= max_lines {
-            break;
-        }
-        let line = lines[at];
-        let room = MAX_BYTES_RS.saturating_sub(bytes);
-        if line.len() > room {
-            let cut = floor_boundary(line, room);
-            if cut > 0 {
-                push(&mut out, at, &line[..cut], splice, &anchors);
-            }
-            by_bytes = true;
-            break;
-        }
-        push(&mut out, at, line, splice, &anchors);
-        shown += 1;
-        bytes += line.len() + 1;
+impl Numbers<'_> {
+    /// Do any lines carry a number? A gutter is only reserved when they do.
+    fn on(&self) -> bool {
+        !matches!(self, Numbers::None)
     }
-    let more = by_bytes || offset.saturating_sub(1) + shown < total;
-    Window {
-        text: out,
-        more,
-        by_bytes,
+
+    fn numbered(&self, at: usize) -> bool {
+        match self {
+            Numbers::None => false,
+            Numbers::All => true,
+            Numbers::Anchors(anchors) => anchors.get(at.saturating_sub(1)).copied().unwrap_or(true),
+        }
+    }
+}
+
+/// A body and, when the file continues past it, the line that says so.
+struct Body {
+    text: String,
+    status: Option<String>,
+}
+
+/// The window's lines, prefixed by a gutter as wide as the file's own numbers, capped by bytes.
+///
+/// The gutter is `total`'s digit count plus one space, so a numbered line and an unnumbered one
+/// start in the same column and an empty line costs a newline and nothing else.
+fn assemble<'a>(
+    first: usize,
+    total: usize,
+    limit: usize,
+    lines: impl Iterator<Item = &'a str>,
+    numbers: &Numbers<'_>,
+    max_bytes: usize,
+) -> Body {
+    let width = total.to_string().len();
+    let mut text = String::new();
+    let mut bytes = 0usize;
+    let mut shown = 0usize;
+    let mut by_bytes = false;
+    for (index, line) in lines.enumerate() {
+        if shown >= limit {
+            break;
+        }
+        let at = first + index;
+        let blank = line.trim().is_empty();
+        let number = numbers.numbered(at);
+        let gutter = if blank || !numbers.on() { 0 } else { width + 1 };
+        let room = max_bytes.saturating_sub(bytes + gutter);
+        if line.len() + 1 > room {
+            // The line is longer than the bytes left: keep what fits, and let the next read
+            // start at it again so no character is lost.
+            let keep = floor_boundary(line, room.saturating_sub(1));
+            if keep > 0 {
+                push(&mut text, at, &line[..keep], number, numbers.on(), width);
+                by_bytes = true;
+            }
+            break;
+        }
+        push(&mut text, at, line, number, numbers.on(), width);
+        bytes += gutter + line.len() + 1;
+        shown += 1;
+    }
+    let last = first.saturating_sub(1) + shown;
+    let status = (last < total).then(|| {
+        let cap = if by_bytes {
+            format!("{} KiB cap; ", max_bytes / 1024)
+        } else {
+            String::new()
+        };
+        format!("[{cap}{last} of {total} lines; next offset {}]", last + 1)
+    });
+    Body { text, status }
+}
+
+/// One line: its number, or the same width of blanks, or nothing at all.
+fn push(out: &mut String, at: usize, line: &str, number: bool, on: bool, width: usize) {
+    if !on {
+        // Without numbers the body is the file itself, so a line of spaces stays a line of spaces.
+        out.push_str(line);
+        out.push('\n');
+        return;
+    }
+    if line.trim().is_empty() {
+        out.push('\n');
+        return;
+    }
+    if number {
+        out.push_str(&format!("{at:>width$} {line}\n"));
+    } else {
+        for _ in 0..=width {
+            out.push(' ');
+        }
+        out.push_str(line);
+        out.push('\n');
     }
 }
 
 struct Streamed {
-    text: String,
-    lines: usize,
-    more: bool,
-    by_bytes: bool,
+    total: usize,
+    /// The window's lines, unprefixed: the gutter needs the total, which is only known at the end.
+    lines: Vec<String>,
 }
 
 /// A file of any other kind, streamed line by line so a huge one never lands in memory whole.
-fn streamed(path: &Path, offset: usize, limit: usize, splice: bool) -> Result<Streamed> {
+fn streamed(path: &Path, offset: usize, limit: usize) -> Result<Streamed> {
     use std::io::BufRead as _;
 
     let file = std::fs::File::open(path).context("failed to open file")?;
     let mut reader = std::io::BufReader::new(file);
     let max_lines = limit.min(MAX_LINES);
     let mut buf: Vec<u8> = Vec::new();
-    let mut out = String::new();
-    let mut line_no = 0usize;
-    let mut shown = 0usize;
-    let mut bytes = 0usize;
-    let mut more = false;
-    let mut by_bytes = false;
+    let mut lines: Vec<String> = Vec::new();
+    let mut kept = 0usize;
+    let mut total = 0usize;
     loop {
         buf.clear();
         if reader.read_until(b'\n', &mut buf)? == 0 {
             break;
         }
-        line_no += 1;
-        if line_no < offset {
+        total += 1;
+        if total < offset || lines.len() >= max_lines || kept >= MAX_BYTES {
             continue;
         }
         let line = std::str::from_utf8(&buf).map_err(|_| anyhow!("not a valid UTF-8 text file"))?;
         let line = line.trim_end_matches(['\n', '\r']);
-        if shown >= max_lines {
-            more = true;
-            break;
-        }
-        let room = MAX_BYTES.saturating_sub(bytes);
-        if line.len() > room {
-            let cut = floor_boundary(line, room);
-            if cut > 0 {
-                push(&mut out, line_no - 1, &line[..cut], splice, &[]);
-            }
-            more = true;
-            by_bytes = true;
-            break;
-        }
-        push(&mut out, line_no - 1, line, splice, &[]);
-        bytes += line.len();
-        shown += 1;
+        kept += line.len() + 1;
+        lines.push(line.to_string());
     }
-    // The count in the footer is the file's, not the window's: read out the rest without keeping it.
-    while more {
-        buf.clear();
-        if reader.read_until(b'\n', &mut buf)? == 0 {
-            break;
-        }
-        line_no += 1;
-    }
-    Ok(Streamed {
-        text: out,
-        lines: line_no,
-        more,
-        by_bytes,
-    })
-}
-
-/// One line, numbered or bare, and blank when it carries no number.
-fn push(out: &mut String, at: usize, line: &str, splice: bool, anchors: &[bool]) {
-    if !splice {
-        out.push_str(line);
-        out.push('\n');
-    } else if anchors.get(at).copied().unwrap_or(true) {
-        out.push_str(&format!("{:>5}\t{line}\n", at + 1));
-    } else if line.trim().is_empty() {
-        out.push('\n');
-    } else {
-        out.push_str("     \t");
-        out.push_str(line);
-        out.push('\n');
-    }
-}
-
-/// The footer: how much is left and where it starts, and nothing when the file ended.
-fn finished(
-    body: String,
-    offset: usize,
-    total: usize,
-    more: bool,
-    by_bytes: bool,
-    cap_bytes: usize,
-) -> String {
-    let mut text = body;
-    if more {
-        let shown = text.lines().count();
-        let unread = total.saturating_sub(offset.saturating_sub(1) + shown);
-        let next = offset + shown;
-        if by_bytes {
-            text.push_str(&format!(
-                "\n[cut at the {cap_bytes} byte cap; {unread} lines unread, next offset: {next}]"
-            ));
-        } else {
-            text.push_str(&format!("\n[{unread} lines unread, next offset: {next}]"));
-        }
-    }
-    text
+    Ok(Streamed { total, lines })
 }
 
 /// The largest character boundary within the first `bytes` bytes.
