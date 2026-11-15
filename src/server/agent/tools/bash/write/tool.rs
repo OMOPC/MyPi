@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::server::agent::tools::bash::fault;
 use crate::server::agent::tools::bash::gate;
+use crate::server::agent::tools::bash::halt::stopped;
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -51,13 +52,16 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     // Rust is formatted first: the caller's content is what it meant, not what it lays out.
     let rust = p.extension().and_then(|e| e.to_str()) == Some("rs");
     let mut parse = None;
+    let stop = &env.stop;
     let written = if rust {
-        match gate::format(&content, &gate::edition(&p)) {
+        match gate::format(&content, &gate::edition(&p), stop) {
             gate::Outcome::Formatted(text) => text,
             gate::Outcome::Broken(why) => {
                 parse = Some(why);
                 content.clone()
             }
+            // The formatter was killed: the file is untouched, and the answer says why.
+            gate::Outcome::Stopped => return Ok(stopped(&p)),
         }
     } else {
         content.clone()
@@ -76,7 +80,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     // The compiler answers for the file as it now stands, outside the file's lock. A file that does
     // not parse has its verdict already; the compiler would only repeat it.
     let check = match (rust, &parse) {
-        (true, None) => gate::check(&p),
+        (true, None) => gate::check(&p, stop),
         _ => gate::Check::Skipped,
     };
     if let Some(why) = &parse {

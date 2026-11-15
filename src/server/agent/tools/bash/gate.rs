@@ -10,6 +10,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::server::platform::proc::{self, Signal};
+use crate::server::platform::stop::Stop;
 
 /// The comment a change is wrapped in, so the formatter's output can be walked back to it.
 pub(crate) const MARK: &str = "mypi:splice";
@@ -58,6 +59,8 @@ pub(crate) enum Outcome {
     /// The text as rustfmt left it.
     Formatted(String),
     Broken(Broken),
+    /// The turn was stopped: the formatter was killed, and its answer means nothing.
+    Stopped,
 }
 
 /// What `cargo check` had to say about one file after a change.
@@ -69,6 +72,8 @@ pub(crate) enum Check {
     Clean,
     /// The compiler was still working when the deadline came.
     TimedOut,
+    /// The turn was stopped: the file is written and unchecked, whether the compiler ran or not.
+    Unchecked,
     /// Errors, the changed file's first; the counts describe all of them, listed or not.
     Faults {
         faults: Vec<Fault>,
@@ -93,14 +98,17 @@ pub(crate) struct Fault {
     pub helps: Vec<String>,
 }
 
-/// Format one text, or say what stopped it.
-pub(crate) fn format(text: &str, edition: &str) -> Outcome {
+/// Format one text, or say what stopped it. A turn that was stopped remembers nothing: its
+/// answer depends on a kill, and a retry of the same text must go through the formatter again.
+pub(crate) fn format(text: &str, edition: &str, stop: &Stop) -> Outcome {
     let key = (edition.to_string(), hash(text));
     if let Some(hit) = remembered(&key) {
         return hit;
     }
-    let outcome = formatter(text, edition);
-    remember(key, &outcome);
+    let outcome = formatter(text, edition, stop);
+    if !matches!(outcome, Outcome::Stopped) {
+        remember(key, &outcome);
+    }
     outcome
 }
 
@@ -159,8 +167,9 @@ fn edition_of(manifest: &str) -> Option<String> {
 }
 
 /// Type-check the crate this file belongs to. Errors in the file itself come first; every other
-/// file's follow. A crate still compiling when the deadline comes is dropped.
-pub(crate) fn check(path: &Path) -> Check {
+/// file's follow. A crate still compiling when the deadline comes is dropped; one the user stopped
+/// is killed and answers nothing.
+pub(crate) fn check(path: &Path, stop: &Stop) -> Check {
     if path.extension().and_then(|e| e.to_str()) != Some("rs") {
         return Check::Skipped;
     }
@@ -170,10 +179,13 @@ pub(crate) fn check(path: &Path) -> Check {
     let mut cmd = Command::new(cargo());
     cmd.args(["check", "--message-format=json", "--quiet"])
         .current_dir(&root);
-    let ran = match run(cmd, None, CHECK_LIMIT) {
+    let ran = match run(cmd, None, CHECK_LIMIT, stop) {
         Ok(ran) => ran,
         Err(_) => return Check::Skipped,
     };
+    if ran.stopped {
+        return Check::Unchecked;
+    }
     if ran.timed_out {
         return Check::TimedOut;
     }
@@ -292,11 +304,12 @@ fn faults(root: &Path, out: &str) -> Vec<Fault> {
 }
 
 /// One formatter round trip.
-fn formatter(text: &str, edition: &str) -> Outcome {
+fn formatter(text: &str, edition: &str, stop: &Stop) -> Outcome {
     let bin = rustfmt();
     let mut cmd = Command::new(&bin);
     cmd.args(["--edition", edition, "--emit", "stdout", "--quiet"]);
-    match run(cmd, Some(text.as_bytes()), FORMAT_LIMIT) {
+    match run(cmd, Some(text.as_bytes()), FORMAT_LIMIT, stop) {
+        Ok(ran) if ran.stopped => Outcome::Stopped,
         Ok(ran) if ran.timed_out => Outcome::Broken(Broken {
             line: None,
             message: format!(
@@ -324,10 +337,18 @@ struct Ran {
     err: String,
     /// Whether the deadline killed it.
     timed_out: bool,
+    /// Whether the turn's stop killed it.
+    stopped: bool,
 }
 
-/// Run one child to its end, or kill its whole group when the deadline passes.
-fn run(mut cmd: Command, input: Option<&[u8]>, limit: Duration) -> std::io::Result<Ran> {
+/// Run one child to its end, or kill its whole group when the deadline passes or the turn is
+/// stopped. Every tick looks at both: a stop must never wait out a deadlock in someone else's tree.
+fn run(
+    mut cmd: Command,
+    input: Option<&[u8]>,
+    limit: Duration,
+    stop: &Stop,
+) -> std::io::Result<Ran> {
     cmd.stdin(if input.is_some() {
         Stdio::piped()
     } else {
@@ -352,6 +373,7 @@ fn run(mut cmd: Command, input: Option<&[u8]>, limit: Duration) -> std::io::Resu
 
     let deadline = Instant::now() + limit;
     let mut timed_out = false;
+    let mut stopped = false;
     let status = loop {
         match child.try_wait() {
             Err(e) => {
@@ -360,6 +382,12 @@ fn run(mut cmd: Command, input: Option<&[u8]>, limit: Duration) -> std::io::Resu
                 return Err(e);
             }
             Ok(Some(status)) => break Some(status),
+            Ok(None) if stop.is_stopped() => {
+                stopped = true;
+                proc::signal_group(child.id(), Signal::Kill);
+                let _ = child.wait();
+                break None;
+            }
             Ok(None) if Instant::now() >= deadline => {
                 timed_out = true;
                 proc::signal_group(child.id(), Signal::Kill);
@@ -374,6 +402,7 @@ fn run(mut cmd: Command, input: Option<&[u8]>, limit: Duration) -> std::io::Resu
         out: out.join().unwrap_or_default(),
         err: err.join().unwrap_or_default(),
         timed_out,
+        stopped,
     })
 }
 
@@ -474,7 +503,7 @@ fn remember(key: Key, outcome: &Outcome) {
     // A text too large to cache is simply not cached: the retries that follow pay one process.
     let size = match outcome {
         Outcome::Formatted(text) => text.len(),
-        Outcome::Broken(_) => 0,
+        Outcome::Broken(_) | Outcome::Stopped => 0,
     };
     if size > CACHE {
         return;
@@ -490,7 +519,7 @@ fn remember(key: Key, outcome: &Outcome) {
 fn weigh(outcome: &Outcome) -> usize {
     match outcome {
         Outcome::Formatted(text) => text.len(),
-        Outcome::Broken(_) => 0,
+        Outcome::Broken(_) | Outcome::Stopped => 0,
     }
 }
 

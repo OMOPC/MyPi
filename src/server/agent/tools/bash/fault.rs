@@ -21,6 +21,9 @@ pub(crate) fn receipt(path: &Path, text: &str, check: &Check) -> Option<String> 
                 gate::CHECK_LIMIT.as_millis()
             ));
         }
+        Check::Unchecked => {
+            return Some("--- [Check] not type-checked: the turn was stopped ---".to_string());
+        }
         Check::Faults { faults, here, other } => (faults, *here, *other),
     };
     let root = gate::crate_root(path)?;

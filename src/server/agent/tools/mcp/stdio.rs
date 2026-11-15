@@ -12,6 +12,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 
 use super::setup::ServerConfig;
+use crate::server::platform::proc;
 
 pub(crate) struct Server {
     name: String,
@@ -40,8 +41,7 @@ pub(crate) fn spawn(name: &str, cfg: &ServerConfig) -> Result<Server> {
     if let Some(cwd) = &cfg.cwd {
         command.current_dir(cwd.as_path());
     }
-    let mut child = command
-        .spawn()
+    let mut child = proc::spawn_grouped(&mut command)
         .with_context(|| format!("failed to start MCP server `{name}`"))?;
     let stdin = child
         .stdin
@@ -234,6 +234,11 @@ impl Server {
         let message = json!({"jsonrpc": "2.0", "method": method, "params": params});
         write_line(&self.stdin, &message)
             .with_context(|| format!("MCP server `{}` write failed", self.name))
+    }
+
+    /// The server's process group: what stopping it signals.
+    pub(crate) fn group(&self) -> u32 {
+        self.child.id()
     }
 
     pub(crate) fn is_closed(&self) -> bool {

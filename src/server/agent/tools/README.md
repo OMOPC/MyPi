@@ -49,7 +49,7 @@ session's search tab and names nothing else.
 
 ```text
 a batch with the turn's stop signal
-  → stop already set: the call never runs, and the batch ends there
+  → stop already set: the call never runs, and answers that it never ran
   → registry::spec(name)
   → env.allows(name)                       the session's list; the only gate
   → budget gate (every call but `final`)
@@ -430,6 +430,7 @@ lands; a text the parser refuses still lands as it came, so a long file may be w
 the answer says the file does not parse yet and skips the type check.
 
 A written file is type-checked the same way a spliced one is, and the same report follows the answer.
+A stop before the write leaves the file untouched and the answer says so; one after it skips the check.
 Nothing is said when there is nothing wrong, so a clean write answers in one line:
 
 ```text
@@ -467,9 +468,10 @@ then on PATH, and its edition comes from the nearest `Cargo.toml` above the file
 directory. A missing rustfmt refuses the write rather than skipping the format.
 
 The formatter's answer for one text is remembered per edition and content, so a retry of a text the
-session has already formatted costs no process. Every child the gate starts leads a process group of
-its own and is killed with that group; one that outlives its deadline is killed rather than waited
-on, so a formatter can never hold the call that started it.
+session has already formatted costs no process; a run the user stopped is not remembered, because its
+answer came from a kill and not from the parser. Every child the gate starts leads a process group
+of its own and is killed with that group when its deadline passes or the turn is stopped, so a
+formatter can never hold the call that started it.
 
 Anything that is not a `.rs` file is spliced without a parse and without a format: there is no
 formatter to call, and no line numbers are trusted beyond the ones `read` gave.
@@ -504,6 +506,11 @@ A change left out is expanded instead: its range, the line of its own block that
 parser said, and the block exactly as the model wrote it. The calls of one file answer in arrival
 order, and only the one that ran the write carries the skeleton; the others carry their own ranges
 and refusals.
+
+A stop lands in one of two places, and the answer says which. Before the write, the formatter is
+killed, nothing reaches the file, and the call answers that the file is unchanged. After the write,
+the change stands and the type check is skipped, so the answer says the file was written and not
+checked.
 
 The compiler gets the last word. Once the write is on disk and the file's lock is released, the crate
 the file belongs to is type-checked, and what came back is appended to the answer of the call that
@@ -557,18 +564,22 @@ signal already fired; the returned `Hook` takes it off again when dropped. `rese
 at the start of a turn.
 
 A tool that blocks registers what stopping it means: `bash` TERMs its process group and KILLs it
-after `platform::proc`'s grace period. A tool that finishes in microseconds registers nothing, and
-the front door does not pretend otherwise.
+after `platform::proc`'s grace period; the gate kills the formatter or the compiler it started; `mcp`
+kills the group of the server a call waits on, and the next call starts that server again. A tool
+that finishes in microseconds registers nothing, and the front door does not pretend otherwise.
 
-What a stop leaves behind depends on whether the call started:
+What a stop leaves behind depends on how far the call got:
 
 | call | history |
 |---|---|
 | started | one failed result, `[interrupted: the user stopped the turn]` as its last line |
-| never started | nothing: no request block, no result |
+| stopped before it wrote | one failed result naming what is still untouched |
+| never started | one failed result saying it never ran |
 
-A reply cut short mid-stream keeps no calls at all. Calls that arrived whole but never ran have
-their request blocks dropped before the turn's one commit. A call's own deadline is not a stop:
+A reply cut short mid-stream keeps no calls at all: the model never finished asking, so no call ever
+existed. Once its arguments arrive whole a call belongs to the turn, and every one of them answers —
+the ones that ran with what they produced, the ones the stop kept from running with the fact that
+they never ran. A stop ends the work, never the record of it. A call's own deadline is not a stop:
 `bash` reports `timed out after Ns` through `ToolOutput::failure`.
 
 `final submit` is not a stop either: its result carries `stop`, and the turn settles as `finished`.
@@ -603,13 +614,15 @@ it again, and a changed table or directory drops the process pool. An unchanged 
 }
 ```
 
-`McpBridge` is the seam: `servers()`, `tools(server)`, `call(server, tool, args)`, `rescan(cwd)`,
-`shutdown()`. Nothing above it knows JSON-RPC. `SyncMcpBridge` is the built-in implementation: one
+`McpBridge` is the seam: `servers()`, `tools(server)`, `call(server, tool, args, stop)`,
+`rescan(cwd)`, `shutdown()`. Nothing above it knows JSON-RPC. `SyncMcpBridge` is the built-in implementation: one
 child process per name, started lazily and kept until a rescan; a server spawns in the session's
 working directory, so a `cwd` key in the file is not used. stdout is one JSON-RPC object per line,
 a reader thread dispatches by id, stderr is drained into a 20-line tail that only surfaces in
 errors; every call carries a deadline; a dead process fails every waiting call and is started again
-on the next one. It uses threads and channels only — no async runtime enters this tree.
+on the next one. Every server leads a process group of its own, and a stop kills that group: the wait
+ends on the same tick, and the failure a dead server gives is the call's answer. It uses threads and
+channels only — no async runtime enters this tree.
 
 An answer is text content, concatenated in order. `isError` makes the call failed. Images, audio
 and structured content are reported as unsupported. MCP's own schema is not passed to the model and
@@ -655,8 +668,9 @@ not checked here; a bad argument is the server's error to report.
 8. One call runs at a time inside a session; different sessions run concurrently.
 9. A tool starts no job and writes no session row; it describes both and the loop acts.
 10. The session's list is the whole gate; a tool adds no condition of its own.
-11. A stop is one `Stop`; only a tool that blocks registers what stopping it means.
-12. A call that never ran leaves no block and no result.
+11. A stop is one `Stop`, and only a tool that blocks registers what stopping it means: `bash`, the
+    gate, and `mcp`.
+12. A call whose arguments arrived whole answers, whether or not it ran.
 
 ## 2. Design intent
 

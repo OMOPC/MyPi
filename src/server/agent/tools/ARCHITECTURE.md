@@ -13,7 +13,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `contract/env.rs` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp` |
 | `contract/view.rs` | the `Source`, `Export`, `Child`, `Draft`, `MemoRead` ports, the history shapes, and `MemoScope`, `MemoReadOp`, `MemoVersion`, `MemoView` |
 | `contract/job.rs` | the job vocabulary a tool shares with the loop: `JobSpec`, `Schedule`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink`, and the `JobHost` port |
-| `engine.rs` | `Engine`: `Batch::run` — env, gates, decode, run, stamp, measure (every tool but `read`), events; the stop that lands mid-call becomes the result's reason |
+| `engine.rs` | `Engine`: `Batch::run` — env, gates, decode, run, stamp, measure (every tool but `read`), events; a call whose arguments arrived answers, and a stop landing mid-call becomes the result's reason |
 | `spec.rs` | `Kind`, `Param`, `schema_of`, `Args`, `Item`, `Tool`, `Run`, `Summary`, `ToolProgress` |
 | `summary.rs` | one recorded call's arguments, and the clip every tool's history summary reuses |
 | `registry.rs` | `TOOLS`, `spec`, `roster` |
@@ -38,6 +38,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
 | `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the batch's calls on one file merged into one write; the compiler's report appended after the lock is released; `mass_text` and `parse_range` for `final` |
 | `bash/splice/edit.rs` | one change: its range, its block, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
+| `bash/halt.rs` | the one sentence a stopped turn leaves: `INTERRUPTED`, and the answer a tool gives when nothing was written |
 | `bash/gate.rs` | the compiler gate: the formatter's outcome for one text (remembered per edition and content), the edition of the crate a file belongs to, one `cargo check` of that crate with a deadline, every child in a process group of its own |
 | `bash/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
 | `bash/fault.rs` | the compiler's report, drawn: one block per error — the item it sits in, the lines around it, what the compiler said and suggested |
@@ -56,8 +57,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `mcp/mod.rs` | the `mcp` tool: list and call |
 | `mcp/bridge.rs` | `McpBridge`, `ServerInfo`, `ToolInfo`, `McpResult`, `McpContent` |
 | `mcp/setup.rs` | `mcp.json` → the server table, read for the session's cwd; the project's file replaces the global one |
-| `mcp/sync.rs` | `SyncMcpBridge`: one lazy stdio server per name; a rescan re-reads the table and drops the pool when the table or the directory changed |
-| `mcp/stdio.rs` | one stdio server process: spawn, JSON-RPC, pending map, stderr tail, shutdown |
+| `mcp/sync.rs` | `SyncMcpBridge`: one lazy stdio server per name; a rescan re-reads the table and drops the pool when the table or the directory changed; a stop kills the group of the server a call waits on |
+| `mcp/stdio.rs` | one stdio server process in a process group of its own: spawn, JSON-RPC, pending map, stderr tail, shutdown |
 | `memo/mod.rs` | declares the memo family |
 | `memo/memo/{mod,tool}.rs` | the `memo` tool: writes as effects, reads through `MemoRead` |
 | `memo/todo/{mod,tool}.rs` | the `todo` tool: reads the anchor, replays, applies, writes the memo |

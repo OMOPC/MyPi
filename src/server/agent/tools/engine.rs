@@ -14,11 +14,9 @@ use super::spec::{Args, ToolProgress};
 use super::subagent::FINAL;
 use crate::server::agent::request::contract::{ItemOk, Spill, ToolCall};
 use crate::server::agent::request::live::{Element, Event, ToolEvent, Truncation};
+use crate::server::agent::tools::bash::halt::INTERRUPTED;
 use crate::server::agent::tools::bash::{grep, read};
 use crate::server::platform::time::now_stamp;
-
-/// What a call that the user stopped mid-flight reports as its reason.
-const INTERRUPTED: &str = "interrupted: the user stopped the turn";
 
 /// The one implementation of [`Batch`]. Everything a run needs arrives in its [`Env`].
 pub struct Engine;
@@ -37,9 +35,15 @@ impl Batch for Engine {
         let mut halted = false;
         let mut results = Vec::with_capacity(calls.len());
         for call in calls {
-            // A call that never starts leaves nothing behind: no block, no result.
-            if halted || env.stop.is_stopped() {
+            // A tool's own stop (`final submit`) leaves the calls after it unstarted and unnamed.
+            if halted {
                 break;
+            }
+            // The user's stop is the other way round: a call that had already been asked for has a
+            // result whether or not it ever ran.
+            if env.stop.is_stopped() {
+                results.push(interrupted(call));
+                continue;
             }
             let result = self.one(
                 env,
@@ -119,10 +123,13 @@ impl Engine {
         let mut produced = match (tool.run)(env, &args, &mut progress) {
             Ok(out) => out,
             Err(e) => {
+                // A tool killed by the stop states what its death means, not only the symptom.
+                let reason =
+                    (arrived_before_stop && env.stop.is_stopped()).then(|| INTERRUPTED.to_string());
                 let text = format!("{e:#}");
-                let items = vec![ItemOk::failed(text.clone())];
+                let items = outcomes(Vec::new(), reason.as_deref(), &text);
                 self.end(env, call, out, &items, &text, None, started, None);
-                return failed(call, items, text, started);
+                return failed(call, items, text, started, reason);
             }
         };
         if charged && let Some(child) = child {
@@ -203,7 +210,7 @@ impl Engine {
         self.start(env, call, out);
         let items = vec![ItemOk::failed(why)];
         self.end(env, call, out, &items, why, None, started, None);
-        failed(call, items, why, started)
+        failed(call, items, why, started, None)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -236,17 +243,25 @@ fn elapsed(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
+/// A call the user's stop kept from running: it still answers, so the batch keeps its shape.
+fn interrupted(call: &ToolCall) -> ToolResult {
+    let text = format!("the call never ran: {INTERRUPTED}");
+    let items = vec![ItemOk::failed(text.clone())];
+    failed(call, items, text, Instant::now(), None)
+}
+
 fn failed(
     call: &ToolCall,
     items: Vec<ItemOk>,
     text: impl Into<String>,
     started: Instant,
+    reason: Option<String>,
 ) -> ToolResult {
     ToolResult {
         call_id: call.call_id.clone(),
         items,
         result: text.into(),
-        reason: None,
+        reason,
         memo: None,
         spill: None,
         duration_ms: elapsed(started),

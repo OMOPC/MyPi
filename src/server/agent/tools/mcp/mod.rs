@@ -5,6 +5,8 @@ pub(crate) mod setup;
 mod stdio;
 pub(crate) mod sync;
 
+use std::sync::Arc;
+
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
@@ -14,6 +16,7 @@ use super::contract::view::CallRecord;
 use super::spec::{Args, Item, Kind, Param, Tool, ToolProgress};
 use super::summary;
 use crate::server::agent::request::contract::ItemOk;
+use crate::server::platform::stop::Stop;
 
 use bridge::{McpBridge, McpContent, McpResult};
 
@@ -76,7 +79,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
             let server = args.opt_str(SERVER)?;
             list(bridge.as_ref(), server.as_deref())
         }
-        "call" => call(bridge.as_ref(), args),
+        "call" => call(bridge.as_ref(), args, &env.stop),
         _ => unreachable!("Args::choice validates type"),
     }
 }
@@ -123,7 +126,7 @@ fn server_json(bridge: &dyn McpBridge, server: &str, full: bool) -> Value {
 }
 
 /// Run every call in the array, in order; one failure leaves the rest to run.
-fn call(bridge: &dyn McpBridge, args: &Args) -> Result<ToolOutput> {
+fn call(bridge: &dyn McpBridge, args: &Args, stop: &Arc<Stop>) -> Result<ToolOutput> {
     let items = args.objects(CALLS)?;
     anyhow::ensure!(!items.is_empty(), "`calls` must name at least one call");
     anyhow::ensure!(
@@ -136,7 +139,7 @@ fn call(bridge: &dyn McpBridge, args: &Args) -> Result<ToolOutput> {
     let mut outcomes: Vec<ItemOk> = Vec::with_capacity(total);
     let mut failed = 0usize;
     for item in &items {
-        let (header, body) = match call_one(bridge, item) {
+        let (header, body) = match call_one(bridge, item, stop) {
             Ok((server, tool, text)) => {
                 outcomes.push(ItemOk::ok());
                 (format!("{server}/{tool}"), text)
@@ -169,7 +172,7 @@ fn call(bridge: &dyn McpBridge, args: &Args) -> Result<ToolOutput> {
     Ok(produced)
 }
 
-fn call_one(bridge: &dyn McpBridge, item: &Item) -> Result<(String, String, String)> {
+fn call_one(bridge: &dyn McpBridge, item: &Item, stop: &Arc<Stop>) -> Result<(String, String, String)> {
     let server = item.text("server")?;
     let server = server.trim();
     anyhow::ensure!(!server.is_empty(), "`{}.server` must not be empty", item.label());
@@ -181,7 +184,7 @@ fn call_one(bridge: &dyn McpBridge, item: &Item) -> Result<(String, String, Stri
         Some(map) => Value::Object(map),
     };
 
-    let result = bridge.call(server, tool, arguments)?;
+    let result = bridge.call(server, tool, arguments, stop)?;
     let text = render(&result);
     if result.is_error {
         if text.is_empty() {

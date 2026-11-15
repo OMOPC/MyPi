@@ -3,6 +3,7 @@
 
 use super::edit::{self, Edit};
 use crate::server::agent::tools::bash::gate;
+use crate::server::platform::stop::Stop;
 
 /// The comment a change is wrapped in, so the formatter's output can be walked back to it.
 pub(crate) use gate::MARK;
@@ -26,16 +27,21 @@ pub(crate) struct Settled {
 }
 
 /// All changes at once; when the file does not parse, one change at a time until the text does.
-/// Answers come from the cache, so a retry of the same text costs no new process.
-pub(crate) fn settle(base: &str, edits: &[Edit], edition: &str) -> Settled {
+/// Answers come from the cache, so a retry of the same text costs no new process. `None` = the
+/// turn was stopped, so the formatter never decided anything.
+pub(crate) fn settle(base: &str, edits: &[Edit], edition: &str, stop: &Stop) -> Option<Settled> {
     let all: Vec<&Edit> = edits.iter().collect();
-    if let gate::Outcome::Formatted(text) = gate::format(&edit::spliced(base, &all), edition) {
-        return Settled {
-            text,
-            kept: (0..edits.len()).collect(),
-            dropped: Vec::new(),
-            bare: None,
-        };
+    match gate::format(&edit::spliced(base, &all), edition, stop) {
+        gate::Outcome::Formatted(text) => {
+            return Some(Settled {
+                text,
+                kept: (0..edits.len()).collect(),
+                dropped: Vec::new(),
+                bare: None,
+            });
+        }
+        gate::Outcome::Stopped => return None,
+        gate::Outcome::Broken(_) => {}
     }
     let mut kept: Vec<usize> = Vec::new();
     let mut dropped: Vec<(usize, Broken)> = Vec::new();
@@ -45,43 +51,46 @@ pub(crate) fn settle(base: &str, edits: &[Edit], edition: &str) -> Settled {
         trial.push(index);
         trial.sort_unstable();
         let picked: Vec<&Edit> = trial.iter().map(|held| &edits[*held]).collect();
-        match gate::format(&edit::spliced(base, &picked), edition) {
+        match gate::format(&edit::spliced(base, &picked), edition, stop) {
             gate::Outcome::Formatted(text) => {
                 kept = trial;
                 settled = Some(text);
             }
             gate::Outcome::Broken(why) => dropped.push((index, why)),
+            gate::Outcome::Stopped => return None,
         }
     }
     dropped.sort_by_key(|(index, _)| *index);
 
     let bare = match &settled {
-        None => match gate::format(base, edition) {
+        None => match gate::format(base, edition, stop) {
             gate::Outcome::Broken(why) => Some(why),
             gate::Outcome::Formatted(_) => None,
+            gate::Outcome::Stopped => return None,
         },
         Some(_) => None,
     };
-    Settled {
+    Some(Settled {
         text: settled.unwrap_or_else(|| base.to_string()),
         kept,
         dropped,
         bare,
-    }
+    })
 }
 
 /// Where each change's own lines ended up, in the order the changes were handed over.
 ///
 /// The text is formatted once more with a comment around each change; that comment survives, so
 /// its neighbours are the exact lines the change became.
-pub(crate) fn place(base: &str, edits: &[&Edit], edition: &str) -> Vec<edit::Place> {
+pub(crate) fn place(base: &str, edits: &[&Edit], edition: &str, stop: &Stop) -> Vec<edit::Place> {
     let marked: Vec<Edit> = edits
         .iter()
         .enumerate()
         .map(|(at, change)| change.marked(at))
         .collect();
     let picked: Vec<&Edit> = marked.iter().collect();
-    let gate::Outcome::Formatted(text) = gate::format(&edit::spliced(base, &picked), edition) else {
+    let gate::Outcome::Formatted(text) = gate::format(&edit::spliced(base, &picked), edition, stop)
+    else {
         return vec![None; edits.len()];
     };
 

@@ -14,12 +14,14 @@ use crate::server::agent::request::contract::ToolCall;
 use crate::server::agent::tools::bash::change;
 use crate::server::agent::tools::bash::fault;
 use crate::server::agent::tools::bash::gate;
+use crate::server::agent::tools::bash::halt::stopped;
 use crate::server::agent::tools::contract::env::{Answer, Env, Stamp};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 use crate::server::agent::tools::workspace::write_atomic;
+use crate::server::platform::stop::Stop;
 
 const PATH: usize = 0;
 const EDITS: usize = 1;
@@ -74,13 +76,23 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let stamp = env.seen.files.get(&path).copied();
     let current = env.current.clone();
 
-    let mut done = env
+    let stop = env.stop.clone();
+    let Some(mut done) = env
         .workspace
-        .with_write(&path, || compute(&path, stamp, &plans, &current))?;
+        .with_write(&path, || compute(&path, stamp, &plans, &current, &stop))?
+    else {
+        // A sibling of this batch reaches its own turn, finds the stop still set, and says the same
+        // thing about the same untouched file: it is said here, never kept for `env.handed`.
+        return Ok(stopped(&path));
+    };
 
     // The compiler runs after the file's lock is released: it reads the whole crate, not this file.
     if done.written.is_some() {
-        let check = gate::check(&path);
+        let check = if stop.is_stopped() {
+            gate::Check::Unchecked
+        } else {
+            gate::check(&path, &stop)
+        };
         if let Some(at) = plans.iter().position(|plan| plan.call_id == current) {
             done.report(at, &path, &check);
         }
@@ -187,8 +199,15 @@ impl Done {
     }
 }
 
-/// The whole group: the snapshot, one write, and one answer per call.
-fn compute(path: &Path, stamp: Option<Stamp>, plans: &[Plan], current: &str) -> Result<Done> {
+/// The whole group: the snapshot, one write, and one answer per call. `None` = the turn was stopped
+/// before the write, so the file is exactly as it was and no call has an answer.
+fn compute(
+    path: &Path,
+    stamp: Option<Stamp>,
+    plans: &[Plan],
+    current: &str,
+    stop: &Stop,
+) -> Result<Option<Done>> {
     let text = std::fs::read_to_string(path).context("failed to read file")?;
     let total = text.lines().count();
     if let Some(stamp) = stamp
@@ -216,7 +235,9 @@ fn compute(path: &Path, stamp: Option<Stamp>, plans: &[Plan], current: &str) -> 
         let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
         if rust {
             let edition = gate::edition(path);
-            let settled = fmt::settle(&text, &picked, &edition);
+            let Some(settled) = fmt::settle(&text, &picked, &edition, stop) else {
+                return Ok(None);
+            };
             if settled.kept.is_empty()
                 && let Some(why) = &settled.bare
             {
@@ -232,7 +253,10 @@ fn compute(path: &Path, stamp: Option<Stamp>, plans: &[Plan], current: &str) -> 
             final_ids = settled.kept.iter().map(|at| kept[*at]).collect();
             final_edits = settled.kept.iter().map(|at| picked[*at].clone()).collect();
             let refs: Vec<&Edit> = final_edits.iter().collect();
-            blocks = fmt::place(&text, &refs, &edition);
+            blocks = fmt::place(&text, &refs, &edition, stop);
+            if stop.is_stopped() {
+                return Ok(None);
+            }
             if !final_ids.is_empty() && settled.text != text {
                 written = Some(settled.text);
             }
@@ -278,7 +302,7 @@ fn compute(path: &Path, stamp: Option<Stamp>, plans: &[Plan], current: &str) -> 
         .enumerate()
         .map(|(at, plan)| group.answer(at, &plan.call_id))
         .collect();
-    Ok(Done { answers, written })
+    Ok(Some(Done { answers, written }))
 }
 
 /// The batch's edits in arrival order, each call's slice of them, and the calls whose arguments

@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 use super::bridge::{McpBridge, McpContent, McpResult, ServerInfo, ToolInfo};
 use super::setup::ServerConfig;
 use super::stdio::{self, Server};
+use crate::server::platform::proc::{self, Signal};
+use crate::server::platform::stop::Stop;
 
 pub struct SyncMcpBridge {
     standing: Mutex<Standing>,
@@ -128,8 +130,23 @@ impl SyncMcpBridge {
         Ok(out)
     }
 
-    fn call_tool(&self, name: &str, tool: &str, args: Value) -> Result<McpResult> {
+    fn call_tool(
+        &self,
+        name: &str,
+        tool: &str,
+        args: Value,
+        stop: &Arc<Stop>,
+    ) -> Result<McpResult> {
         let server = self.server_for(name)?;
+        // The kill goes by process group, never by the server's own lock: the call holds that lock
+        // while it waits, and the wait is exactly what the stop has to end.
+        let group = {
+            let server = server
+                .lock()
+                .map_err(|_| anyhow!("MCP server `{name}` is poisoned"))?;
+            server.group()
+        };
+        let _hook = stop.on_stop(move || proc::signal_group(group, Signal::Kill));
         let value = {
             let mut server = server
                 .lock()
@@ -261,8 +278,8 @@ impl McpBridge for SyncMcpBridge {
         self.tools_of(server)
     }
 
-    fn call(&self, server: &str, tool: &str, args: Value) -> Result<McpResult> {
-        self.call_tool(server, tool, args)
+    fn call(&self, server: &str, tool: &str, args: Value, stop: &Arc<Stop>) -> Result<McpResult> {
+        self.call_tool(server, tool, args, stop)
     }
 
     fn shutdown(&self) {
