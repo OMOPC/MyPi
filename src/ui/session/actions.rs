@@ -3,7 +3,7 @@
 use serde_json::{Value, json};
 
 use super::Session;
-use super::vocabulary::{ModelId, Retention};
+use super::vocabulary::{Effort, ModelId, Retention};
 
 impl Session {
     /// `call init`: the session's rows, structure and todo.
@@ -140,6 +140,11 @@ impl Session {
     /// `post default_model`: the model a new session opens with; the file is the record.
     pub fn set_default_model(&mut self, id: &ModelId) {
         self.act("post", "default_model", model_of(id));
+    }
+
+    /// `post effort`: how hard this session thinks; the server keeps it in memory only.
+    pub fn set_effort(&mut self, effort: Effort) {
+        self.act("post", "effort", json!({"effort": effort.as_str()}));
     }
 
     /// `subscribe compact`: one compaction turn.

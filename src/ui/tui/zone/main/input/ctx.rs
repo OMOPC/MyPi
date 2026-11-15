@@ -68,6 +68,8 @@ pub struct Data {
     pub lang: Lang,
     /// The model's address, `<provider>:<model>`.
     pub address: Option<String>,
+    /// How hard this session asks the model to think; memory-only, `Auto` by default.
+    pub effort: crate::ui::session::Effort,
     /// The conversation's name; a draft session shows its directory instead.
     pub name: Option<String>,
     /// Where the conversation runs.

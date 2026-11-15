@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use crate::server::agent::request::contract::Transport;
+use crate::server::agent::request::Effort;
 
 /// What every lap of one session sends: the model, the system prompt, the manuals, the cut.
 #[derive(Clone)]
@@ -12,6 +13,8 @@ pub struct Config {
     pub system: String,
     /// The manuals serialized once when the session was booked; a lap never rebuilds them.
     pub tools_json: Arc<serde_json::Value>,
+    /// How hard this session asks the model to think; never stored, never replayed.
+    pub effort: Effort,
     /// The compaction instruction template; `{{focus}}` marks where the focus goes.
     pub compact: String,
 }
@@ -25,6 +28,7 @@ impl Config {
             model: birth.model.clone(),
             system: birth.system.clone(),
             tools_json: Arc::new(tools_json),
+            effort: birth.effort,
             compact: birth.compact.clone(),
         }
     }

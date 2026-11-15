@@ -3,6 +3,7 @@
 pub(crate) mod cwd;
 pub(crate) mod default_model;
 pub(crate) mod delete;
+pub(crate) mod effort;
 pub(crate) mod emit;
 pub(crate) mod init;
 pub(crate) mod interrupt;

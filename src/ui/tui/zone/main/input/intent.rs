@@ -6,7 +6,7 @@ use super::editor::{Editor, Effect};
 use super::semantics;
 use super::zone::InputZone;
 use crate::ui::tui::text::Wrapped;
-use crate::ui::tui::zone::{Shout, name};
+use crate::ui::tui::zone::{Request, Shout, name};
 
 impl InputZone {
     /// Apply one intent: editor actions drive the editor, the rest the history ring.
@@ -94,6 +94,14 @@ impl InputZone {
                 self.finished = true;
                 self_managed = true;
                 Effect::Content
+            }
+            I::CycleEffort => {
+                // A draft has no session to hold the rung: the key stays inert until one opens.
+                if self.session.is_some() {
+                    self.outbox
+                        .push(Request::SetEffort(self.data.effort.next()));
+                }
+                Effect::Nothing
             }
             I::None => Effect::Nothing,
         };

@@ -24,7 +24,7 @@ finish itself.
 | `cursor_col`, `cursor_row` | the cursor inside the container, recomputed on render |
 | `statusline: StatusLine` | the deco table and the row engine |
 | `session: Option<i64>` | the conversation this zone follows; `None` = a draft |
-| `data: Data` | model, name, directory, context size and window, money, busy |
+| `data: Data` | model, thinking effort, name, directory, context size and window, money, busy |
 | `pending_name` | the name a `/name` asked for, until its receipt |
 | `queue: Queue` | sentences sent while a round was running, head first |
 | `in_flight` | the sentence a submit put out, until the door answers |
@@ -35,10 +35,11 @@ finish itself.
 
 ### Claims
 
-Every key the editor acts on is named: `AnyChar`, `Paste`, `Enter` (plain, alt, shift), `Esc`, `Tab`,
-`Backspace` (plain, ctrl, alt), `Delete`, the four arrow keys (plain), `Up` with alt,
-`Left`/`Right`/`Home`/`End` with ctrl. The history zone is checked first, so `Ctrl+T`, `Ctrl+O`
-and `Ctrl+↑↓` never reach this table.
+Every key the editor acts on is named: `AnyChar`, `Paste`, `Enter` (plain, alt, shift), `Esc`, `Tab`
+(plain and ctrl), `Backspace` (plain, ctrl, alt), `Delete`, the four arrow keys (plain), `Up` with
+alt, `Left`/`Right`/`Home`/`End` with ctrl. The history zone is checked first, so `Ctrl+T`, `Ctrl+O`
+and `Ctrl+↑↓` never reach this table. A plain `Tab` belongs to the completion hand while a popup is
+open; `Ctrl+Tab` is the editor's own and steps the thinking effort.
 
 ### Editor
 
@@ -76,6 +77,10 @@ the app keeps them until the row opens. A draft's `/cdp` lands only on a directo
 expanded, a relative path read from where the draft stands — because the name travels into `init`,
 and a directory that is not there cannot be entered. Anything else is refused and said.
 `/compact` needs a session and is refused in a draft.
+`/effort` sets how hard the session asks the model to think: one rung of `auto`, `low`, `high`,
+`max`, this session only. It needs a session too, and a provider whose wire names no such field is
+refused by the server rather than here. `Ctrl+Tab` walks the same ladder without a command, and the
+key is inert in a draft because there is no session to hold the rung.
 Deletion has no command: the resume picker owns it.
 
 ### Submit, interrupt, Esc
@@ -93,10 +98,11 @@ Deletion has no command: the resume picker owns it.
 
 ### Notices
 
-A write (`/switch`, `/model`, `/cdp`, `/name`, `/compact`) owes one line. The text is built from what
-this zone sent, in the display language, and spoken only when the receipt for that door arrives:
-`cwd`, `name`, `switch`, `default_model`, `compact`. A receipt carrying an error speaks nothing —
-except the one the app writes itself for a draft's `/cdp`, whose answer names the directory it could
+A write (`/switch`, `/effort`, `/model`, `/cdp`, `/name`, `/compact`) owes one line. The text is
+built from what this zone sent, in the display language, and spoken only when the receipt for that
+door arrives: `cwd`, `name`, `switch`, `effort`, `default_model`, `compact`. A receipt carrying an
+error speaks nothing — except two whose refusal the user can act on: `/effort` on a host that takes
+no thinking effort, and the app's own answer for a draft's `/cdp`, which names the directory it could
 not land on (`noDir`, a warn).
 Draft writes are answered by the app with the same door names, prefixed `local`.
 
@@ -148,8 +154,10 @@ One row, exactly the terminal width. The deco table is `activity`, `model`, `cwd
 `usage`, `session`. Each deco reads the zone's `Data`; none of them can act.
 
 `Data` is filled from three places. The conversation row gives the name and the model address;
-the `models.model.<address>` answer gives the model pill and the gauge's denominator; `call usage`
-gives the cost in both currencies and where the context stands. The display currency comes from
+the `models.model.<address>` answer gives the model pill and the gauge's denominator; the living
+thinking effort comes from `call init` and from each `/effort` receipt, because no row holds it;
+`call usage` gives the cost in both currencies and where the context stands. The display currency
+comes from
 `config.ui.tui.fx.currency`, never from a model. The gauge reads `~` in front of the percentage
 when the count is an estimate; the dashes carry no mark. `activity` steps one glyph per `tick`
 shout. `git` scans on its own tick: the first one at once, then once per configured interval, and
@@ -180,7 +188,9 @@ once more when a round starts or ends.
 
 ## 3. Unresolved
 
-1. A server refusal (an error receipt) speaks nothing; the server's own notice is the only trace.
+1. A server refusal (an error receipt) speaks nothing, except `/effort`: a host whose wire names no
+   thinking effort is a refusal the user caused and can act on, so that one door speaks it. Every
+   other refusal leaves the server's own notice as the only trace.
 2. `Ctrl+C` clears the draft; its final meaning is undecided.
 3. The usage gauge is hidden until the model's window is known.
 4. Terminal-too-small behaviour is a clamped container.

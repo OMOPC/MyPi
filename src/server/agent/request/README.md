@@ -15,8 +15,8 @@ compact(CompactInput) -> CompactReply
 ```
 
 `LapInput` carries the session id, the history read port, the block write port, the transport
-(provider name and model id), the system prompt, the tool manuals as raw JSON, the cancel flag, the
-session's worker and the live line. `LapReply` carries why the model stopped (`Model` or `User`), the bill, and the calls
+(provider name and model id), the system prompt, the tool manuals as raw JSON, the thinking effort,
+the cancel flag, the session's worker and the live line. `LapReply` carries why the model stopped (`Model` or `User`), the bill, and the calls
 it placed (call id, name, arguments verbatim, intent).
 
 `ResultsInput` carries the session id, the history (for citations already handed out), the artifact
@@ -87,6 +87,14 @@ real collision lengthens it. Retrieval therefore never depends on which block th
 
 **Compaction sends only what it replaces.** The retained part stays out of the request, so the
 prefix up to the cut is byte-identical to the previous real call.
+
+**Thinking effort is the protocol's, not the body's.** A session carries one rung of a fixed ladder
+(`auto`, `low`, `high`, `max`) and every protocol decides what that means on its own wire: the
+DeepSeek body names it as `reasoning_effort`, the standard completion body names nothing and a host
+that takes none refuses the change at its door. `auto` asks for nothing and takes the host's default,
+so it costs no bytes and survives a host that later changes its own default. The effort never enters
+the stored history, so a rung changed mid-conversation cannot disturb the prefix cache: the request
+archive is keyed by model, provider, system prompt and tool manuals only.
 
 **Retry belongs to one call.** Only "nothing arrived" and 429 are retried; anything already shown to
 a front end is never re-sent, because the front end has already drawn it.

@@ -18,10 +18,10 @@ Loop::change(session, Change) -> Result<()>
 Loop::write_mail(session, Letter) -> Result<()>
 Loop::clear_mail(session) -> Result<()>
 
-Birth = { session, provider, model, system, tools, manuals, compact, meta, cwd }   // tools = names
+Birth = { session, provider, model, system, tools, manuals, compact, effort, meta, cwd }   // tools = names
 Message = Submit { prefix, text, suffix } | Compact { retention, focus }
 Letter = { prefix, text, suffix }   // the one sentence the mailbox slot can hold
-Change = Model { provider, model } | Cwd(path)
+Change = Model { provider, model } | Cwd(path) | Effort(rung)
 ```
 
 `ask` is `Arc<dyn request::Ask>`; `out` carries the live line. The loop builds the tool layer from
@@ -97,6 +97,11 @@ loop only adds tool events to it.
 - **Baseline is the first request's prompt.** Only a session's first turn contributes, from its first
   lap; the archive keeps the smallest such value across the sessions that share it. It never rises,
   and later turns never contribute.
+- **The thinking effort is memory, not a row.** It rides on the session's request config, so it
+  changes the next lap on the same session and dies with the booking: a reopened session starts at
+  `auto` again. Nothing about it reaches the database, so no rewind, export or replay can resurrect a
+  rung the user has moved away from. A child inherits its parent's rung at birth because a child has
+  no input of its own to change it.
 - **Compaction is a turn mode.** The round opens empty: its instruction, its summary, the borrowed
   rounds and the marker land in one submission when it finishes, so a compaction that fails leaves
   the list as it found it and leaves nothing for a request to read. The retained region is borrowed

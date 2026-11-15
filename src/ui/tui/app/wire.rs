@@ -25,6 +25,7 @@ pub(super) fn land(session: &mut Session, request: Request) {
         Request::ClearMailbox => session.clear_mailbox(),
         Request::SwitchModel(id) => session.switch_model(&id),
         Request::SetDefaultModel(id) => session.set_default_model(&id),
+        Request::SetEffort(effort) => session.set_effort(effort),
         Request::Compact { retention, focus } => session.compact(retention, focus.as_deref()),
         Request::Delete(id) => session.delete(id),
         Request::Rewind { turn, block } => session.rewind(turn, block),

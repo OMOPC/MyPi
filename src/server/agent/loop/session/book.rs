@@ -36,6 +36,8 @@ pub struct Birth {
     pub manuals: Arc<Vec<crate::server::agent::request::message::ToolDef>>,
     /// The compaction instruction template; `{{focus}}` marks where the focus goes.
     pub compact: String,
+    /// How hard this session's laps ask the model to think; a child inherits it.
+    pub effort: crate::server::agent::request::Effort,
     pub meta: Option<i64>,
     /// The launch directory the front end handed `init`; a change door never writes it.
     pub cwd: PathBuf,
@@ -225,6 +227,19 @@ impl Loop {
             &self.inner.writer,
             self.inner.settings.scrooge,
         )
+    }
+
+    /// How hard this session currently asks the model to think.
+    pub fn effort(&self, session: i64) -> Option<crate::server::agent::request::Effort> {
+        self.inner
+            .slots
+            .get(session)
+            .map(|handle| handle.config().effort)
+    }
+
+    /// The provider this session asks; a front end needs it before a host-level change.
+    pub fn provider(&self, session: i64) -> Result<String> {
+        Ok(self.handle(session)?.model().0)
     }
 
     /// Is this session on the table?

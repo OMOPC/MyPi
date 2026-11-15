@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::contract::Block;
+use super::contract::{Block, Effort};
 use super::live::Stream;
 use super::message::{AssistantMessage, DEFAULT_EMPTY_REPLY, WireMessage};
 
@@ -78,6 +78,8 @@ pub struct ProtocolRequest {
     pub messages: Vec<WireMessage>,
     /// The session's manuals, already serialized by the one that owns them.
     pub tools_json: Arc<serde_json::Value>,
+    /// How hard to think; `Auto` leaves the field off the body.
+    pub effort: Effort,
 }
 
 /// One assembled HTTP call.
@@ -97,6 +99,9 @@ pub trait Output {
 pub trait Protocol: Send + Sync {
     /// Serialize one call for this host.
     fn request(&self, endpoint: &Endpoint, req: &ProtocolRequest) -> Result<WireRequest>;
+
+    /// Whether this host takes a thinking effort at all.
+    fn supports_effort(&self) -> bool;
 
     /// How long a silent stream may last; the worker child enforces it.
     fn budget(&self) -> stream::Budget;

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use super::contract::Effort;
 use super::message::{Message, WireMessage};
 use super::protocol::ProtocolRequest;
 use super::transcript;
@@ -16,6 +17,7 @@ pub fn build(
     system: &str,
     stored: &[Message],
     tools_json: Arc<serde_json::Value>,
+    effort: Effort,
 ) -> Result<ProtocolRequest> {
     let mut messages = Vec::with_capacity(stored.len() + 1);
     if !system.trim().is_empty() {
@@ -30,6 +32,7 @@ pub fn build(
         stream,
         messages,
         tools_json,
+        effort,
     })
 }
 
@@ -42,6 +45,7 @@ pub fn compaction(
     region: &[Message],
     instruction: &str,
     tools_json: Arc<serde_json::Value>,
+    effort: Effort,
 ) -> Result<ProtocolRequest> {
     let mut messages = Vec::with_capacity(region.len() + 2);
     if !system.trim().is_empty() {
@@ -59,5 +63,6 @@ pub fn compaction(
         stream,
         messages,
         tools_json,
+        effort,
     })
 }

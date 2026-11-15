@@ -1,7 +1,7 @@
 //! What the input zone says after a command: one sentence, both languages.
 
 use crate::ui::lang::Lang;
-use crate::ui::tui::zone::{ModelId, Retention};
+use crate::ui::tui::zone::{Effort, ModelId, Retention};
 
 /// One line the input zone puts on the bus: what a command asked for, or why it refused.
 #[derive(Debug, Clone, PartialEq)]
@@ -16,6 +16,15 @@ pub enum Notice {
     Switched(ModelId),
     /// `/model`: the model a new session opens with.
     Default(ModelId),
+
+    /// `/effort`: the effort this session now runs with.
+    Effort(Effort),
+
+    /// `/effort` on a model whose wire names none.
+    NoEffort,
+
+    /// A write the server refused for a reason only it knows.
+    Refused(String),
     /// `/compact`: what it keeps, and the focus.
     Compacted {
         retention: Option<Retention>,
@@ -30,6 +39,11 @@ pub enum Notice {
     /// `/memo` without a usable operation.
     MemoUsage,
 }
+
+/// The one line a model that carries no effort answers with; the server sends the English one,
+/// so this is also how a receipt is recognised as that particular refusal.
+pub(super) const NO_EFFORT_EN: &str = "this model takes no thinking effort";
+const NO_EFFORT_ZH: &str = "此模型不支持思考强度控制";
 
 impl Notice {
     /// The sentence this language reads.
@@ -47,6 +61,7 @@ impl Notice {
             | Self::NoSession
             | Self::NothingToCompact
             | Self::NoDir(_)
+            | Self::Refused(_)
             | Self::MemoUsage => "warn",
 
             _ => "info",
@@ -61,6 +76,9 @@ impl Notice {
             Self::Named(None) => "session name cleared".to_string(),
             Self::Switched(id) => format!("model switched to {}:{}", id.provider, id.model),
             Self::Default(id) => format!("default model: {}:{}", id.provider, id.model),
+            Self::Effort(effort) => format!("thinking effort: {}", effort.as_str()),
+            Self::NoEffort => NO_EFFORT_EN.to_string(),
+            Self::Refused(text) => text.clone(),
             Self::Compacted { retention, focus } => {
                 let base = match retention {
                     None => "compacting the whole history".to_string(),
@@ -91,6 +109,9 @@ impl Notice {
             Self::Named(None) => "会话名已清除".to_string(),
             Self::Switched(id) => format!("已切换到 {}:{}", id.provider, id.model),
             Self::Default(id) => format!("默认模型：{}:{}", id.provider, id.model),
+            Self::Effort(effort) => format!("思考强度：{}", effort.as_str()),
+            Self::NoEffort => NO_EFFORT_ZH.to_string(),
+            Self::Refused(text) => text.clone(),
             Self::Compacted { retention, focus } => {
                 let base = match retention {
                     None => "正在压缩全部历史".to_string(),

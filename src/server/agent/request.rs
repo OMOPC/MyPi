@@ -14,9 +14,9 @@ pub mod transport;
 
 pub use ask::{Options, Request, Streaming};
 pub use contract::{
-    Artifact, Ask, Block, BlockSink, Borrow, CompactInput, CompactReply, History, Kind, LapInput,
-    LapReply, Piece, Reference, ResultsInput, Retention, Spill, Stop, ToolCall, ToolResult,
-    Transport, TurnView,
+    Artifact, Ask, Block, BlockSink, Borrow, CompactInput, CompactReply, Effort, History, Kind,
+    LapInput, LapReply, Piece, Reference, ResultsInput, Retention, Spill, Stop, ToolCall,
+    ToolResult, Transport, TurnView,
 };
 pub use live::{Element, Event, Notice, NoticeLevel, Stream, ToolEvent};
 pub use message::{AssistantMessage, Message, Usage, WireMessage};

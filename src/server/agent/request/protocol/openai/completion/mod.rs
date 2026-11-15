@@ -59,6 +59,11 @@ impl Protocol for Completion {
         protocol::stream::Budget::default()
     }
 
+    /// The standard body names no effort field.
+    fn supports_effort(&self) -> bool {
+        false
+    }
+
     fn decode(
         &self,
         reader: Box<dyn BufRead>,

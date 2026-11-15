@@ -30,7 +30,8 @@ request without a counter. A failure is a reply whose payload is `{"error": {"co
 ### Doors
 
 Read: `init`, `blocks`, `meta`, `usage`, `todo`, `memo`, `children`, `config`, `pools`, `sessions`.
-Write: `init`, `name`, `cwd`, `switch`, `delete`, `interrupt`, `rewind`, `default_model`, `mailbox`.
+Write: `init`, `name`, `cwd`, `switch`, `effort`, `delete`, `interrupt`, `rewind`, `default_model`,
+`mailbox`.
 Subscribe: `watch`, `submit`, `compact`.
 
 - `init` (post) writes the `sessions` row and its `request_meta` archive in one submission, then
@@ -60,6 +61,10 @@ Subscribe: `watch`, `submit`, `compact`.
   with a `prefix` or `suffix`, writes it whole over whatever was there; no `text` and no prefix
   clears it. The loop takes it at a blocking point and opens a turn named `mailbox`, exactly as a
   `submit` would; taking it clears it and puts `signal: mailbox` on the stream for every watcher.
+- `effort` sets how hard the session's next laps ask the model to think. It is the one write door
+  that changes no row: the rung lives on the session's request config and dies with the booking. A
+  provider whose protocol names no such field answers `bad_payload` rather than accepting a value it
+  could never send.
 - `interrupt`, `cwd`, `switch`, `delete`, `rewind` act on the running session or its rows.
   `interrupt` is silent: it stops what runs, and an idle session hears nothing. A rewind tells the
   loop to read that session's history again. `delete` writes one memo file per session it removes —
@@ -80,7 +85,7 @@ Subscribe: `watch`, `submit`, `compact`.
 |---|---|---|---|
 | `register` | `hello` | `viewer` | an empty `opened` frame |
 | `register` | `bye` | — | nothing |
-| `call` | `init` | `session` | `structure` (`turn` + `ranges` + `compact` per round, the whole list, borrowed rounds left out), `blocks` (newest 32, whole rows), `todo` (the list, or null) |
+| `call` | `init` | `session` | `structure` (`turn` + `ranges` + `compact` per round, the whole list, borrowed rounds left out), `blocks` (newest 32, whole rows), `todo` (the list, or null), `effort` (the rung the session runs with now) |
 | `call` | `blocks` | `session`, `ranges` | `blocks`, whole rows, in request order |
 | `call` | `meta` | `session` | the session row |
 | `call` | `usage` | `session` | session totals, `cache_hit_rate`, `cny`, `usd`, `context`, `estimated`, `baseline_prompt`, and `groups` by `provider:model` |
@@ -94,6 +99,7 @@ Subscribe: `watch`, `submit`, `compact`.
 | `post` | `name` | `session`, `name` | — |
 | `post` | `cwd` | `session`, `path` | `cwd` (resolved) |
 | `post` | `switch` | `session`, `model` | — |
+| `post` | `effort` | `session`, `effort` (`auto`, `low`, `high`, `max`) | `effort` |
 | `post` | `delete` | `session` | — |
 | `post` | `interrupt` | `session` | — |
 | `post` | `rewind` | `session`, `turn`, `block` | `cut` |
@@ -143,7 +149,7 @@ turn's first frame, always — not usually.
 - `text`, `thinking` and `arguments` carry `usage`: the bill of the request that just ended, on the
   one piece the decoder wrote it onto; `null` on every other piece.
 - A write signal names the field its door changed: `cwd` with the landed path, `model` with the
-  address, `name` with the new name. `delete` and `rewind` say so in `signal` and carry their own
+  address, `name` with the new name, `effort` with the rung. `delete` and `rewind` say so in `signal` and carry their own
   fields.
 - A write signal skips the viewer that issued it. The slot-taken signal, live output, notices and
   structure go to everyone watching.

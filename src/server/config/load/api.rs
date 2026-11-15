@@ -259,6 +259,15 @@ impl Config {
         Ok(target)
     }
 
+    /// Whether this provider's wire names a thinking effort at all.
+    pub fn takes_effort(&self, provider: &str) -> bool {
+        self.inner
+            .models
+            .provider(provider)
+            .and_then(|p| crate::server::agent::request::ProtocolId::parse(&p.api).ok())
+            .is_some_and(|protocol| protocol.build().supports_effort())
+    }
+
     /// Every provider the request half can reach, credentials expanded.
     pub fn providers(&self) -> Vec<crate::server::agent::request::Provider> {
         self.inner

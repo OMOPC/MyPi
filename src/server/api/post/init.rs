@@ -84,6 +84,7 @@ pub(crate) fn apply(api: &Api, _conn: u64, _viewer: &str, ask: &Value) -> Result
         tools,
         manuals,
         compact: resolved.compact_instruction,
+        effort: crate::server::agent::request::Effort::Auto,
         meta: Some(archive),
         cwd,
     })?;

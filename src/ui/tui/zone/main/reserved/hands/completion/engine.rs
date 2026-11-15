@@ -166,6 +166,7 @@ fn command_line(
             let (items, total) = path_items(word, look, scan, true);
             (items, false, total)
         }
+        Some(Some(Arg::Effort)) => (effort_items(word), false, crate::ui::session::Effort::LADDER.len()),
         Some(Some(Arg::Number | Arg::Text) | None) | None => (Vec::new(), false, 0),
     }
 }
@@ -220,6 +221,30 @@ fn command_items(word: &str, lang: Lang) -> Vec<Completion> {
         }
     }
     out.sort_by(|(_, a), (_, b)| a.name.cmp(&b.name));
+    out.sort_by_key(|(rank, _)| *rank);
+    out.into_iter().map(|(_, c)| c).collect()
+}
+
+/// The effort ladder, as one flat list: `Effort` is the same on every host.
+fn effort_items(word: &str) -> Vec<Completion> {
+    let mut out: Vec<(Rank, Completion)> = Vec::new();
+    for effort in crate::ui::session::Effort::LADDER {
+        let name = effort.as_str();
+        let Some((rank, hits)) = matches(word, name, false) else {
+            continue;
+        };
+        out.push((
+            rank,
+            Completion {
+                kind: CandidateKind::Plain,
+                name: name.to_string(),
+                hits,
+                detail: String::new(),
+                is_dir: false,
+                insert: name.to_string(),
+            },
+        ));
+    }
     out.sort_by_key(|(rank, _)| *rank);
     out.into_iter().map(|(_, c)| c).collect()
 }

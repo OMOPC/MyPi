@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::boot::{AUTO_PREPARE_KEY, DEFAULT_MODEL_KEY, FX_CURRENCY_KEY, GIT_SCAN_KEY, LANG_KEY};
 use super::ctx::{Context, Currency};
-use super::notice::Notice;
+use super::notice::{NO_EFFORT_EN, Notice};
 use super::zone::InputZone;
 use crate::ui::lang::Lang;
 use crate::ui::tui::zone::{Frame, Request, Shout, SubZone, name};
@@ -14,6 +14,9 @@ impl InputZone {
     pub(super) fn read_frame(&mut self, frame: &Frame) -> Vec<Request> {
         let mut out = Vec::new();
         match (frame.class.as_str(), frame.name.as_str()) {
+            ("call", "init") => {
+                self.read_init(&frame.content);
+            }
             ("call", "meta") => {
                 self.read_meta(&frame.content, &mut out);
             }
@@ -49,6 +52,10 @@ impl InputZone {
                 self.receipt("switch", &frame.content, &mut out);
                 self.read_switch(&frame.content, &mut out);
             }
+            ("post", "effort") => {
+                self.receipt("effort", &frame.content, &mut out);
+                self.read_effort(&frame.content);
+            }
             ("post", "default_model") => {
                 self.receipt("default_model", &frame.content, &mut out);
             }
@@ -65,6 +72,18 @@ impl InputZone {
             _ => {}
         }
         out
+    }
+
+    /// The session's opening word: the effort is memory-only, so this is the one place a
+    /// fresh front end learns it.
+    fn read_init(&mut self, content: &Value) {
+        if let Some(effort) = content
+            .get("effort")
+            .and_then(Value::as_str)
+            .and_then(crate::ui::session::Effort::parse)
+        {
+            self.data.effort = effort;
+        }
     }
 
     /// The session row: name, and the model its widgets follow.
@@ -179,6 +198,28 @@ impl InputZone {
                 }
                 self.shouts.push(Shout::new(name::MODEL_ENTRY, content));
             }
+        }
+    }
+
+    /// One `/effort` receipt: the rung lands when the write did. A refusal speaks first, in
+    /// `receipt`, so the pill only follows a write that landed.
+    fn read_effort(&mut self, content: &Value) {
+        // The one refusal this door has is a host whose wire names no effort; anything else is
+        // the server's own words, which it repeats rather than guessing at.
+        if let Some(error) = content.get("error") {
+            match error.get("message").and_then(Value::as_str) {
+                Some(NO_EFFORT_EN) => self.say(&Notice::NoEffort),
+                Some(message) => self.say(&Notice::Refused(message.to_string())),
+                None => self.say(&Notice::NoEffort),
+            }
+            return;
+        }
+        if let Some(effort) = content
+            .get("effort")
+            .and_then(Value::as_str)
+            .and_then(crate::ui::session::Effort::parse)
+        {
+            self.data.effort = effort;
         }
     }
 

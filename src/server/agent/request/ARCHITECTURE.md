@@ -6,20 +6,20 @@
 |---|---|
 | `request.rs` | module declarations and re-exports; no logic |
 | `ask.rs` | `Request`: the three actions, the options it is built with, the forwarder that routes pieces and blocks |
-| `contract.rs` | every shape the loop fills or reads: `Ask`, `LapInput`, `LapReply`, `ResultsInput`, `CompactInput`, `CompactReply`, `Borrow`, `Stop`, `Retention`, `Transport`, `ToolCall`, `ToolResult`, `Spill`, `Block`, `Kind`, `Artifact`, `BlockSink`, `History`, `TurnView`, `Piece`, `Reference`, `ResultsInput` |
+| `contract.rs` | every shape the loop fills or reads: `Ask`, `LapInput`, `LapReply`, `ResultsInput`, `CompactInput`, `CompactReply`, `Borrow`, `Stop`, `Retention`, `Transport`, `ToolCall`, `ToolResult`, `Spill`, `Block`, `Kind`, `Effort`, `Artifact`, `BlockSink`, `History`, `TurnView`, `Piece`, `Reference`, `ResultsInput` |
 | `live.rs` | the live line: `Event`, `Live`, `Stream`, `Notice`, `NoticeLevel`, `ToolEvent`, `Line` |
 | `message.rs` | the stored `Message`, the wire `WireMessage`, `WireCall`, `ToolDef`, `Usage`, `AssistantMessage`, and the two fixed reply texts |
 | `transcript.rs` | stored messages to wire messages: the only translation |
-| `assembly.rs` | one request's body: system prompt, history, tool manuals |
+| `assembly.rs` | one request's body: system prompt, history, tool manuals, thinking effort |
 | `compact.rs` | the cut, the shrink check, the instruction rendering |
 | `artifact.rs` | citations, the artifact file, the citation line |
 | `retry.rs` | policy, failure classes, the notice one failure produces |
-| `protocol/mod.rs` | `ProtocolId`, `Protocol`, `Endpoint`, `ProtocolRequest`, `WireRequest`, `Output` |
+| `protocol/mod.rs` | `ProtocolId`, `Protocol` (body, decode, silence budget, whether the host takes an effort), `Endpoint`, `ProtocolRequest`, `WireRequest`, `Output` |
 | `protocol/blocks.rs` | block constructors |
 | `protocol/sse/` | `read` (one raw line), `frame` (`data:` frames and the worker's error line), `event` (`event:` + `data:` frames) |
 | `protocol/stream.rs` | the stream loop: cancel, `data:` or `event:` frames, how it ended |
 | `protocol/stitch.rs` | tool calls stitched out of stream deltas |
-| `protocol/openai/` | the OpenAI family: `completion`, `deepseek`, each with its own body and decode |
+| `protocol/openai/` | the OpenAI family: `completion`, `deepseek`, each with its own body, decode, and whether it names a thinking effort |
 | `protocol/openai/completion/` | the standard completion dialect: the request body, the message mapping, the SSE decode |
 | `transport/mod.rs` | `Provider`, and sending one call through the session's worker |
 | `transport/client.rs` | one provider connection: its protocol, retry loop, cancellable wait |
@@ -41,6 +41,9 @@
 - `transport::send` asks the session's worker for its child and hands over the protocol's silence
   budget. It never retries.
 - `protocol::blocks` builds every block; no protocol builds one by hand.
+- A protocol says whether it names a thinking effort at all; the api asks that before it lets a
+  front end change one, so a host whose wire has no such field refuses the write instead of
+  accepting it silently.
 - The request half opens no database, reads no configuration file, and never names a tool.
 
 ## Callers

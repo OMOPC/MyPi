@@ -1,6 +1,6 @@
 //! What a zone asks the app to land on the session.
 
-pub use crate::ui::session::{ModelId, Retention};
+pub use crate::ui::session::{Effort, ModelId, Retention};
 
 /// Where a memo hangs: one session's blocks, or every session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +77,7 @@ pub enum Request {
     SetCwd(String),
     SwitchModel(ModelId),
     SetDefaultModel(ModelId),
+    SetEffort(Effort),
     Compact {
         retention: Option<Retention>,
         focus: Option<String>,

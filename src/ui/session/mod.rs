@@ -11,4 +11,4 @@ mod vocabulary;
 pub use packet::Packet;
 pub use session::Session;
 pub use structure::{Structure, Turn};
-pub use vocabulary::{ModelId, Retention};
+pub use vocabulary::{Effort, ModelId, Retention};

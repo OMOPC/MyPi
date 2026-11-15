@@ -40,6 +40,7 @@ pub(crate) fn post(api: &Api, conn: u64, viewer: &str, frame: &Frame) -> Result<
         "name" => post::name::apply(api, viewer, ask),
         "cwd" => post::cwd::apply(api, viewer, ask),
         "switch" => post::switch::apply(api, viewer, ask),
+        "effort" => post::effort::apply(api, viewer, ask),
         "delete" => post::delete::apply(api, viewer, ask),
         "interrupt" => post::interrupt::apply(api, viewer, ask),
         "mailbox" => post::mailbox::apply(api, conn, viewer, ask),

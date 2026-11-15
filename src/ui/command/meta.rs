@@ -12,6 +12,9 @@ pub enum Arg {
     Model,
     /// A profile name.
     Profile,
+    /// A thinking effort: one of `auto`, `low`, `high`, `max`.
+    Effort,
+
     /// A number. No candidates.
     Number,
     /// Free text. No candidates.

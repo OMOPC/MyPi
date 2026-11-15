@@ -4,8 +4,8 @@ use crate::ui::command::{self, CommandMeta};
 use crate::ui::session::ModelId;
 
 use super::{
-    Call, Done, cdp, compact, memo, model, name, new, prepare, profile, quit, resume, switch,
-    usage,
+    Call, Done, cdp, compact, effort, memo, model, name, new, prepare, profile, quit, resume,
+    switch, usage,
 };
 
 pub const TABLE: &[CommandMeta] = &[
@@ -13,6 +13,7 @@ pub const TABLE: &[CommandMeta] = &[
     cdp::META,
     compact::META,
     switch::META,
+    effort::META,
     model::META,
     profile::META,
     usage::META,
@@ -42,6 +43,7 @@ pub fn run(meta: &CommandMeta, call: &Call<'_>) -> Done {
         "/cdp" => cdp::run(call),
         "/compact" => compact::run(call),
         "/switch" => switch::run(call),
+        "/effort" => effort::run(call),
         "/model" => model::run(call),
         "/profile" => profile::run(call),
         "/usage" => usage::run(call),

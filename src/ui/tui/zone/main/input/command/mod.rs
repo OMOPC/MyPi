@@ -3,6 +3,7 @@
 mod call;
 mod cdp;
 mod compact;
+mod effort;
 mod memo;
 mod model;
 mod name;

@@ -53,9 +53,17 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
     } else {
         serde_json::to_value(&todo).map_err(|e| Refuse::Internal(e.to_string()))?
     };
+    // The effort is memory-only: the loop is the only place that knows it, and a fresh front
+    // end learns it here rather than from a row.
+    let effort = api
+        .ledger()
+        .effort(session)
+        .map(|effort| effort.as_str())
+        .unwrap_or("auto");
     Ok(json!({
         "structure": structure,
         "blocks": blocks,
         "todo": todo,
+        "effort": effort,
     }))
 }

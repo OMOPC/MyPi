@@ -64,6 +64,7 @@ pub(crate) fn run(
             stop: handle.stop.clone(),
             worker: handle.worker.clone(),
             live: inner.out.clone(),
+            effort: config.effort,
         }) {
             Ok(reply) => reply,
             Err(e) => {
@@ -190,6 +191,7 @@ fn laps(
             stop: handle.stop.clone(),
             worker: handle.worker.clone(),
             live: inner.out.clone(),
+            effort: config.effort,
         })?;
         if first_lap && first_turn {
             *baseline = Some(lap.usage.prompt);
@@ -267,6 +269,7 @@ fn laps(
                     tools: spec.tools,
                     manuals: spec.manuals,
                     compact: config.compact.clone(),
+                    effort: config.effort,
                     meta: Some(meta),
                     cwd: spec.cwd,
                 },

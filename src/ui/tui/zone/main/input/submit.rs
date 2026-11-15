@@ -223,6 +223,7 @@ fn door_of(request: &Request) -> Option<&'static str> {
         Request::Rename(_) => Some("name"),
         Request::SwitchModel(_) => Some("switch"),
         Request::SetDefaultModel(_) => Some("default_model"),
+        Request::SetEffort(_) => Some("effort"),
         Request::Compact { .. } => Some("compact"),
         _ => None,
     }

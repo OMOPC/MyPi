@@ -13,12 +13,12 @@ job/wake.rs             Wake, WakeSink, the command wake texts
 session/mod.rs          session types
 session/book.rs         Loop, Birth, Message, scheduler, turn start, bind, book_child, unbook, forget
 session/handle.rs       per-session state: the two configs, the cwd handle, mailbox, transcript, flags
-session/config.rs       the request side: provider, model, system, manuals, compact
+session/config.rs       the request side: provider, model, system, manuals, effort, compact
 session/jobs.rs         Slots (the wake router), the scheduler's values from config
 session/agent.rs        AgentRunner: books a child, waits for its turn, drops it
 session/settings.rs     fence and scrooge
 session/mailbox.rs      the wake queue, the one user slot, the wake wait
-session/change.rs       Model and Cwd
+session/change.rs       Model, Cwd, and Effort (memory only, no row)
 session/child.rs        a sub-session's draft, budget, answer path, submit flag, nudges
 session/source.rs       Source over storage's reader, plus the handles it builds on demand
 session/export.rs       Export: a full text out of the database as a file

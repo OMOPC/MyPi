@@ -15,7 +15,7 @@ use crate::server::agent::request::protocol::blocks;
 use crate::server::agent::request::protocol::stitch::Calls;
 use crate::server::agent::request::protocol::stream::{self, Budget};
 use crate::server::agent::request::protocol::{
-    Endpoint, Output, Protocol, ProtocolRequest, WireRequest, broken_calls, fault, silence,
+    Effort, Endpoint, Output, Protocol, ProtocolRequest, WireRequest, broken_calls, fault, silence,
 };
 
 pub struct Deepseek;
@@ -42,6 +42,13 @@ impl Protocol for Deepseek {
         );
         body.insert("stream".to_string(), json!(req.stream));
         body.insert("max_tokens".to_string(), json!(req.max_output_tokens));
+        // `Auto` names no rung: the field stays off the body and the host keeps its default.
+        if req.effort != Effort::Auto {
+            body.insert(
+                "reasoning_effort".to_string(),
+                json!(req.effort.as_str()),
+            );
+        }
         if !req.tools_json.as_array().is_some_and(Vec::is_empty) {
             body.insert("tools".to_string(), req.tools_json.as_ref().clone());
         }
@@ -64,6 +71,11 @@ impl Protocol for Deepseek {
 
     fn budget(&self) -> Budget {
         Budget::default()
+    }
+
+    /// This host's own body carries the effort ladder.
+    fn supports_effort(&self) -> bool {
+        true
     }
 
     fn decode(

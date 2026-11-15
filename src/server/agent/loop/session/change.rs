@@ -10,8 +10,13 @@ use crate::server::storage::{Row, Submit, Writer};
 /// One session-scoped change.
 #[derive(Debug, Clone)]
 pub enum Change {
-    Model { provider: String, model: String },
+    Model {
+        provider: String,
+        model: String,
+    },
     Cwd(PathBuf),
+    /// Purely in memory: an effort never reaches the rows.
+    Effort(crate::server::agent::request::Effort),
 }
 
 pub(crate) fn apply(
@@ -36,6 +41,9 @@ pub(crate) fn apply(
                     model: Some((provider, model)),
                 }],
             })?;
+        }
+        Change::Effort(effort) => {
+            handle.config_mut().effort = effort;
         }
         Change::Cwd(path) => {
             // `/cdp` asks only whether the directory exists; `cd` answers where it may stand.

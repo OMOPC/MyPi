@@ -72,9 +72,9 @@ InputZone
   the hire and the candidates never disagree.
 - A write's notice waits in `pending_notice` under its door name; `frame.rs` pops it when that door
   answers, and speaks only when the answer carries no error.
-- `deliver_event` decodes only the frames it named: `call meta`, `call config`, `call usage`,
-  `post cwd`, `post name`, `post switch`, `post default_model`, `subscribe compact`,
-  `subscribe submit`, and the app's `local` answers to a draft's writes. It declares no `stream`
+- `deliver_event` decodes only the frames it named: `call init`, `call meta`, `call config`,
+  `call usage`, `post cwd`, `post name`, `post switch`, `post effort`, `post default_model`,
+  `subscribe compact`, `subscribe submit`, and the app's `local` answers to a draft's writes. It declares no `stream`
   and no `notice`: the conversation's live frames are not its business.
 - `hear` takes `cwd`, `usage`, `tick`, `busy`, `prefill`, and `signal` — the slot taken and the
   fields another front end changed — and the statusline hears the rest.

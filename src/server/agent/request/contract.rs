@@ -74,6 +74,8 @@ pub struct LapInput {
     /// This session's worker: the child that owns its sockets.
     pub worker: Arc<SessionWorker>,
     pub live: Sender<Event>,
+    /// How hard this lap asks the model to think.
+    pub effort: Effort,
 }
 
 /// One lap's answer.
@@ -174,6 +176,38 @@ pub struct Block {
     pub duration_ms: Option<u64>,
 }
 
+/// How hard a session asks the model to think. Front ends spell it; request decides what it means.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Effort {
+    /// Ask for nothing and take the host's default.
+    #[default]
+    Auto,
+    Low,
+    High,
+    Max,
+}
+
+impl Effort {
+    /// Every rung, so parsing and the one list agree on a set.
+    const ALL: [Self; 4] = [Self::Auto, Self::Low, Self::High, Self::Max];
+
+    /// The one spelling the wire and every front end share.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Low => "low",
+            Self::High => "high",
+            Self::Max => "max",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        let raw = raw.trim().to_ascii_lowercase();
+        Self::ALL
+            .into_iter()
+            .find(|effort| effort.as_str() == raw.as_str())
+    }
+}
 /// One spilled output and the citation it goes by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Artifact {
@@ -272,6 +306,8 @@ pub struct CompactInput {
     /// This session's worker: the child that owns its sockets.
     pub worker: Arc<SessionWorker>,
     pub live: Sender<Event>,
+    /// How hard this compaction asks the model to think.
+    pub effort: Effort,
 }
 
 /// What a compaction returns.

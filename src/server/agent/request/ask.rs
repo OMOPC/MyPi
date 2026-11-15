@@ -101,6 +101,7 @@ impl Ask for Request {
             &input.system,
             &stored[..],
             input.tools_json,
+            input.effort,
         )?;
 
         let line = Line::new(input.live.clone(), input.session);
@@ -207,6 +208,7 @@ impl Ask for Request {
             &plan.region,
             &instruction,
             input.tools_json,
+            input.effort,
         )?;
 
         let line = Line::new(input.live.clone(), input.session);

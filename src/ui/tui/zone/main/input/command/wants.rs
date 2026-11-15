@@ -7,7 +7,7 @@ pub fn wants(before: &str, word: &str) -> bool {
     if before.starts_with('/') && !before.contains('\n') {
         return match slot(before) {
             None => true,
-            Some(arg) => matches!(arg, Some(Arg::Path | Arg::Model | Arg::Profile)),
+            Some(arg) => matches!(arg, Some(Arg::Path | Arg::Model | Arg::Profile | Arg::Effort)),
         };
     }
     crate::ui::command::path_shaped(word)

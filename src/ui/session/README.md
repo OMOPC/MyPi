@@ -52,7 +52,7 @@ send(kind, name, content, answer)  bye()
 
 Every door has one named action in `actions.rs` (`init`, `meta`, `usage`, `pools`, `config`,
 `blocks`, `sessions`, `watch`, `submit`, `interrupt`, `write_mailbox`, `clear_mailbox`, `rename`,
-`set_cwd`, `switch_model`, `set_default_model`, `compact`, `delete`, `rewind`). The door's kind and
+`set_cwd`, `switch_model`, `set_default_model`, `set_effort`, `compact`, `delete`, `rewind`). The door's kind and
 name live there; a front end asks for the action, never for the door. Each action fills the attached
 session in unless the caller named one, and expects a reply unless it is `watch`.
 

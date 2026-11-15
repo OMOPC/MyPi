@@ -5,7 +5,7 @@
 ```text
 CommandMeta { name, aliases, args, detail: Text }
 Text { en, zh }
-Arg = Path | Model | Profile | Number | Text
+Arg = Path | Model | Profile | Effort | Number | Text
 Candidate { value, detail }
 
 lookup(table, name)        -> Option<&CommandMeta>   // name or alias, with its slash
