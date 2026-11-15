@@ -11,6 +11,7 @@ use crate::server::agent::tools::summary;
 
 const QUERY: usize = 0;
 const REGEX: usize = 1;
+const SCOPE: usize = 2;
 
 const PARAMS: &[Param] = &[
     Param::new(
@@ -24,6 +25,13 @@ const PARAMS: &[Param] = &[
         "Read `query` as a pattern instead of as text",
         "false",
     ),
+    Param::new(
+        "scope",
+        Kind::TextList,
+        "Directories to search, relative to the crate root and inside its `src/`; omitted, the \
+         whole `src/`. A directory that is missing or outside `src/` is skipped and named at the \
+         end of the answer.",
+    ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
@@ -31,8 +39,9 @@ pub(crate) const TOOL: Tool = Tool {
     about: "Search the crate's own src/ for a word. Each hit comes with the Rust item it sits in, \
             and `A::b` also reports where `A` declares `b` (a type's members, or a module's item). \
             Files it shows are stamped, so `splice` works on them at once.",
-    fields: "`query` is the text; with `regex` off every character stands for itself. Hits and \
-             excerpts carry line numbers. Only .rs files under the crate's src/ are read.",
+    fields: "`query` is the text; with `regex` off every character stands for itself. `scope` \
+             narrows the search to directories under the crate's `src/`. Hits and excerpts carry \
+             line numbers. Only .rs files under the crate's src/ are read.",
     params: PARAMS,
     run,
     summary,
@@ -48,9 +57,18 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     } else {
         scan::Matcher::text(&query)
     };
-    let files = scan::collect(&zone, &matcher);
+    let (dirs, misses) = scan::roots(&zone, &args.str_list(SCOPE)?);
+    let files = scan::collect(&dirs, &matcher);
     let mode = if regex { "regex" } else { "literal" };
-    let (text, shown) = render::answer(&query, mode, &files, &zone, env.grep, env.limits.lines);
+    let (text, shown) = render::answer(
+        &query,
+        mode,
+        &files,
+        &zone,
+        env.grep,
+        env.limits.lines,
+        &misses,
+    );
     render::stamp(&mut env.seen, &files, &shown);
     Ok(ToolOutput::text(text))
 }

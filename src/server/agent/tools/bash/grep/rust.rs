@@ -84,6 +84,15 @@ impl Layout {
             .collect()
     }
 
+    /// The items no other item holds.
+    pub(crate) fn roots(&self) -> Vec<usize> {
+        self.parent
+            .iter()
+            .enumerate()
+            .filter(|(_, parent)| parent.is_none())
+            .map(|(at, _)| at)
+            .collect()
+    }
 }
 
 /// One file's items, in the order their headers appear.

@@ -1,16 +1,21 @@
-//! The walk: the crate's own `src/`, the files under it, and the lines that match.
+//! The walk: the crate's own `src/`, the directories a call narrows it to, and the lines that match.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
 
 use super::rust::{self, Layout};
+use crate::server::agent::tools::workspace::canonicalize_lenient;
 
 /// A file this big is not read line by line.
 const LARGE: u64 = 4 * 1024 * 1024;
 
 /// Directories inside `src/` that are never source.
 const SKIP: &[&str] = &["target", "node_modules"];
+
+/// Threads one answer may read its files on.
+const THREADS: usize = 8;
 
 /// Where the crate stands: its root, and the source tree under it.
 pub(crate) struct Zone {
@@ -37,6 +42,40 @@ pub(crate) fn zone(cwd: &Path) -> Result<Zone> {
         "no Cargo.toml above {}; grep reads a crate's own src/",
         cwd.display()
     ))
+}
+
+/// The directories to read, and one line per scope entry that could not be used.
+pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<String>) {
+    if scope.is_empty() {
+        return (vec![zone.src.clone()], Vec::new());
+    }
+    let src = canonicalize_lenient(&zone.src);
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    let mut misses: Vec<String> = Vec::new();
+    for entry in scope {
+        let raw = entry.trim();
+        if raw.is_empty() {
+            misses.push("[scope] (empty): no path".to_string());
+            continue;
+        }
+        let named = Path::new(raw);
+        let joined = if named.is_absolute() {
+            named.to_path_buf()
+        } else {
+            zone.root.join(named)
+        };
+        let real = canonicalize_lenient(&joined);
+        if !real.exists() {
+            misses.push(format!("[scope] {raw}: does not exist"));
+        } else if !real.is_dir() {
+            misses.push(format!("[scope] {raw}: is not a directory"));
+        } else if !real.starts_with(&src) {
+            misses.push(format!("[scope] {raw}: is outside src/"));
+        } else if !dirs.contains(&real) {
+            dirs.push(real);
+        }
+    }
+    (dirs, misses)
 }
 
 /// What the call looks for.
@@ -74,40 +113,64 @@ pub(crate) struct File {
     pub layout: Layout,
 }
 
-/// Every `.rs` file under the crate's `src/`, with the lines that match.
-pub(crate) fn collect(zone: &Zone, matcher: &Matcher) -> Vec<File> {
-    let mut paths = Vec::new();
-    sources(&zone.src, &mut paths);
-    let mut files = Vec::with_capacity(paths.len());
-    for path in paths {
-        let Ok(size) = std::fs::metadata(&path).map(|meta| meta.len()) else {
-            continue;
-        };
-        if size > LARGE {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let hits: Vec<usize> = text
-            .lines()
-            .enumerate()
-            .filter(|(_, line)| matcher.hits(line))
-            .map(|(at, _)| at)
-            .collect();
-        let layout = rust::analyse(&text);
-        files.push(File {
-            path,
-            text,
-            hits,
-            layout,
-        });
+/// Every `.rs` file under these directories, with the lines that match; files are read in parallel.
+pub(crate) fn collect(dirs: &[PathBuf], matcher: &Matcher) -> Vec<File> {
+    let mut named: BTreeSet<PathBuf> = BTreeSet::new();
+    for dir in dirs {
+        sources(dir, &mut named);
     }
-    files
+    let paths: Vec<PathBuf> = named.into_iter().collect();
+    if paths.len() <= 1 {
+        return paths
+            .iter()
+            .filter_map(|path| read(path, matcher))
+            .collect();
+    }
+    let batch = paths.len().div_ceil(THREADS).max(1);
+    let mut out: Vec<File> = Vec::with_capacity(paths.len());
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = paths
+            .chunks(batch)
+            .map(|chunk| scope.spawn(move || read_all(chunk, matcher)))
+            .collect();
+        for handle in handles {
+            out.extend(handle.join().unwrap_or_default());
+        }
+    });
+    out
+}
+
+fn read_all(paths: &[PathBuf], matcher: &Matcher) -> Vec<File> {
+    paths
+        .iter()
+        .filter_map(|path| read(path, matcher))
+        .collect()
+}
+
+/// One file's hits; a file with none keeps no layout, which is the expensive half.
+fn read(path: &Path, matcher: &Matcher) -> Option<File> {
+    let size = std::fs::metadata(path).ok()?.len();
+    if size > LARGE {
+        return None;
+    }
+    let text = std::fs::read_to_string(path).ok()?;
+    let hits: Vec<usize> = text
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| matcher.hits(line))
+        .map(|(at, _)| at)
+        .collect();
+    let layout = rust::analyse(&text);
+    Some(File {
+        path: path.to_path_buf(),
+        text,
+        hits,
+        layout,
+    })
 }
 
 /// One directory's `.rs` files, recursively; dot entries and build trees stay out.
-fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
+fn sources(dir: &Path, out: &mut BTreeSet<PathBuf>) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
@@ -124,7 +187,7 @@ fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
             }
             sources(&entry.path(), out);
         } else if kind.is_file() && entry.path().extension().is_some_and(|e| e == "rs") {
-            out.push(entry.path());
+            out.insert(entry.path());
         }
     }
 }

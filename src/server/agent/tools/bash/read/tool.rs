@@ -30,11 +30,11 @@ const MAX_BYTES: usize = 64 * 1024;
 const FILE_FIELDS: &[Param] = &[
     Param::new("path", Kind::Text, "File or directory path."),
     Param::df("offset", Kind::Line, "First line to read (1-based).", "1"),
-    Param::df(
+    Param::new(
         "limit",
         Kind::Number,
-        "Max lines this file may take.",
-        "200",
+        "Max lines this file may take; a `.rs` file answers 800 when this is left out, anything \
+         else 200, and neither cap moves.",
     ),
 ];
 
@@ -46,13 +46,14 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "read",
-    about: "Read files or directories; .rs files answer with anchor line numbers under splice, a \
-            4x budget, and a module view on their entry file.",
+    about: "Read files or directories; .rs files answer with anchor line numbers under splice, an \
+            800-line budget, and a module view on their entry file.",
     fields: "`files` takes one item per path, with `offset` (1-based, default 1) and `limit` \
-             (default 200). The normal budget is 200 lines and 64 KiB. A file answers its lines. A \
-             directory answers its immediate children, files with their line counts and \
-             directories by name, then opens each child one level further, folding a directory \
-             of ten files or more into counts. The session root carries a bonus.",
+             (default: 800 for a `.rs` file, 200 otherwise, never above that file's own cap). A \
+             file answers its lines. A directory answers its immediate children, files with \
+             their line counts and directories by name, then opens each child one level further, \
+             folding a directory of ten files or more into counts. The session root carries a \
+             bonus.",
     params: PARAMS,
     run,
     summary,
@@ -119,6 +120,17 @@ fn resolved(env: &Env, item: &Item) -> Result<PathBuf> {
     env.workspace.resolve_any(&raw, true)
 }
 
+/// The lines one item may take: the file's own cap, or what the call named when that is smaller.
+fn window(item: &Item, cap: usize) -> Result<usize> {
+    match item.opt_int("limit")? {
+        None => Ok(cap),
+        Some(n) => {
+            anyhow::ensure!(n >= 1, "`{}.limit` must be at least 1", item.label());
+            Ok((n as usize).min(cap))
+        }
+    }
+}
+
 /// One path's answer: a listing, or a body with its module view.
 fn block(
     env: &mut Env,
@@ -129,9 +141,6 @@ fn block(
 ) -> Result<String> {
     let raw = item.text("path")?;
     let offset = item.line("offset")?;
-    let limit = item.int("limit")?;
-    anyhow::ensure!(limit >= 1, "`{}.limit` must be at least 1", item.label());
-    let limit = limit as usize;
 
     if path.is_dir() {
         let text = dir::listing(path, &env.workspace.cwd(), !headed)?;
@@ -144,6 +153,7 @@ fn block(
 
     let splice = env.allows(SPLICE.name);
     let rust = path.extension().and_then(|e| e.to_str()) == Some("rs");
+    let limit = window(item, if rust { MAX_LINES_RS } else { MAX_LINES })?;
     let whole = if rust {
         std::fs::read_to_string(path).ok()
     } else {
@@ -166,7 +176,7 @@ fn block(
             assemble(
                 offset,
                 total,
-                limit.min(MAX_LINES_RS),
+                limit,
                 lines.into_iter().skip(offset.saturating_sub(1)),
                 &numbers,
                 MAX_BYTES_RS,
@@ -178,7 +188,7 @@ fn block(
             assemble(
                 offset,
                 streamed.total,
-                limit.min(MAX_LINES),
+                limit,
                 streamed.lines.iter().map(String::as_str),
                 &numbers,
                 MAX_BYTES,

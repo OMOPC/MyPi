@@ -4,11 +4,12 @@ use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
+use crate::server::agent::tools::bash::read::sparse;
 use crate::server::agent::tools::contract::env::{GrepLimits, Seen, Stamp};
 use crate::server::agent::tools::summary;
 
 use super::rust::{self, Item};
-use super::scan;
+use super::{outline, scan};
 
 /// One answered call's text, and the files whose lines it showed.
 pub(crate) fn answer(
@@ -18,6 +19,7 @@ pub(crate) fn answer(
     zone: &scan::Zone,
     caps: GrepLimits,
     budget: usize,
+    misses: &[String],
 ) -> (String, BTreeSet<usize>) {
     let budget = budget.max(24);
     let total: usize = files.iter().map(|file| file.hits.len()).sum();
@@ -52,6 +54,10 @@ pub(crate) fn answer(
     out.push('\n');
     let left = budget.saturating_sub(out.lines().count()).max(12);
     out.push_str(&hits(files, zone, tier, caps, left, &mut shown));
+    for miss in misses {
+        out.push_str(miss);
+        out.push('\n');
+    }
     (out, shown)
 }
 
@@ -74,8 +80,7 @@ fn type_section(
             if !matches!(item.kind, "impl" | "trait" | "struct" | "enum" | "union") {
                 continue;
             }
-            let holds = item.name.as_deref() == Some(a)
-                || item.trait_name.as_deref() == Some(a);
+            let holds = item.name.as_deref() == Some(a) || item.trait_name.as_deref() == Some(a);
             if !holds {
                 continue;
             }
@@ -170,7 +175,8 @@ fn module_section(
                     if item.name.as_deref() != Some(b) || item.kind == "use" {
                         continue;
                     }
-                    if other == at && inline
+                    if other == at
+                        && inline
                         && !(item.head > declaration.open && item.close <= declaration.close)
                     {
                         continue;
@@ -248,7 +254,8 @@ fn x_ray(
             if item.kind != "impl" {
                 continue;
             }
-            let mine = item.name.as_deref() == Some(name) || item.trait_name.as_deref() == Some(name);
+            let mine =
+                item.name.as_deref() == Some(name) || item.trait_name.as_deref() == Some(name);
             if !mine {
                 continue;
             }
@@ -283,17 +290,12 @@ fn x_ray(
 
 /// One member as a row: its span, and its signature.
 fn member_row(member: &Item) -> String {
-    format!(
-        "{}..{}  {}",
-        member.head + 1,
-        member.close + 1,
-        member.sig
-    )
+    format!("{}..{}  {}", member.head + 1, member.close + 1, member.sig)
 }
 
 // ---- the hits ----
 
-/// Hit lines, at the density the total allows: whole items, then one line each, then counts.
+/// Hit lines, at the density the total allows: whole items, the file's skeleton, then counts.
 fn hits(
     files: &[scan::File],
     zone: &scan::Zone,
@@ -331,23 +333,33 @@ fn hits(
         }
         let raw: Vec<&str> = file.text.lines().collect();
         let label = rel(zone, &file.path);
+        if tier == 2 {
+            let block = outline::file(file, &raw, &label, caps);
+            let rows = block.lines().count();
+            if rows >= left {
+                out.push_str(&format!(
+                    "[+{} more files; narrow the query]\n",
+                    touched_after(files, at)
+                ));
+                return out;
+            }
+            left -= rows;
+            covered += file.hits.len();
+            shown.insert(at);
+            out.push_str(&block);
+            continue;
+        }
         // Two hits inside one item hand over the same lines once; the second is already visible.
         let mut shown_span: Option<(usize, usize)> = None;
         for &line in file.hits.iter().take(caps.file) {
-            if tier == 1 {
-                let span = excerpt(file, line);
-                if shown_span == Some(span) {
-                    covered += 1;
-                    shown.insert(at);
-                    continue;
-                }
-                shown_span = Some(span);
+            let span = excerpt(file, line);
+            if shown_span == Some(span) {
+                covered += 1;
+                shown.insert(at);
+                continue;
             }
-            let block = if tier == 1 {
-                block(file, &raw, &label, line)
-            } else {
-                line_block(file, &raw, &label, line)
-            };
+            shown_span = Some(span);
+            let block = block(file, &raw, &label, line);
             let rows = block.lines().count();
             if rows >= left {
                 out.push_str(&format!(
@@ -371,6 +383,15 @@ fn hits(
     out
 }
 
+/// Files from `at` on that still hold hits: what a budget cut left undrawn.
+fn touched_after(files: &[scan::File], at: usize) -> usize {
+    files
+        .iter()
+        .skip(at)
+        .filter(|file| !file.hits.is_empty())
+        .count()
+}
+
 /// One hit with the item it sits in, whole when the item is short enough.
 fn block(file: &scan::File, raw: &[&str], label: &str, line: usize) -> String {
     let mut out = format!("{label}:{}\n", line + 1);
@@ -386,33 +407,18 @@ fn block(file: &scan::File, raw: &[&str], label: &str, line: usize) -> String {
         out.push_str(&format!("  in: {}\n", parts.join(" > ")));
     }
     let (from, to) = excerpt(file, line);
-    let width = raw.len().to_string().len();
+    let width = (raw.len().to_string().len()).max(3);
+    let anchors = sparse::anchors(&file.text);
     for index in from..=to {
-        out.push_str(&format!(
-            "{:>width$}|{}\n",
-            index + 1,
-            clip_line(raw[index]),
-            width = width
-        ));
+        let numbered = index == line || anchors.get(index).copied().unwrap_or(false);
+        let number = if numbered {
+            format!("{:>width$}", index + 1)
+        } else {
+            " ".repeat(width)
+        };
+        out.push_str(&format!("{number}|{}\n", clip_line(raw[index])));
     }
     out
-}
-
-/// One hit as a single line, with the item it sits in.
-fn line_block(file: &scan::File, raw: &[&str], label: &str, line: usize) -> String {
-    let scope = match file.layout.innermost(line) {
-        Some(index) => {
-            let item = &file.layout.items[index];
-            format!("  [in {} {}..{}]", item.label(), item.head + 1, item.close + 1)
-        }
-        None => String::new(),
-    };
-    format!(
-        "  {label}:{}|{}{}\n",
-        line + 1,
-        summary::clip(raw[line], 160),
-        scope
-    )
 }
 
 /// The lines one hit hands over: its item when that is short, else a window around it.

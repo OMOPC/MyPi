@@ -25,14 +25,15 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/bash/segment.rs` | the separator set and the segment heads; the guard and the alias expansion share both |
 | `bash/bash/guard.rs` | the command classifier: `normalize`, `classify`, `Verdict`, `RuleHit` |
 | `bash/bash/shell.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc` |
-| `bash/read/{mod,tool}.rs` | `read`: the path array, directories, the per-kind budgets, the module view |
+| `bash/read/{mod,tool}.rs` | `read`: the path array, directories, the per-kind budgets and the per-file `limit` under them, the module view |
 | `bash/read/sparse.rs` | the sparse anchor scan: comments and literals blanked, block edges numbered |
 | `bash/read/hub.rs` | the module graph: entry files, exports, the edges inside one directory, the `pub use` index, the upward importer scan |
 | `bash/read/dir.rs` | directory listings: one level, `src/` a section of its own, entry counts, junk named but never opened |
-| `bash/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its two parameters, its summary |
-| `bash/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the `.rs` files under its `src/`, the matcher, each file's hits |
+| `bash/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its three parameters, its summary |
+| `bash/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the `.rs` files under them read in parallel, the matcher, each file's hits |
 | `bash/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
-| `bash/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, and the stamps |
+| `bash/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
+| `bash/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
 | `bash/write/{mod,tool}.rs` | `write` |
 | `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
 | `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the batch's calls on one file merged into one write; `mass_text` and `parse_range` for `final` |

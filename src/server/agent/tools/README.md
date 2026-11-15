@@ -93,7 +93,8 @@ that tool needs (the tool checks them, not the schema).
 
 | tool | parameters, in index order |
 |---|---|
-| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (default 200); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
+| `grep` | `query` always, `regex` (default false), `scope` (directories under the crate's `src/`, relative to the crate root; omitted, the whole `src/`) |
+| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
 | `write` | `path` always, `content` always |
@@ -128,10 +129,10 @@ so a batch is one write instead of several that would each need the file read ag
 - Items are isolated: one item's failure is written where that item would have answered, and the
   rest still run and still answer. The call fails when any item failed, and `fail` counts them.
 - Every item states its own outcome in `items`, aligned with the arguments' order: the front end
-  never reads a status out of the text.
 - `read` budgets belong to each path, not to the call: a Rust file gets its own 800-line and
-  256 KiB allowance, anything else 200 lines and 64 KiB; a line over the byte cap is cut where the
-  characters still fit, and that file's status line names the byte cap with no offset.
+  256 KiB allowance, anything else 200 lines and 64 KiB; `limit` bounds the window below that
+  allowance and never above it; a line over the byte cap is cut where the characters still fit,
+  and that file's status line names the byte cap with no offset.
 - A query operation — `alias list`, `kairos list/status/result/cancel`, `mcp list` — takes no
   array and refuses one.
 - A batch whose items produce structured payloads answers a memo array, and the history cards
@@ -364,9 +365,9 @@ the session's directory, and only `.rs` files under its `src/` are read: no igno
 external binary, so the answer is the same on every platform. `target/` is out of reach by
 construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the root documents — is one
 `read` away and never searched.
-
-The query is text unless `regex` is on: every character stands for itself, so `AppState::new(` is a
-string rather than a broken pattern, and `foo.bar` matches neither `foo_bar` nor `fooXbar`. A
+construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the root documents — is one
+`read` away and never searched. `scope` narrows the walk to named directories under `src/`, and the
+files of one answer are read in parallel.
 pattern that does not compile is refused with the engine's own position and a reminder that the
 switch is off by default.
 
@@ -390,12 +391,19 @@ Three sections precede the hits:
   caps.
 
 Hits are answered at the density their count allows, by `deepMax` and `foldMax`. Up to `deepMax`,
+Hits are answered at the density their count allows, by `deepMax` and `foldMax`. Up to `deepMax`,
 each hit comes with its innermost item whole — or a six-line window when that item is longer than
-forty lines — under an `in:` breadcrumb of every item around it, every excerpt line numbered so a
-`splice` can name its range. Up to `foldMax`, each hit is one line with the innermost item's span.
+forty lines — under an `in:` breadcrumb of every item around it. An excerpt line carries its
+number only when it is a hit or an anchor of `read`'s own sparse scan; every other line keeps the
+gutter blank, so a number means a line `splice` may start or end on. Up to `foldMax`, each file
+answers as its skeleton: one row per item, the hit lines under the item that holds them, and a
+file whose hits fall in more than one item answers as its whole top level with those items opened.
 Past that, only per-file counts and a line saying the query is too wide. `fileMax` caps one file's
 hits in one answer. Every cap that bites states what it left out; nothing is dropped silently.
 
+`scope` narrows the search to directories under the crate's `src/`, named relative to the crate
+root. A directory that is missing, is not a directory, or stands outside `src/` is skipped while
+the rest still run, and the answer ends with one `[scope]` line per such entry naming the reason.
 Every file whose lines an answer showed is stamped in `env.seen` — line count and content hash, the
 stamp `read` writes — so `splice` works on it without a second `read`.
 
