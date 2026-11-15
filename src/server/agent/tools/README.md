@@ -447,9 +447,9 @@ replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.
 
 ### splice
 
-A Rust file goes through rustfmt, and the formatting is also the gate: a text the parser refuses is
-never written. The whole file is formatted, not the changed lines, so every line number in the
-answer is a line number on disk.
+A Rust file goes through rustfmt, and the formatting is also the gate: a change that makes the
+parser refuse the file is not written. The whole file is formatted, not the changed lines, so every
+line number in the answer is a line number on disk.
 
 The ranges are applied to one snapshot, from the bottom up, so the lines above keep their numbers
 while they are still being used. Two ranges of one call may not overlap; that is the model
@@ -457,11 +457,12 @@ contradicting itself and the file is left alone. Every `splice` call on the same
 is one write: the calls are merged in arrival order, and a range that overlaps one from an earlier
 call is refused while the rest still land.
 
-One pass applies everything. When the file does not parse, the changes are re-applied from the file
-as it was, one station at a time from the bottom up: each station adds one change and the whole file
-is parsed again; the stations that parse stay, and the one that does not is left out with its own
-error. That is how a broken range is named without guessing from an error line, which a missing
-brace would put anywhere below it.
+One pass applies everything. When the file does not parse, each change is tried on its own against
+the file as it was, so the one that breaks it is named without reading the parser's line — a missing
+brace puts that line anywhere below the change, never on it. What survives alone is then applied
+together; a change that parses alone but not beside the others is refused as company, not as syntax.
+A file that did not parse before the change cannot judge any block: every change is written
+unformatted, and the answer says so.
 
 Every parse is one `rustfmt` run over stdin. The binary is looked for beside this executable first,
 then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
@@ -484,47 +485,53 @@ coordinates that moved.
 
 #### splice's answer
 
-The answer carries the file's skeleton at its new line numbers, then the seam each change sits in:
+The first line is the verdict — `OK`, `PARTLY FAILED, LINES SHIFTED`, or `FAILED, NOTHING WRITTEN` —
+then the file's length. Every edit left out follows, then every edit written:
 
 ```text
-[Splice OK] 2 edit(s) applied, formatted by rustfmt; 24 lines: /p/src/foo.rs
---- Skeleton (post-format line numbers) ---
-   3..  3 | use std::fmt;
-   5..  7 | pub struct Greeter
-   9.. 17 | impl Greeter <- modified
-      10.. 12 | pub fn new() -> Self <- edit 1
-      14.. 16 | pub fn greet(&self)
-  19.. 21 | pub fn main()
---- edit 1 · was line 11 · now 11..11 ---
+[Splice] PARTLY FAILED, LINES SHIFTED · now 152 lines
+/p/src/mod.rs
+
+[!] edit 2 · 84-86
+  - 84 | pub tools: Arc<Value>,
+  - 86 | }
+  +  1 | pub messages: Vec<WireMessage>,
+  +  6 | }
+  ! unexpected closing delimiter: `}`
+
+[+] edit 1 · 3..9 in impl Greeter > fn greet
+  ! line 3: mismatched types
+
+[!] check · 2 error(s) elsewhere, none of them in these edits
+  src/server/agent/loop/turn/cycle.rs:119  expected `;`
 ```
 
-The change's own top-level block is expanded to its items; every other block is one line. Seams
-show two lines above and two below, with a long change folded in the middle. The whole outline is
-capped so an answer stays small; the seams stop when the cap is reached.
+A refused edit shows the lines it takes and the block it would have put there, minus and plus, each
+numbered where `read` would number it; the block counts inside itself. Both sides fold in the middle
+past what one answer may take. Its range is the one the file holds now, found by content after the
+other edits moved the lines; a range that cannot be found says so rather than printing a guess.
 
-A change left out is expanded instead: its range, the line of its own block that broke, what the
-parser said, and the block exactly as the model wrote it. The calls of one file answer in arrival
-order, and only the one that ran the write carries the skeleton; the others carry their own ranges
-and refusals.
+A written edit takes one line: where it landed after formatting, and the item holding that line,
+outermost first.
 
 A stop lands in one of two places, and the answer says which. Before the write, the formatter is
 killed, nothing reaches the file, and the call answers that the file is unchanged. After the write,
 the change stands and the type check is skipped, so the answer says the file was written and not
 checked.
 
-The compiler gets the last word. Once the write is on disk and the file's lock is released, the crate
-the file belongs to is type-checked, and what came back is appended to the answer of the call that
-ran the write — only when there is something to say. Errors in the changed file come first, every
-other file's after; each carries the item it sits in, the lines around it, the compiler's message
-and its suggestion. The check is bounded: a crate still compiling when the deadline comes is dropped
-and the answer says so, rather than holding the call.
+The compiler gets a line, not a block. Once the write is on disk and the file's lock is released,
+the crate the file belongs to is type-checked. A fault on a written edit's own lines hangs under that
+edit; every other fault is counted in one line saying none of them belong to these changes. The check
+is bounded: a crate still compiling when the deadline comes says so, rather than holding the call.
+
+A file that did not parse before the change cannot judge any block, so every edit is written
+unformatted and the answer says so before anything else:
 
 ```text
-[Splice Partial] 2/3 edits applied, 1 left out, formatted by rustfmt; 21 lines: /p/src/foo.rs
---- edit 2 left out · was line 14 ---
-your block, line 2: expected `;`, found keyword `self`
-   1 |     pub fn three(&self) -> u8 {
-   2 |         self.x + 2
+[Splice] WRITTEN, FILE ALREADY BROKEN · now 347 lines
+/p/src/foo.rs
+
+[i] the file did not parse before this change (line 164): unexpected closing delimiter: `}`; every edit was written unformatted
 ```
 
 ### edit's and splice's memo
@@ -549,8 +556,9 @@ starts after a blank line, a comment or an attribute; failing that, the nearest 
 never end an item, and an item's own closing brace belongs to it. The front end renders the excerpt,
 signs the changed lines, and paints the rest.
 
-`splice`'s memo is one segment per range, in the call's order: the old lines it took and the lines
-that stand there now, numbered on both sides. A range left out carries its block and why instead.
+`splice`'s memo is one segment per range, in the call's order: the lines it took and the lines that
+stand there now, numbered on both sides. A range left out carries the lines it takes as they now
+read, its block, and what stopped it; its `atLine` is the line the range must name on a retry.
 Segments that are not neighbours are drawn apart, and the card folds what it does not need.
 
 `edit`'s new line numbers, counts and the shift after the change are the front end's arithmetic.

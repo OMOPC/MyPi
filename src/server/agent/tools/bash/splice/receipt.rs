@@ -1,234 +1,328 @@
-//! What the model reads back: the file's skeleton at its new line numbers, the seams the changes
-//! sit in, and every change that was left out with the text that caused it.
+//! What the model reads back: the edits that were left out, each with the lines it takes and the
+//! block it puts there, then the ones that were written, each at the lines it landed on.
+//!
+//! A line number here is a global one only where `read` would number that line; a block is
+//! numbered inside itself. Nothing else is printed.
 
 use serde_json::{Value, json};
 
-use super::edit::{Edit, Place};
-use super::fmt::Broken;
-use crate::server::agent::tools::bash::read::sparse;
-use crate::server::agent::tools::bash::skeleton;
+use super::edit::Place;
+use crate::server::agent::tools::bash::gate::Broken;
 
-/// How many lines the skeleton and the seams may take together.
-const OUTLINE_LINES: usize = 40;
+/// How many lines one side of a diff shows before its middle is folded away.
+const SIDE: usize = 12;
 
-/// Why one change was left out of the write.
+/// How wide one source line reads inside a diff.
+const WIDE: usize = 140;
+
+/// Why one edit was left out of the write.
+#[derive(Debug, Clone)]
 pub(crate) enum Why {
-    /// The formatter could not make sense of what the file became.
-    Broken(Broken),
+    /// The file stopped parsing once this block was in it; the formatter's own words.
+    Syntax(String),
 
-    /// It fights an earlier change for the same lines.
-    Clash(String),
+    /// It fights an earlier splice call on this file for the same lines.
+    Clash,
+
+    /// It parses on its own, but not beside the other edits of this message.
+    Conflict,
 }
 
 impl Why {
-    /// What a model has to read.
-    fn text(&self) -> &str {
+    fn says(&self) -> String {
         match self {
-            Why::Broken(why) => &why.message,
-            Why::Clash(why) => why,
+            Why::Syntax(why) => why.clone(),
+            Why::Clash => "overlaps an earlier splice call on this file".to_string(),
+            Why::Conflict => "parses on its own, not beside the other edits here".to_string(),
         }
     }
 }
 
-/// One change left out, in its own call's numbering.
-pub(crate) struct Rejected {
-    /// Its position among this call's `edits`, 0-based.
+/// One edit of one call, as that call's answer shows it.
+pub(crate) struct Row {
+    /// Which item of the call's `edits`, 1-based.
     pub index: usize,
-    pub why: Why,
+    /// The first line it named, 1-based, in the file as it was before the write.
+    pub from: usize,
+    pub state: State,
 }
 
-/// The receipt and the memo a front end draws from.
-#[allow(clippy::too_many_arguments)]
+pub(crate) enum State {
+    /// It was written: where it landed, the lines it took and the ones that stand there now.
+    Applied {
+        at: Place,
+        old: Vec<String>,
+        new: Vec<String>,
+        /// The item holding it, outermost first: `impl X for Y > fn z`.
+        item: Option<String>,
+        faults: Vec<String>,
+    },
+
+    /// It was left out: where its own lines sit now, and the block it would have put there.
+    Refused {
+        at: Place,
+        taken: Vec<String>,
+        block: Vec<String>,
+        why: Why,
+        faults: Vec<String>,
+    },
+}
+
+/// The answer's text and the memo a front end draws from.
 pub(crate) fn build(
-    base: &str,
-    text: &str,
-    edits: &[Edit],
-    kept: &[usize],
-    blocks: &[Place],
-    rejected: &[Rejected],
     path: &str,
-    rust: bool,
-    outline: bool,
     after: usize,
+    anchors: &[bool],
+    rows: &[Row],
+    bare: Option<&Broken>,
+    elsewhere: &[String],
+    note: Option<&str>,
 ) -> (String, Value) {
-    let mut head = if rejected.is_empty() {
-        format!("[Splice OK] {} edit(s) applied", kept.len())
-    } else {
-        format!(
-            "[Splice Partial] {}/{} edits applied, {} left out",
-            kept.len(),
-            edits.len(),
-            rejected.len()
-        )
-    };
-    if rust {
-        head.push_str(", formatted by rustfmt");
+    let landed = rows
+        .iter()
+        .filter(|row| matches!(row.state, State::Applied { .. }))
+        .count();
+
+    let mut out = vec![head(landed, rows.len(), after, bare), path.to_string()];
+    let width = after.to_string().len().max(2);
+    let mut sections: Vec<String> = Vec::new();
+    if let Some(why) = bare {
+        sections.push(bare_note(why));
     }
-    head.push_str(&format!("; {after} lines: {path}"));
-
-    let mut out = vec![head];
-    if outline && !kept.is_empty() {
-        let raw: Vec<&str> = text.lines().collect();
-        let code = sparse::stripped(text);
-        let closes = skeleton::closes(&code);
-        let top = skeleton::items(&raw, &code, &closes, 0, raw.len().saturating_sub(1));
-        let width = after.to_string().len().max(3);
-
-        let active = kept.iter().find_map(|index| {
-            let at = blocks.get(*index).copied().flatten()?.0;
-            top.iter()
-                .position(|block| block.start < at && at <= block.end + 1)
-        });
-
-        out.push("--- Skeleton (post-format line numbers) ---".to_string());
-        let mut rows: Vec<String> = Vec::new();
-        for (at, block) in top.iter().enumerate() {
-            let mark = if active == Some(at) {
-                " <- modified"
-            } else {
-                ""
-            };
-            rows.push(skeleton::row(
-                width, block.start, block.end, &block.head, mark,
-            ));
-            if active != Some(at) {
-                continue;
-            }
-            for child in skeleton::items(&raw, &code, &closes, block.start + 1, block.end) {
-                let names: Vec<String> = kept
-                    .iter()
-                    .filter(|index| {
-                        blocks
-                            .get(**index)
-                            .copied()
-                            .flatten()
-                            .is_some_and(|(first, last)| {
-                                child.start < last && first <= child.end + 1
-                            })
-                    })
-                    .map(|index| format!("edit {}", edits[*index].index))
-                    .collect();
-                let note = if names.is_empty() {
-                    String::new()
-                } else {
-                    format!(" <- {}", names.join(", "))
-                };
-                rows.push(format!(
-                    "    {}",
-                    skeleton::row(width, child.start, child.end, &child.head, &note)
-                ));
-            }
-        }
-        skeleton::trim(&mut out, rows, OUTLINE_LINES);
-
-        let mut seams = Vec::new();
-        for index in kept {
-            let Some((first, last)) = blocks.get(*index).copied().flatten() else {
-                continue;
-            };
-            seams.push(format!(
-                "--- edit {} · was {} · now {} ---",
-                edits[*index].index,
-                edits[*index].was(),
-                range_name(first, last)
-            ));
-            seams.extend(skeleton::seam(&raw, first, last, width));
-        }
-        skeleton::trim(&mut out, seams, OUTLINE_LINES);
+    for row in rows
+        .iter()
+        .filter(|row| matches!(row.state, State::Refused { .. }))
+    {
+        sections.push(refused(row, anchors, width));
     }
-
-    for one in rejected {
-        let edit = &edits[one.index];
-        out.push(format!(
-            "--- edit {} left out · was {} ---",
-            edit.index,
-            edit.was()
-        ));
-        match &one.why {
-            Why::Broken(why) => match why.inside(edit.start, edit.block.len()) {
-                Some(at) => out.push(format!("your block, line {at}: {}", why.message)),
-                None => out.push(format!(
-                    "the file stopped parsing at {}: {}",
-                    why.line
-                        .map(|line| format!("line {line}"))
-                        .unwrap_or_else(|| "an unnamed line".to_string()),
-                    why.message
-                )),
-            },
-            Why::Clash(why) => out.push(why.clone()),
-        }
-        if edit.block.is_empty() {
-            out.push("(the block was empty: the range is simply gone)".to_string());
-        }
-        for (at, line) in edit.block.iter().enumerate() {
-            out.push(format!("{:>4} | {line}", at + 1));
-        }
+    if let Some(section) = applied(rows) {
+        sections.push(section);
     }
-
-    let memo = memo(base, text, edits, kept, blocks, rejected);
-    (out.join("\n"), memo)
+    if !elsewhere.is_empty() {
+        sections.push(elsewhere_note(elsewhere));
+    }
+    if let Some(note) = note {
+        sections.push(format!("[i] {note}"));
+    }
+    for section in sections {
+        out.push(String::new());
+        out.push(section);
+    }
+    (out.join("\n"), memo(rows))
 }
 
-/// One range as a reader names it: `197..215`, or where nothing stands.
-fn range_name(first: usize, last: usize) -> String {
-    match last.checked_sub(first) {
+/// The verdict, then the file's length: the whole point of the first line.
+fn head(landed: usize, total: usize, after: usize, bare: Option<&Broken>) -> String {
+    let verdict = match bare {
+        Some(why) if why.line.is_some() => "WRITTEN, FILE ALREADY BROKEN",
+        Some(_) => "WRITTEN, UNVERIFIED",
+        None if landed == total => "OK",
+        None if landed == 0 => "FAILED, NOTHING WRITTEN",
+        None => "PARTLY FAILED, LINES SHIFTED",
+    };
+    format!("[Splice] {verdict} · now {after} lines")
+}
+
+/// Why nothing could be judged, and what was written anyway.
+fn bare_note(why: &Broken) -> String {
+    match why.line {
+        Some(line) => format!(
+            "[i] the file did not parse before this change (line {line}): {}; every edit was written unformatted",
+            why.message
+        ),
+        None => format!(
+            "[i] the formatter could not judge the file before this change: {}; every edit was written unformatted",
+            why.message
+        ),
+    }
+}
+
+/// One refused edit: what it takes, what it would put there, and what stopped it.
+fn refused(row: &Row, anchors: &[bool], width: usize) -> String {
+    let State::Refused {
+        at,
+        taken,
+        block,
+        why,
+        faults,
+    } = &row.state
+    else {
+        return String::new();
+    };
+    let named = range(*at)
+        .unwrap_or_else(|| "their lines are not in the file as it now stands".to_string());
+    let mut out = vec![format!("[!] edit {} · {named}", row.index)];
+
+    out.extend(taken_side(*at, taken, anchors, width));
+    out.extend(block_side(block, width));
+    out.push(format!("  ! {}", why.says()));
+    for fault in faults {
+        out.push(format!("  ! {fault}"));
+    }
+    out.join("\n")
+}
+
+/// The lines an edit takes, by their current numbers, and only where `read` would number them.
+fn taken_side(at: Place, taken: &[String], anchors: &[bool], width: usize) -> Vec<String> {
+    if taken.is_empty() {
+        return vec![format!("  - {:>width$} | (nothing)", "", width = width)];
+    }
+    let Some((first, _)) = at else {
+        return taken
+            .iter()
+            .map(|line| format!("  - {:>width$} | {}", "", shown(line), width = width))
+            .collect();
+    };
+    let mut picked: Vec<(usize, &str)> = Vec::new();
+    for (offset, line) in taken.iter().enumerate() {
+        let number = first + offset;
+        if anchors.get(number - 1).copied().unwrap_or(false) {
+            picked.push((number, line));
+        }
+    }
+    // A range that holds no anchor still took lines: its own ends are what a reader needs.
+    if picked.is_empty() {
+        picked.push((first, &taken[0]));
+        if taken.len() > 1 {
+            picked.push((first + taken.len() - 1, &taken[taken.len() - 1]));
+        }
+    }
+    fold(picked, |number, line| {
+        format!("  - {number:>width$} | {}", shown(line), width = width)
+    })
+}
+
+/// The block an edit would put there, numbered inside itself.
+fn block_side(block: &[String], width: usize) -> Vec<String> {
+    if block.is_empty() {
+        return vec![format!(
+            "  + {:>width$} | (nothing: the range is gone)",
+            "",
+            width = width
+        )];
+    }
+    let rows: Vec<(usize, &str)> = block
+        .iter()
+        .enumerate()
+        .map(|(at, line)| (at + 1, line.as_str()))
+        .collect();
+    fold(rows, |number, line| {
+        format!("  + {number:>width$} | {}", shown(line), width = width)
+    })
+}
+
+/// A side of the diff, its middle folded away once it grows past what one answer may take.
+fn fold(rows: Vec<(usize, &str)>, row: impl Fn(usize, &str) -> String) -> Vec<String> {
+    if rows.len() <= SIDE {
+        return rows.into_iter().map(|(at, line)| row(at, line)).collect();
+    }
+    let half = SIDE / 2;
+    let mut out: Vec<String> = rows[..half]
+        .iter()
+        .map(|(at, line)| row(*at, line))
+        .collect();
+    out.push("  …".to_string());
+    out.extend(
+        rows[rows.len() - half..]
+            .iter()
+            .map(|(at, line)| row(*at, line)),
+    );
+    out
+}
+
+/// One source line as a diff row: its own indentation kept, its tail cut.
+fn shown(line: &str) -> String {
+    match line.char_indices().nth(WIDE) {
+        Some((cut, _)) => format!("{}…", &line[..cut]),
+        None => line.to_string(),
+    }
+}
+
+/// The edits that were written, one line each.
+fn applied(rows: &[Row]) -> Option<String> {
+    let mut out: Vec<String> = Vec::new();
+    for row in rows {
+        let State::Applied {
+            at, item, faults, ..
+        } = &row.state
+        else {
+            continue;
+        };
+        let named = range(*at).unwrap_or_else(|| "written, landing not found".to_string());
+        let mut line = format!("[+] edit {} · {named}", row.index);
+        if let Some(item) = item {
+            line.push_str(" in ");
+            line.push_str(item);
+        }
+        out.push(line);
+        for fault in faults {
+            out.push(format!("  ! {fault}"));
+        }
+    }
+    (!out.is_empty()).then(|| out.join("\n"))
+}
+
+/// The compiler's own words about files this call did not touch.
+fn elsewhere_note(elsewhere: &[String]) -> String {
+    let mut out = vec![format!(
+        "[!] check · {} error(s) elsewhere, none of them in these edits",
+        elsewhere.len()
+    )];
+    for line in elsewhere.iter().take(3) {
+        out.push(format!("  {line}"));
+    }
+    if elsewhere.len() > 3 {
+        out.push(format!("  (+{} more)", elsewhere.len() - 3));
+    }
+    out.join("\n")
+}
+
+/// A range as a reader names it: `84-86`, `84`, where nothing stands, or `None` when it has no
+/// place in the file as it now stands.
+fn range(at: Place) -> Option<String> {
+    let (first, last) = at?;
+    Some(match last.checked_sub(first) {
         None => format!("nothing at line {first}"),
         Some(0) => format!("line {first}"),
-        Some(_) => format!("{first}..{last}"),
-    }
+        Some(_) => format!("{first}-{last}"),
+    })
 }
 
-/// The memo a front end draws from: one segment per change, in the call's order.
-fn memo(
-    base: &str,
-    text: &str,
-    edits: &[Edit],
-    kept: &[usize],
-    blocks: &[Place],
-    rejected: &[Rejected],
-) -> Value {
-    let base_lines: Vec<String> = base.lines().map(str::to_string).collect();
-    let text_lines: Vec<String> = text.lines().map(str::to_string).collect();
-    let mut segments = Vec::with_capacity(edits.len());
-    for (index, edit) in edits.iter().enumerate() {
-        let mut segment = json!({
-            "edit": edit.index,
-            "fromLine": edit.start + 1,
-            "atLine": edit.start + 1,
-        });
-        if kept.contains(&index) {
-            let (first, last) = blocks
-                .get(index)
-                .copied()
-                .flatten()
-                .unwrap_or((edit.start + 1, edit.start + edit.block.len()));
-            segment["state"] = json!("applied");
-            segment["atLine"] = json!(first);
-            segment["old"] = json!(edit.taken(&base_lines).join("\n"));
-            segment["new"] = json!(take(&text_lines, first, last));
-        } else if let Some(one) = rejected.iter().find(|one| one.index == index) {
-            segment["state"] = json!("rejected");
-            segment["new"] = json!(edit.block.join("\n"));
-            segment["error"] = json!(one.why.text());
-            if let Why::Broken(why) = &one.why
-                && let Some(at) = why.inside(edit.start, edit.block.len())
-            {
-                segment["errorLine"] = json!(at);
+/// The memo a front end draws from: one segment per edit, in the call's order.
+fn memo(rows: &[Row]) -> Value {
+    let mut segments = Vec::new();
+    for row in rows {
+        match &row.state {
+            State::Applied { at, old, new, .. } => {
+                segments.push(json!({
+                    "edit": row.index,
+                    "state": "applied",
+                    "fromLine": row.from,
+                    "atLine": at.map(|(first, _)| first).unwrap_or(row.from),
+                    "old": old.join("\n"),
+                    "new": new.join("\n"),
+                }));
             }
-        } else {
-            continue;
+            State::Refused {
+                at,
+                taken,
+                block,
+                why,
+                ..
+            } => {
+                // The segment's own lines are the ones it takes now, not the ones it named before.
+                let now = at.map(|(first, _)| first).unwrap_or(row.from);
+                segments.push(json!({
+                    "edit": row.index,
+                    "state": "rejected",
+                    "fromLine": now,
+                    "atLine": now,
+                    "old": taken.join("\n"),
+                    "new": block.join("\n"),
+                    "error": why.says(),
+                }));
+            }
         }
-        segments.push(segment);
     }
     json!({ "segments": segments })
-}
-
-/// The lines one 1-based inclusive range holds, joined; empty when the range is empty.
-fn take(lines: &[String], first: usize, last: usize) -> String {
-    let first = first.clamp(1, lines.len() + 1);
-    let last = last.min(lines.len());
-    if last < first {
-        return String::new();
-    }
-    lines[first - 1..last].join("\n")
 }

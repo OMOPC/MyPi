@@ -2,6 +2,7 @@
 
 mod edit;
 mod fmt;
+mod items;
 mod receipt;
 mod tool;
 

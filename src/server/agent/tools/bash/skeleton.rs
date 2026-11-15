@@ -121,30 +121,6 @@ fn block_end(code: &[String], closes: &[Option<usize>], at: usize, limit: usize)
     at
 }
 
-/// A width-aligned skeleton row.
-pub(crate) fn row(width: usize, start: usize, end: usize, head: &str, note: &str) -> String {
-    format!(
-        "{:>width$}..{:>width$} | {head}{note}",
-        start + 1,
-        end + 1,
-        width = width
-    )
-}
-
-/// Append the rows a budget may still take, and say so when the rest is gone.
-pub(crate) fn trim(out: &mut Vec<String>, rows: Vec<String>, room: usize) {
-    let room = room.saturating_sub(out.len());
-    if room == 0 {
-        return;
-    }
-    if rows.len() > room {
-        out.extend(rows.into_iter().take(room.saturating_sub(1)));
-        out.push("[outline cut: the file is longer]".to_string());
-        return;
-    }
-    out.extend(rows);
-}
-
 /// The lines around one range: two above, its own edges, two below, the middle folded when the
 /// range is long.
 pub(crate) fn seam(raw: &[&str], first: usize, last: usize, width: usize) -> Vec<String> {

@@ -54,15 +54,6 @@ impl Edit {
         })
     }
 
-    /// The range as a reader names it: `line 12`, `lines 12-14`, or where an insertion lands.
-    pub(crate) fn was(&self) -> String {
-        match self.end - self.start {
-            0 => format!("insert before line {}", self.start + 1),
-            1 => format!("line {}", self.start + 1),
-            _ => format!("lines {}-{}", self.start + 1, self.end),
-        }
-    }
-
     /// The same change with a comment around its block, so the formatter's output can be walked
     /// back to it. `at` is its position in the list handed to the formatter.
     pub(crate) fn marked(&self, at: usize) -> Self {
@@ -145,4 +136,27 @@ pub(crate) fn parse_range(text: &str) -> Result<(usize, usize)> {
             .map_err(|_| anyhow!("`range` must be `12-14` or `12`; got `{text}`"))
     };
     Ok((number(from)?, number(to)?))
+}
+
+/// Where a run of lines sits in a text: the first of the matches nearest to `near`, 0-based.
+///
+/// The run is compared whole, so a line that merely starts alike never answers. An empty run is a
+/// place rather than a stretch: it lands where `near` says, past the text's end if it must.
+pub(crate) fn locate(lines: &[&str], needle: &[&str], near: usize) -> Option<usize> {
+    let last = lines.len().checked_sub(needle.len())?;
+    let mut best: Option<(usize, usize)> = None;
+    for start in 0..=last {
+        if lines[start..start + needle.len()] != *needle {
+            continue;
+        }
+        let distance = start.abs_diff(near);
+        if best.is_none_or(|(held, _)| distance < held) {
+            best = Some((distance, start));
+        }
+    }
+    match best {
+        Some((_, start)) => Some(start),
+        None if needle.is_empty() => Some(near.min(lines.len())),
+        None => None,
+    }
 }

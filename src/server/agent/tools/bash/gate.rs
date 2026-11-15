@@ -41,18 +41,6 @@ pub(crate) struct Broken {
     pub message: String,
 }
 
-impl Broken {
-    /// The line inside one change's own block, when the formatter pointed there.
-    ///
-    /// The text it saw holds the lines above the change untouched, then the block.
-    pub(crate) fn inside(&self, start: usize, len: usize) -> Option<usize> {
-        let line = self.line?;
-        let first = start + 1;
-        let last = start + len;
-        (first <= line && line <= last).then_some(line - start)
-    }
-}
-
 /// One text's turn through the formatter.
 #[derive(Debug, Clone)]
 pub(crate) enum Outcome {

@@ -9,12 +9,13 @@ use serde_json::{Value, json};
 
 use super::edit::{self, Edit, Place};
 use super::fmt;
-use super::receipt::{self, Rejected, Why};
+use super::items;
+use super::receipt::{self, Row, State, Why};
 use crate::server::agent::request::contract::ToolCall;
 use crate::server::agent::tools::bash::change;
-use crate::server::agent::tools::bash::fault;
 use crate::server::agent::tools::bash::gate;
 use crate::server::agent::tools::bash::halt::stopped;
+use crate::server::agent::tools::bash::read::sparse;
 use crate::server::agent::tools::contract::env::{Answer, Env, Stamp};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -77,9 +78,9 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let current = env.current.clone();
 
     let stop = env.stop.clone();
-    let Some(mut done) = env
+    let Some(built) = env
         .workspace
-        .with_write(&path, || compute(&path, stamp, &plans, &current, &stop))?
+        .with_write(&path, || compute(&path, stamp, &plans, &stop))?
     else {
         // A sibling of this batch reaches its own turn, finds the stop still set, and says the same
         // thing about the same untouched file: it is said here, never kept for `env.handed`.
@@ -87,18 +88,17 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     };
 
     // The compiler runs after the file's lock is released: it reads the whole crate, not this file.
-    if done.written.is_some() {
-        let check = if stop.is_stopped() {
-            gate::Check::Unchecked
-        } else {
-            gate::check(&path, &stop)
-        };
-        if let Some(at) = plans.iter().position(|plan| plan.call_id == current) {
-            done.report(at, &path, &check);
-        }
-    }
+    // A file that does not parse would only repeat the formatter's verdict.
+    let check = if built.written.is_none() || built.bare.is_some() {
+        gate::Check::Skipped
+    } else if stop.is_stopped() {
+        gate::Check::Unchecked
+    } else {
+        gate::check(&path, &stop)
+    };
+    let answers = built.answers(&plans, &path, &check);
 
-    if let Some(written) = &done.written {
+    if let Some(written) = &built.written {
         env.seen.files.insert(
             path.clone(),
             Stamp {
@@ -108,7 +108,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         );
     }
     let mut mine = None;
-    for (plan, answer) in plans.iter().zip(done.answers) {
+    for (plan, answer) in plans.iter().zip(answers) {
         if plan.call_id == current {
             mine = Some(answer);
         } else {
@@ -177,25 +177,202 @@ fn read_edits(args: &Args, call: usize, total: usize) -> Result<Vec<Edit>> {
     Ok(out)
 }
 
-/// What one merged run produced: each call's answer, and the text it wrote.
-struct Done {
-    answers: Vec<Answer>,
+/// What one merged run leaves behind: owned, so the compiler can read the crate after the file's
+/// lock is gone.
+struct Built {
+    /// The file before the write.
+    base: String,
+    /// The file as it now stands: what was written, or the base when nothing was.
+    shown: String,
+    after: usize,
+    /// Every edit of the batch, in arrival order, and each call's slice of them.
+    edits: Vec<Edit>,
+    spans: Vec<(usize, usize)>,
+    /// The edits that were written, as positions into `edits`, and where each one landed.
+    held: Vec<usize>,
+    landings: Vec<Place>,
+    /// What stopped each edit that was not written.
+    dropped: Vec<(usize, Why)>,
+    /// The calls whose arguments could not be read at all.
+    unreadable: Vec<Option<String>>,
+    /// The file did not parse before any change, so every edit was written unformatted.
+    bare: Option<gate::Broken>,
     written: Option<String>,
 }
 
-impl Done {
-    /// Give one call's answer the compiler's report, when the compiler had anything to say.
-    fn report(&mut self, at: usize, path: &Path, check: &gate::Check) {
-        let Some(shown) = self.written.as_deref() else {
-            return;
-        };
-        let Some(report) = fault::receipt(path, shown, check) else {
-            return;
-        };
-        if let Some(answer) = self.answers.get_mut(at) {
-            answer.text.push('\n');
-            answer.text.push_str(&report);
+impl Built {
+    /// One answer per call of the batch: its own edits, its own verdicts.
+    fn answers(&self, plans: &[Plan], path: &Path, check: &gate::Check) -> Vec<Answer> {
+        let lines: Vec<&str> = self.shown.lines().collect();
+        let base: Vec<String> = self.base.lines().map(str::to_string).collect();
+        let anchors = sparse::anchors(&self.shown);
+        let layout = items::Layout::analyse(&self.shown);
+        let (faults, elsewhere, note) = self.split_check(path, check);
+        let shown = path.display().to_string();
+
+        (0..plans.len())
+            .map(|at| {
+                if let Some(why) = &self.unreadable[at] {
+                    return Answer {
+                        text: why.clone(),
+                        memo: None,
+                        refusal: Some("the call's ranges could not be read".to_string()),
+                    };
+                }
+                let (from, to) = self.spans[at];
+                let rows: Vec<Row> = (from..to)
+                    .map(|index| self.row(index, &lines, &base, &layout, &faults))
+                    .collect();
+                let (text, memo) = receipt::build(
+                    &shown,
+                    self.after,
+                    &anchors,
+                    &rows,
+                    self.bare.as_ref(),
+                    &elsewhere,
+                    note.as_deref(),
+                );
+                Answer {
+                    text,
+                    memo: Some(memo),
+                    refusal: None,
+                }
+            })
+            .collect()
+    }
+
+    /// One edit, as its own call's answer shows it.
+    fn row(
+        &self,
+        at: usize,
+        lines: &[&str],
+        base: &[String],
+        layout: &items::Layout,
+        faults: &[Vec<String>],
+    ) -> Row {
+        let edit = &self.edits[at];
+        if let Some(position) = self.held.iter().position(|held| *held == at) {
+            let landing = self.landings.get(position).copied().flatten();
+            let old = edit.taken(base).to_vec();
+            let new = match landing {
+                Some((first, last)) => take(lines, first, last),
+                None => Vec::new(),
+            };
+            let item = landing.and_then(|(first, _)| item_of(layout, first));
+            return Row {
+                index: edit.index,
+                from: edit.start + 1,
+                state: State::Applied {
+                    at: landing,
+                    old,
+                    new,
+                    item,
+                    faults: faults[at].clone(),
+                },
+            };
         }
+
+        let why = self
+            .dropped
+            .iter()
+            .find(|(index, _)| *index == at)
+            .map(|(_, why)| why.clone())
+            .unwrap_or(Why::Conflict);
+        let needle: Vec<&str> = edit.taken(base).iter().map(String::as_str).collect();
+        let near = self.near(at);
+        let (place, taken) = match edit::locate(lines, &needle, near) {
+            Some(first) if needle.is_empty() => (Some((first + 1, first)), Vec::new()),
+            Some(first) => {
+                let last = first + needle.len();
+                let mut kept = Vec::with_capacity(needle.len());
+                for line in &lines[first..last] {
+                    kept.push((*line).to_string());
+                }
+                (Some((first + 1, last)), kept)
+            }
+            None => (
+                None,
+                needle.iter().map(|line| (*line).to_string()).collect(),
+            ),
+        };
+        Row {
+            index: edit.index,
+            from: edit.start + 1,
+            state: State::Refused {
+                at: place,
+                taken,
+                block: edit.block.clone(),
+                why,
+                faults: faults[at].clone(),
+            },
+        }
+    }
+
+    /// Where a dropped edit's own lines start now, by the written edits above it.
+    fn near(&self, at: usize) -> usize {
+        let edit = &self.edits[at];
+        let mut shift: isize = 0;
+        for held in &self.held {
+            let other = &self.edits[*held];
+            if other.start >= edit.start {
+                continue;
+            }
+            shift += other.block.len() as isize - (other.end - other.start) as isize;
+        }
+        (edit.start as isize + shift).max(0) as usize
+    }
+
+    /// What the compiler said, split three ways: per edit, elsewhere, and a note about the run.
+    fn split_check(
+        &self,
+        path: &Path,
+        check: &gate::Check,
+    ) -> (Vec<Vec<String>>, Vec<String>, Option<String>) {
+        let mut per = vec![Vec::new(); self.edits.len()];
+        let faults = match check {
+            gate::Check::Faults { faults, .. } => faults,
+            gate::Check::TimedOut => {
+                return (
+                    per,
+                    Vec::new(),
+                    Some(format!(
+                        "check did not finish in {} ms",
+                        gate::CHECK_LIMIT.as_millis()
+                    )),
+                );
+            }
+            gate::Check::Unchecked => {
+                return (
+                    per,
+                    Vec::new(),
+                    Some("not type-checked: the turn was stopped".to_string()),
+                );
+            }
+            gate::Check::Skipped | gate::Check::Clean => return (per, Vec::new(), None),
+        };
+        let mine = gate::crate_root(path)
+            .map(|root| gate::shown(&root, path))
+            .unwrap_or_default();
+        let mut elsewhere = Vec::new();
+        for fault in faults {
+            let mut placed = false;
+            if fault.file == mine {
+                for (position, held) in self.held.iter().enumerate() {
+                    let Some((first, last)) = self.landings.get(position).copied().flatten() else {
+                        continue;
+                    };
+                    if first <= fault.line && fault.line <= last {
+                        per[*held].push(format!("line {}: {}", fault.line, fault.message));
+                        placed = true;
+                        break;
+                    }
+                }
+            }
+            if !placed {
+                elsewhere.push(format!("{}:{}  {}", fault.file, fault.line, fault.message));
+            }
+        }
+        (per, elsewhere, None)
     }
 }
 
@@ -205,9 +382,8 @@ fn compute(
     path: &Path,
     stamp: Option<Stamp>,
     plans: &[Plan],
-    current: &str,
     stop: &Stop,
-) -> Result<Option<Done>> {
+) -> Result<Option<Built>> {
     let text = std::fs::read_to_string(path).context("failed to read file")?;
     let total = text.lines().count();
     if let Some(stamp) = stamp
@@ -222,87 +398,74 @@ fn compute(
     }
 
     let (edits, spans, unreadable) = flatten(plans, total);
-    let (kept, clashes) = settle_overlaps(&edits)?;
+    let (kept, mut dropped) = settle_overlaps(&edits)?;
     let rust = path.extension().and_then(|e| e.to_str()) == Some("rs");
 
-    let mut final_ids: Vec<usize> = Vec::new();
-    let mut final_edits: Vec<Edit> = Vec::new();
-    let mut blocks: Vec<edit::Place> = Vec::new();
-    let mut broken: Vec<(usize, fmt::Broken)> = Vec::new();
+    let mut held: Vec<usize> = Vec::new();
+    let mut landings: Vec<Place> = Vec::new();
+    let mut bare: Option<gate::Broken> = None;
     let mut written: Option<String> = None;
 
     if !kept.is_empty() {
-        let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
         if rust {
             let edition = gate::edition(path);
+            let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
             let Some(settled) = fmt::settle(&text, &picked, &edition, stop) else {
                 return Ok(None);
             };
-            if settled.kept.is_empty()
-                && let Some(why) = &settled.bare
-            {
-                bail!(
-                    "the file does not parse before any change: {} (line {})",
-                    why.message,
-                    why.line.map(|n| n.to_string()).unwrap_or("?".to_string())
-                );
+            bare = settled.bare;
+            for one in settled.dropped {
+                let why = match one.why {
+                    fmt::Why::Syntax(why) => Why::Syntax(why.message),
+                    fmt::Why::Conflict => Why::Conflict,
+                };
+                dropped.push((kept[one.at], why));
             }
-            for (at, why) in &settled.dropped {
-                broken.push((kept[*at], why.clone()));
+            held = settled.kept.iter().map(|at| kept[*at]).collect();
+            let kept_edits: Vec<Edit> = held.iter().map(|at| edits[*at].clone()).collect();
+            if bare.is_some() {
+                // Nothing was formatted, so every block sits exactly where its own length puts it.
+                landings = edit::shifted(&kept_edits);
+            } else {
+                let refs: Vec<&Edit> = kept_edits.iter().collect();
+                landings = fmt::place(&text, &refs, &edition, stop);
             }
-            final_ids = settled.kept.iter().map(|at| kept[*at]).collect();
-            final_edits = settled.kept.iter().map(|at| picked[*at].clone()).collect();
-            let refs: Vec<&Edit> = final_edits.iter().collect();
-            blocks = fmt::place(&text, &refs, &edition, stop);
             if stop.is_stopped() {
                 return Ok(None);
             }
-            if !final_ids.is_empty() && settled.text != text {
+            if !held.is_empty() && settled.text != text {
                 written = Some(settled.text);
             }
         } else {
-            let picked_refs: Vec<&Edit> = picked.iter().collect();
-            let out = edit::spliced(&text, &picked_refs);
-            final_ids = kept.clone();
-            final_edits = picked;
-            blocks = edit::shifted(&final_edits);
-            if !final_ids.is_empty() && out != text {
+            let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
+            let refs: Vec<&Edit> = picked.iter().collect();
+            let out = edit::spliced(&text, &refs);
+            landings = edit::shifted(&picked);
+            held = kept.clone();
+            if !held.is_empty() && out != text {
                 written = Some(out);
             }
         }
     }
 
-    if let Some(text) = &written {
-        write_atomic(path, text)?;
+    if let Some(write) = &written {
+        write_atomic(path, write)?;
     }
-    let after = written
-        .as_deref()
-        .map(|text| text.lines().count())
-        .unwrap_or(total);
-    let shown = written.as_deref().unwrap_or(&text);
-
-    let group = Group {
-        base: &text,
+    let shown = written.clone().unwrap_or_else(|| text.clone());
+    let after = shown.lines().count();
+    Ok(Some(Built {
+        base: text,
         shown,
         after,
-        path,
-        runner: current,
-        edits: &edits,
-        spans: &spans,
-        held: &final_ids,
-        placed: &final_edits,
-        blocks: &blocks,
-        broken: &broken,
-        clashes: &clashes,
-        unreadable: &unreadable,
-        rust,
-    };
-    let answers = plans
-        .iter()
-        .enumerate()
-        .map(|(at, plan)| group.answer(at, &plan.call_id))
-        .collect();
-    Ok(Some(Done { answers, written }))
+        edits,
+        spans,
+        held,
+        landings,
+        dropped,
+        unreadable,
+        bare,
+        written,
+    }))
 }
 
 /// The batch's edits in arrival order, each call's slice of them, and the calls whose arguments
@@ -330,13 +493,13 @@ fn flatten(plans: &[Plan], total: usize) -> Flattened {
 /// Which edits may run, and which lost to an earlier one: the kept positions, then the position and
 /// reason of each refusal. Two of one call's own ranges may not overlap at all — that is the model
 /// contradicting itself, and the file is left alone.
-type Overlaps = (Vec<usize>, Vec<(usize, String)>);
+type Overlaps = (Vec<usize>, Vec<(usize, Why)>);
 
 fn settle_overlaps(edits: &[Edit]) -> Result<Overlaps> {
     let mut kept: Vec<usize> = Vec::new();
-    let mut clashes: Vec<(usize, String)> = Vec::new();
+    let mut dropped: Vec<(usize, Why)> = Vec::new();
     for at in 0..edits.len() {
-        let mut clash = None;
+        let mut clash = false;
         for held in &kept {
             if !edit::collide(&edits[*held], &edits[at]) {
                 continue;
@@ -348,105 +511,45 @@ fn settle_overlaps(edits: &[Edit]) -> Result<Overlaps> {
                     edits[at].index
                 );
             }
-            clash = Some(format!(
-                "overlaps {} of an earlier splice call on this file",
-                edits[*held].was()
-            ));
+            clash = true;
             break;
         }
-        match clash {
-            Some(why) => clashes.push((at, why)),
-            None => kept.push(at),
+        if clash {
+            dropped.push((at, Why::Clash));
+        } else {
+            kept.push(at);
         }
     }
-    Ok((kept, clashes))
+    Ok((kept, dropped))
 }
 
-/// One merged run's facts, as each call's answer needs them.
-struct Group<'a> {
-    /// The file before the write.
-    base: &'a str,
-    /// The file as it now stands: what was written, or the base when nothing was.
-    shown: &'a str,
-    after: usize,
-    path: &'a Path,
-    /// The call that ran the merged write; it alone carries the skeleton.
-    runner: &'a str,
-    /// Every edit of the batch, in arrival order, and each call's slice of them.
-    edits: &'a [Edit],
-    spans: &'a [(usize, usize)],
-    /// The edits that were written, as positions into `edits`, and the same edits in that order.
-    held: &'a [usize],
-    placed: &'a [Edit],
-    /// Where each written edit landed.
-    blocks: &'a [Place],
-    /// The edits left out: rustfmt refused them, or an earlier change took their lines.
-    broken: &'a [(usize, fmt::Broken)],
-    clashes: &'a [(usize, String)],
-    /// The calls whose arguments could not be read at all.
-    unreadable: &'a [Option<String>],
-    rust: bool,
-}
-
-impl Group<'_> {
-    /// One call's answer: the file's skeleton for the call that ran the write, and only that
-    /// call's own ranges and refusals.
-    fn answer(&self, at: usize, call_id: &str) -> Answer {
-        if let Some(why) = &self.unreadable[at] {
-            return Answer {
-                text: why.clone(),
-                memo: None,
-                refusal: Some("the call's ranges could not be read".to_string()),
-            };
-        }
-        let (from, to) = self.spans[at];
-        let own = &self.edits[from..to];
-        let mut kept = Vec::new();
-        let mut own_blocks = vec![None; own.len()];
-        for (position, edit) in self.placed.iter().enumerate() {
-            if edit.call != at {
-                continue;
-            }
-            let local = self.held[position] - from;
-            kept.push(local);
-            own_blocks[local] = self.blocks[position];
-        }
-        let mut rejected: Vec<Rejected> = Vec::new();
-        for (index, why) in self.clashes {
-            if (from..to).contains(index) {
-                rejected.push(Rejected {
-                    index: index - from,
-                    why: Why::Clash(why.clone()),
-                });
-            }
-        }
-        for (index, why) in self.broken {
-            if (from..to).contains(index) {
-                rejected.push(Rejected {
-                    index: index - from,
-                    why: Why::Broken(why.clone()),
-                });
-            }
-        }
-        rejected.sort_by_key(|one| one.index);
-        let (text, memo) = receipt::build(
-            self.base,
-            self.shown,
-            own,
-            &kept,
-            &own_blocks,
-            &rejected,
-            &self.path.display().to_string(),
-            self.rust,
-            self.rust && call_id == self.runner,
-            self.after,
-        );
-        Answer {
-            text,
-            memo: Some(memo),
-            refusal: None,
-        }
+/// The lines one 1-based inclusive range holds, owned.
+fn take(lines: &[&str], first: usize, last: usize) -> Vec<String> {
+    if lines.is_empty() || last < first {
+        return Vec::new();
     }
+    let first = first.clamp(1, lines.len());
+    let last = last.min(lines.len());
+    if last < first {
+        return Vec::new();
+    }
+    lines[first - 1..last]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect()
+}
+
+/// The item a landing sits in, named by its own headers, outermost first.
+fn item_of(layout: &items::Layout, first: usize) -> Option<String> {
+    let chain = layout.around(first.saturating_sub(1));
+    let tail: Vec<&str> = chain
+        .iter()
+        .rev()
+        .take(2)
+        .rev()
+        .map(|item| item.sig.as_str())
+        .collect();
+    (!tail.is_empty()).then(|| tail.join(" > "))
 }
 
 /// A text's content hash, the same one `read` stamps a file with.
