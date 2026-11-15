@@ -5,9 +5,8 @@ use serde_json::{Value, json};
 
 use super::edit::{Edit, Place};
 use super::fmt::Broken;
-use crate::server::agent::tools::bash::change;
 use crate::server::agent::tools::bash::read::sparse;
-use crate::server::agent::tools::summary;
+use crate::server::agent::tools::bash::skeleton;
 
 /// How many lines the skeleton and the seams may take together.
 const OUTLINE_LINES: usize = 40;
@@ -16,6 +15,7 @@ const OUTLINE_LINES: usize = 40;
 pub(crate) enum Why {
     /// The formatter could not make sense of what the file became.
     Broken(Broken),
+
     /// It fights an earlier change for the same lines.
     Clash(String),
 }
@@ -35,13 +35,6 @@ pub(crate) struct Rejected {
     /// Its position among this call's `edits`, 0-based.
     pub index: usize,
     pub why: Why,
-}
-
-/// One top-level item: its range and its head.
-struct Block {
-    start: usize,
-    end: usize,
-    head: String,
 }
 
 /// The receipt and the memo a front end draws from.
@@ -77,8 +70,8 @@ pub(crate) fn build(
     if outline && !kept.is_empty() {
         let raw: Vec<&str> = text.lines().collect();
         let code = sparse::stripped(text);
-        let closes = closes(&code);
-        let top = items(&raw, &code, &closes, 0, raw.len().saturating_sub(1));
+        let closes = skeleton::closes(&code);
+        let top = skeleton::items(&raw, &code, &closes, 0, raw.len().saturating_sub(1));
         let width = after.to_string().len().max(3);
 
         let active = kept.iter().find_map(|index| {
@@ -95,11 +88,13 @@ pub(crate) fn build(
             } else {
                 ""
             };
-            rows.push(row(width, block.start, block.end, &block.head, mark));
+            rows.push(skeleton::row(
+                width, block.start, block.end, &block.head, mark,
+            ));
             if active != Some(at) {
                 continue;
             }
-            for child in items(&raw, &code, &closes, block.start + 1, block.end) {
+            for child in skeleton::items(&raw, &code, &closes, block.start + 1, block.end) {
                 let names: Vec<String> = kept
                     .iter()
                     .filter(|index| {
@@ -120,11 +115,11 @@ pub(crate) fn build(
                 };
                 rows.push(format!(
                     "    {}",
-                    row(width, child.start, child.end, &child.head, &note)
+                    skeleton::row(width, child.start, child.end, &child.head, &note)
                 ));
             }
         }
-        trim(&mut out, rows);
+        skeleton::trim(&mut out, rows, OUTLINE_LINES);
 
         let mut seams = Vec::new();
         for index in kept {
@@ -137,9 +132,9 @@ pub(crate) fn build(
                 edits[*index].was(),
                 range_name(first, last)
             ));
-            seams.extend(seam(&raw, first, last, width));
+            seams.extend(skeleton::seam(&raw, first, last, width));
         }
-        trim(&mut out, seams);
+        skeleton::trim(&mut out, seams, OUTLINE_LINES);
     }
 
     for one in rejected {
@@ -150,7 +145,7 @@ pub(crate) fn build(
             edit.was()
         ));
         match &one.why {
-            Why::Broken(why) => match why.inside(edit) {
+            Why::Broken(why) => match why.inside(edit.start, edit.block.len()) {
                 Some(at) => out.push(format!("your block, line {at}: {}", why.message)),
                 None => out.push(format!(
                     "the file stopped parsing at {}: {}",
@@ -181,66 +176,6 @@ fn range_name(first: usize, last: usize) -> String {
         Some(0) => format!("line {first}"),
         Some(_) => format!("{first}..{last}"),
     }
-}
-
-/// A width-aligned skeleton row.
-fn row(width: usize, start: usize, end: usize, head: &str, note: &str) -> String {
-    format!(
-        "{:>width$}..{:>width$} | {head}{note}",
-        start + 1,
-        end + 1,
-        width = width
-    )
-}
-
-/// Append the rows an outline may still take, and say so when the rest is gone.
-fn trim(out: &mut Vec<String>, rows: Vec<String>) {
-    let room = OUTLINE_LINES.saturating_sub(out.len());
-    if room == 0 {
-        return;
-    }
-    if rows.len() > room {
-        out.extend(rows.into_iter().take(room.saturating_sub(1)));
-        out.push("[outline cut: the file is longer]".to_string());
-        return;
-    }
-    out.extend(rows);
-}
-
-/// The lines around one change: two above, its own edges, two below, the middle folded away when
-/// the change is long.
-fn seam(raw: &[&str], first: usize, last: usize, width: usize) -> Vec<String> {
-    let n = raw.len();
-    if n == 0 {
-        return Vec::new();
-    }
-    let first = first.clamp(1, n);
-    let last = last.clamp(1, n).max(first);
-    let mut picks: Vec<Option<usize>> = Vec::new();
-    for at in first.saturating_sub(2)..first {
-        picks.push(Some(at));
-    }
-    let inside: Vec<usize> = (first..=last).collect();
-    let long = inside.len() > 8;
-    for at in inside.iter().take(if long { 3 } else { inside.len() }) {
-        picks.push(Some(*at));
-    }
-    if long {
-        picks.push(None);
-        for at in &inside[inside.len() - 3..] {
-            picks.push(Some(*at));
-        }
-    }
-    for at in last + 1..=(last + 2).min(n) {
-        picks.push(Some(at));
-    }
-    picks
-        .into_iter()
-        .map(|at| match at {
-            Some(at) => format!("{:>width$} | {}", at, raw[at - 1], width = width),
-            None => "…".to_string(),
-        })
-        .collect()
 }
 
 /// The memo a front end draws from: one segment per change, in the call's order.
@@ -276,7 +211,7 @@ fn memo(
             segment["new"] = json!(edit.block.join("\n"));
             segment["error"] = json!(one.why.text());
             if let Why::Broken(why) = &one.why
-                && let Some(at) = why.inside(edit)
+                && let Some(at) = why.inside(edit.start, edit.block.len())
             {
                 segment["errorLine"] = json!(at);
             }
@@ -296,104 +231,4 @@ fn take(lines: &[String], first: usize, last: usize) -> String {
         return String::new();
     }
     lines[first - 1..last].join("\n")
-}
-
-/// Every brace pair's closing line, per opening line; a line that opens twice keeps the wider pair.
-fn closes(code: &[String]) -> Vec<Option<usize>> {
-    let mut out: Vec<Option<usize>> = vec![None; code.len()];
-    for (open, close) in sparse::frames(code) {
-        if let Some(slot) = out.get_mut(open) {
-            *slot = Some(slot.map_or(close, |held| held.max(close)));
-        }
-    }
-    out
-}
-
-/// The items at the shallowest indent of one line range.
-fn items(
-    raw: &[&str],
-    code: &[String],
-    closes: &[Option<usize>],
-    from: usize,
-    to: usize,
-) -> Vec<Block> {
-    if raw.is_empty() || from > to {
-        return Vec::new();
-    }
-    let to = to.min(raw.len().saturating_sub(1));
-    let mut width = usize::MAX;
-    for (at, line) in raw.iter().enumerate().take(to + 1).skip(from) {
-        if no_item(line, code.get(at).map(String::as_str)) {
-            continue;
-        }
-        width = width.min(indent(line));
-    }
-    if width == usize::MAX {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    let mut at = from;
-    while at <= to {
-        let line = raw[at];
-        if indent(line) != width || no_item(line, code.get(at).map(String::as_str)) {
-            at += 1;
-            continue;
-        }
-        let end = block_end(code, closes, at, to);
-        out.push(Block {
-            start: at,
-            end,
-            head: head_of(line),
-        });
-        at = end + 1;
-    }
-    out
-}
-
-/// A line that carries no item: blank, a closing brace, a comment, an attribute.
-fn no_item(line: &str, code: Option<&str>) -> bool {
-    let trimmed = line.trim();
-    if trimmed.is_empty()
-        || trimmed.starts_with('}')
-        || trimmed.starts_with("//")
-        || trimmed.starts_with("/*")
-        || trimmed.starts_with('*')
-        || trimmed.starts_with("#[")
-        || trimmed.starts_with("#![")
-    {
-        return true;
-    }
-    code.is_some_and(|code| change::head_of(code.trim_start()).is_none())
-}
-
-/// Where the item starting at `at` ends: its closing brace, or the line that finishes it.
-fn block_end(code: &[String], closes: &[Option<usize>], at: usize, limit: usize) -> usize {
-    for (offset, line) in code.iter().enumerate().take(limit + 1).skip(at) {
-        if line.contains('{') {
-            return closes[offset].unwrap_or(limit).min(limit);
-        }
-        if line.contains(';') {
-            return offset;
-        }
-    }
-    at
-}
-
-/// A line's head, cut to something that fits beside its numbers.
-fn head_of(line: &str) -> String {
-    let trimmed = line.trim().trim_end_matches('{').trim_end();
-    summary::clip(trimmed, 64)
-}
-
-/// Columns of leading whitespace; a tab counts as four.
-fn indent(line: &str) -> usize {
-    let mut width = 0;
-    for ch in line.chars() {
-        match ch {
-            ' ' => width += 1,
-            '\t' => width += 4,
-            _ => break,
-        }
-    }
-    width
 }

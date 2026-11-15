@@ -34,11 +34,14 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
 | `bash/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
 | `bash/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
-| `bash/write/{mod,tool}.rs` | `write` |
+| `bash/write/{mod,tool}.rs` | `write`: the content through the formatter, the write, then the compiler's report |
 | `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
-| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the batch's calls on one file merged into one write; `mass_text` and `parse_range` for `final` |
+| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the batch's calls on one file merged into one write; the compiler's report appended after the lock is released; `mass_text` and `parse_range` for `final` |
 | `bash/splice/edit.rs` | one change: its range, its block, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
-| `bash/splice/fmt.rs` | rustfmt as the gate and the formatter: the binary beside the executable or on PATH, the edition from the nearest `Cargo.toml`, the bottom-up walk that finds the change that broke the file, and the comment walk that finds where each change landed |
+| `bash/gate.rs` | the compiler gate: the formatter's outcome for one text (remembered per edition and content), the edition of the crate a file belongs to, one `cargo check` of that crate with a deadline, every child in a process group of its own |
+| `bash/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
+| `bash/fault.rs` | the compiler's report, drawn: one block per error — the item it sits in, the lines around it, what the compiler said and suggested |
+| `bash/splice/fmt.rs` | rustfmt through the gate: all changes at once, the bottom-up walk that finds the change that broke the file, and the comment walk that finds where each change landed |
 | `bash/splice/receipt.rs` | the two-level receipt: the file's skeleton at its new line numbers, the seam each change sits in, the block of every change left out, and the segment memo a front end draws |
 | `bash/change.rs` | `context` (the item around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
 | `bash/cd/{mod,tool}.rs` | `cd` |
@@ -147,6 +150,12 @@ Engine::run
     own deadline.
 15. `read`'s caps and `engine`: the front door skips `measure` for `read` because the tool cuts its
     own files; remove either half and a single-line file reaches the context whole.
+16. `gate::check` and the crate's own manifest: the check runs in the nearest directory above the
+    file that holds a `Cargo.toml`, so a file outside any crate is never checked.
+17. `splice` and `write` both read a file's edition and formatter outcome from `gate`; the answer's
+    own `Outcome` and `Check` are borrowed there, never rebuilt here.
+18. `skeleton` and its callers: `splice::receipt`, `fault`, and the compiler's seam all walk the
+    same item tree, so a change to what counts as an item reaches every outline at once.
 
 ## Not wired yet
 

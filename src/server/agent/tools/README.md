@@ -422,6 +422,22 @@ A session gets one of the two, because two ways of locating one change pull the 
 profile's `tools.yaml` may name either; naming both keeps `splice` and drops `edit`, with a notice.
 A profile that names no list gets every tool but `edit` and `final`.
 
+### write
+
+`write` overwrites a file whole, and refuses nothing: it is the counterpart of `edit`, which refuses
+an ambiguous match. A `.rs` file goes through the formatter first, and the formatted text is what
+lands; a text the parser refuses still lands as it came, so a long file may be written in parts, and
+the answer says the file does not parse yet and skips the type check.
+
+A written file is type-checked the same way a spliced one is, and the same report follows the answer.
+Nothing is said when there is nothing wrong, so a clean write answers in one line:
+
+```text
+overwrote /p/src/foo.rs (2311 bytes)
+```
+
+### edit
+
 `edit` answers one line naming what went, what took its place, and how far the rest moved:
 
 ```text
@@ -447,8 +463,13 @@ error. That is how a broken range is named without guessing from an error line, 
 brace would put anywhere below it.
 
 Every parse is one `rustfmt` run over stdin. The binary is looked for beside this executable first,
-then on PATH, and its edition comes from the nearest `Cargo.toml` above the file. A missing rustfmt
-refuses the write rather than skipping the format.
+then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
+directory. A missing rustfmt refuses the write rather than skipping the format.
+
+The formatter's answer for one text is remembered per edition and content, so a retry of a text the
+session has already formatted costs no process. Every child the gate starts leads a process group of
+its own and is killed with that group; one that outlives its deadline is killed rather than waited
+on, so a formatter can never hold the call that started it.
 
 Anything that is not a `.rs` file is spliced without a parse and without a format: there is no
 formatter to call, and no line numbers are trusted beyond the ones `read` gave.
@@ -483,6 +504,13 @@ A change left out is expanded instead: its range, the line of its own block that
 parser said, and the block exactly as the model wrote it. The calls of one file answer in arrival
 order, and only the one that ran the write carries the skeleton; the others carry their own ranges
 and refusals.
+
+The compiler gets the last word. Once the write is on disk and the file's lock is released, the crate
+the file belongs to is type-checked, and what came back is appended to the answer of the call that
+ran the write — only when there is something to say. Errors in the changed file come first, every
+other file's after; each carries the item it sits in, the lines around it, the compiler's message
+and its suggestion. The check is bounded: a crate still compiling when the deadline comes is dropped
+and the answer says so, rather than holding the call.
 
 ```text
 [Splice Partial] 2/3 edits applied, 1 left out, formatted by rustfmt; 21 lines: /p/src/foo.rs

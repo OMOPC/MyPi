@@ -2,6 +2,8 @@
 
 use anyhow::Result;
 
+use crate::server::agent::tools::bash::fault;
+use crate::server::agent::tools::bash::gate;
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -45,16 +47,47 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         );
     }
     let existed = p.exists();
-    env.workspace
-        .with_write(&p, || {
-            crate::server::agent::tools::workspace::write_atomic(&p, &content)
-        })?;
-    let bytes = content.len();
-    Ok(ToolOutput::text(format!(
+
+    // Rust is formatted first: the caller's content is what it meant, not what it lays out.
+    let rust = p.extension().and_then(|e| e.to_str()) == Some("rs");
+    let mut parse = None;
+    let written = if rust {
+        match gate::format(&content, &gate::edition(&p)) {
+            gate::Outcome::Formatted(text) => text,
+            gate::Outcome::Broken(why) => {
+                parse = Some(why);
+                content.clone()
+            }
+        }
+    } else {
+        content.clone()
+    };
+
+    env.workspace.with_write(&p, || {
+        crate::server::agent::tools::workspace::write_atomic(&p, &written)
+    })?;
+    let bytes = written.len();
+    let mut text = format!(
         "{} {} ({bytes} bytes)",
         if existed { "overwrote" } else { "created" },
         p.display()
-    )))
+    );
+
+    // The compiler answers for the file as it now stands, outside the file's lock. A file that does
+    // not parse has its verdict already; the compiler would only repeat it.
+    let check = match (rust, &parse) {
+        (true, None) => gate::check(&p),
+        _ => gate::Check::Skipped,
+    };
+    if let Some(why) = &parse {
+        text.push('\n');
+        text.push_str(&fault::unparsed(&why.message));
+    }
+    if let Some(report) = fault::receipt(&p, &written, &check) {
+        text.push('\n');
+        text.push_str(&report);
+    }
+    Ok(ToolOutput::text(text))
 }
 
 /// One line for a history listing: which file.

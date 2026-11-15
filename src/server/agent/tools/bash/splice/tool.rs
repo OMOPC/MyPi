@@ -12,6 +12,8 @@ use super::fmt;
 use super::receipt::{self, Rejected, Why};
 use crate::server::agent::request::contract::ToolCall;
 use crate::server::agent::tools::bash::change;
+use crate::server::agent::tools::bash::fault;
+use crate::server::agent::tools::bash::gate;
 use crate::server::agent::tools::contract::env::{Answer, Env, Stamp};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -72,9 +74,17 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let stamp = env.seen.files.get(&path).copied();
     let current = env.current.clone();
 
-    let done = env
+    let mut done = env
         .workspace
         .with_write(&path, || compute(&path, stamp, &plans, &current))?;
+
+    // The compiler runs after the file's lock is released: it reads the whole crate, not this file.
+    if done.written.is_some() {
+        let check = gate::check(&path);
+        if let Some(at) = plans.iter().position(|plan| plan.call_id == current) {
+            done.report(at, &path, &check);
+        }
+    }
 
     if let Some(written) = &done.written {
         env.seen.files.insert(
@@ -161,6 +171,22 @@ struct Done {
     written: Option<String>,
 }
 
+impl Done {
+    /// Give one call's answer the compiler's report, when the compiler had anything to say.
+    fn report(&mut self, at: usize, path: &Path, check: &gate::Check) {
+        let Some(shown) = self.written.as_deref() else {
+            return;
+        };
+        let Some(report) = fault::receipt(path, shown, check) else {
+            return;
+        };
+        if let Some(answer) = self.answers.get_mut(at) {
+            answer.text.push('\n');
+            answer.text.push_str(&report);
+        }
+    }
+}
+
 /// The whole group: the snapshot, one write, and one answer per call.
 fn compute(path: &Path, stamp: Option<Stamp>, plans: &[Plan], current: &str) -> Result<Done> {
     let text = std::fs::read_to_string(path).context("failed to read file")?;
@@ -189,8 +215,8 @@ fn compute(path: &Path, stamp: Option<Stamp>, plans: &[Plan], current: &str) -> 
     if !kept.is_empty() {
         let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
         if rust {
-            let edition = fmt::edition(path);
-            let settled = fmt::settle(&text, &picked, &edition)?;
+            let edition = gate::edition(path);
+            let settled = fmt::settle(&text, &picked, &edition);
             if settled.kept.is_empty()
                 && let Some(why) = &settled.bare
             {
@@ -206,7 +232,7 @@ fn compute(path: &Path, stamp: Option<Stamp>, plans: &[Plan], current: &str) -> 
             final_ids = settled.kept.iter().map(|at| kept[*at]).collect();
             final_edits = settled.kept.iter().map(|at| picked[*at].clone()).collect();
             let refs: Vec<&Edit> = final_edits.iter().collect();
-            blocks = fmt::place(&text, &refs, &edition)?;
+            blocks = fmt::place(&text, &refs, &edition);
             if !final_ids.is_empty() && settled.text != text {
                 written = Some(settled.text);
             }
@@ -379,7 +405,6 @@ impl Group<'_> {
             }
         }
         rejected.sort_by_key(|one| one.index);
-
         let (text, memo) = receipt::build(
             self.base,
             self.shown,
@@ -456,4 +481,3 @@ pub(crate) fn parse_range(text: &str) -> Result<(usize, usize)> {
 fn summary(call: &CallRecord) -> String {
     summary::clip(&summary::field(call, "path").unwrap_or_default(), 96)
 }
-
