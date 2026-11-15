@@ -62,7 +62,10 @@ pub enum Request {
     },
     Memo(MemoAsk),
     // Writes.
-    Submit(String),
+    Submit {
+        prefix: Option<String>,
+        text: String,
+    },
     Interrupt,
     Mailbox {
         prefix: Option<String>,

@@ -56,10 +56,10 @@ Subscribe: `watch`, `submit`, `compact`.
   this request archive, which is what a front end shows before the first request lands.
 - `submit` and `compact` open a turn; a session already in a turn answers `busy`. Nothing is queued
   by the api: a front end that wants a sentence to wait writes it to `mailbox` instead.
-- `mailbox` is the session's one pending message. `text` present and non-empty writes it whole over
-  whatever was there; no `text` clears it. The loop takes it at a blocking point and opens a turn
-  named `mailbox`, exactly as a `submit` would; taking it clears it and puts `signal: mailbox` on
-  the stream for every watcher.
+- `mailbox` is the session's one pending message. `text` present and non-empty, or an empty `text`
+  with a `prefix` or `suffix`, writes it whole over whatever was there; no `text` and no prefix
+  clears it. The loop takes it at a blocking point and opens a turn named `mailbox`, exactly as a
+  `submit` would; taking it clears it and puts `signal: mailbox` on the stream for every watcher.
 - `interrupt`, `cwd`, `switch`, `delete`, `rewind` act on the running session or its rows.
   `interrupt` is silent: it stops what runs, and an idle session hears nothing. A rewind tells the
   loop to read that session's history again. `delete` writes one memo file per session it removes —
@@ -104,7 +104,7 @@ Subscribe: `watch`, `submit`, `compact`.
 | `subscribe` | `compact` | `session`, `retention` (`{"chars"}` or `{"blocks"}`), `focus` | `turn` |
 
 A `sessions` row is the session's own columns plus four the picker draws: `first_user` (the
-first user block's body), `bytes` (the UTF-8 size of every block body), `last_ts` (the time of
+first non-empty user body), `bytes` (the UTF-8 size of every block body), `last_ts` (the time of
 the session's last block), and `memos` (how many distinct memo names the session holds).
 
 `model` is `{"provider", "model"}` everywhere it appears. `usage`'s `groups` carry `address`,

@@ -19,7 +19,7 @@ use super::statusline::{StatusLine, StatusTheme};
 use super::submit::Waiting;
 use crate::ui::tui::action::{Action, KeyCode};
 use crate::ui::tui::theme::Accent;
-use crate::ui::tui::zone::{Claim, Frame, Kind, Request, Shout, SubZone, TermSize, name};
+use crate::ui::tui::zone::{Claim, Frame, Kind, Request, Shout, SubZone, TermSize, Turns, name};
 
 /// The input sub-zone. Its height comes from its own content.
 pub struct InputZone {
@@ -45,6 +45,14 @@ pub struct InputZone {
     pub(super) queue: Queue,
     /// The sentence a submit put out, kept only until its reply says it opened nothing.
     pub(super) in_flight: Option<String>,
+    /// A preparation waits for this session's first message, or the first after a compaction.
+    pub(super) prepare_pending: bool,
+    /// The structure snapshot of this attachment has been read.
+    struct_seen: bool,
+    /// The newest compaction round this attachment has seen.
+    last_compact: Option<i64>,
+    /// The line that opens a draft is out: the structure that answers `init` is not a second primer.
+    pub(super) opening_sent: bool,
     /// When the last un-lent Esc fired: another one inside the window opens the tree.
     pub(super) esc_armed: Option<Instant>,
     /// When a sentence last entered the mailbox: the next Enter interrupts.
@@ -95,6 +103,10 @@ impl Default for InputZone {
             pending_exits: Vec::new(),
             queue: Queue::default(),
             in_flight: None,
+            prepare_pending: true,
+            struct_seen: false,
+            last_compact: None,
+            opening_sent: false,
             esc_armed: None,
             enter_armed: None,
             pending_notice: VecDeque::new(),
@@ -253,13 +265,40 @@ impl SubZone for InputZone {
         consumed
     }
 
+    /// The structural window: a session with no rounds is new, and a newer compaction round
+    /// means the terms left the history and go back in front of the next message.
+    fn structure(&mut self, snapshot: &Turns) {
+        let latest = snapshot
+            .rounds()
+            .iter()
+            .filter(|round| round.compact)
+            .map(|round| round.id)
+            .max();
+        if !self.struct_seen {
+            self.struct_seen = true;
+            let newest = snapshot.rounds().first().is_some_and(|round| round.compact);
+            self.prepare_pending = !self.opening_sent && (snapshot.is_empty() || newest);
+            self.opening_sent = false;
+            self.last_compact = latest;
+            return;
+        }
+        if latest > self.last_compact {
+            self.prepare_pending = true;
+        }
+        self.last_compact = latest;
+    }
+
     fn attach(&mut self, session: i64, _size: TermSize) {
         // A draft turning real carries its own live state; only a session
         // switch has old data to wipe.
         if self.session.is_some() {
             self.reset_data();
+            self.opening_sent = false;
         }
         self.session = Some(session);
+        self.prepare_pending = false;
+        self.struct_seen = false;
+        self.last_compact = None;
         self.pending_name = None;
         self.queue.clear();
         self.in_flight = None;
@@ -270,6 +309,10 @@ impl SubZone for InputZone {
 
     fn detach(&mut self) {
         self.session = None;
+        self.prepare_pending = false;
+        self.struct_seen = false;
+        self.last_compact = None;
+        self.opening_sent = false;
         self.pending_exits.clear();
         self.pending_hire = None;
         self.hang = false;

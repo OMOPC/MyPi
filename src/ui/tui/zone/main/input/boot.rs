@@ -7,6 +7,9 @@ use crate::ui::tui::zone::Request;
 /// The git segment's scan interval, in seconds.
 pub(super) const GIT_SCAN_KEY: &str = "config.ui.tui.zone.main.input.deco.gitScanInterval";
 
+/// Whether a session's first message carries the workspace preparation.
+pub(super) const AUTO_PREPARE_KEY: &str = "config.ui.tui.zone.main.input.autoPrepare";
+
 /// The currency the cost pill counts in.
 pub(super) const FX_CURRENCY_KEY: &str = "config.ui.tui.fx.currency";
 
@@ -23,7 +26,13 @@ impl InputZone {
             return;
         }
         self.booted = true;
-        for key in [GIT_SCAN_KEY, FX_CURRENCY_KEY, DEFAULT_MODEL_KEY, LANG_KEY] {
+        for key in [
+            GIT_SCAN_KEY,
+            AUTO_PREPARE_KEY,
+            FX_CURRENCY_KEY,
+            DEFAULT_MODEL_KEY,
+            LANG_KEY,
+        ] {
             self.outbox.push(Request::Config {
                 key: key.to_string(),
             });
@@ -35,11 +44,13 @@ impl InputZone {
     pub(super) fn reset_data(&mut self) {
         let cwd = std::mem::take(&mut self.data.cwd);
         let git_scan = self.data.git_scan;
+        let auto_prepare = self.data.auto_prepare;
         let currency = self.data.money.currency;
         let lang = self.data.lang;
         self.data = Data::default();
         self.data.cwd = cwd;
         self.data.git_scan = git_scan;
+        self.data.auto_prepare = auto_prepare;
         self.data.money.currency = currency;
         self.data.lang = lang;
     }

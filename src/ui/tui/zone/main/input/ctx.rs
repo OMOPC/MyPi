@@ -84,6 +84,8 @@ pub struct Data {
     pub money: Money,
     /// Seconds between git scans of the workspace; `None` until the config answers.
     pub git_scan: Option<Duration>,
+    /// The first message of a session, and the first after a compaction, carry the preparation.
+    pub auto_prepare: bool,
     /// A round is running.
     pub busy: bool,
 }

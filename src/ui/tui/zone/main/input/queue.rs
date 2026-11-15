@@ -15,9 +15,9 @@ pub struct Outgoing {
 }
 
 impl Outgoing {
-    pub fn new(text: String) -> Outgoing {
+    pub fn new(prefix: Option<String>, text: String) -> Outgoing {
         Outgoing {
-            prefix: None,
+            prefix,
             text,
             suffix: None,
         }

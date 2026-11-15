@@ -2,8 +2,11 @@
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExitRequest {
-    /// Submit the current input, whole.
-    Submit(String),
+    /// Submit the current input, with the context the command built.
+    Submit {
+        prefix: Option<String>,
+        text: String,
+    },
     /// Interrupt the in-flight round.
     Interrupt,
     /// Two un-lent Esc inside the window ask for the node tree.

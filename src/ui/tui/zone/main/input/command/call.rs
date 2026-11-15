@@ -10,12 +10,19 @@ pub struct Call<'a> {
     pub args: &'a str,
     /// The session this front end follows; `None` = a draft.
     pub session: Option<i64>,
+    /// Where the conversation stands.
+    pub cwd: &'a str,
 }
 
 /// What one command answers.
 pub enum Done {
     /// One write, and what to say once it lands.
     Write { request: Request, notice: Notice },
+    /// One message, carrying the context the command built.
+    Submit {
+        prefix: Option<String>,
+        text: String,
+    },
     /// Something only this front end does.
     Exit(ExitRequest),
     /// One temp hand.

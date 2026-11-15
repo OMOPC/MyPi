@@ -28,7 +28,7 @@ pub(super) fn land(session: &mut Session, request: Request) {
         Request::Compact { retention, focus } => session.compact(retention, focus.as_deref()),
         Request::Delete(id) => session.delete(id),
         Request::Rewind { turn, block } => session.rewind(turn, block),
-        Request::Submit(_)
+        Request::Submit { .. }
         | Request::SetCwd(_)
         | Request::Rename(_)
         | Request::Copy(_)

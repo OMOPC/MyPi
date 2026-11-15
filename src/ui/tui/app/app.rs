@@ -79,7 +79,7 @@ pub struct App {
     /// `/name` before any session: the name travels with the row that opens.
     pub(super) name: Option<String>,
     /// The message whose opening `init` is in flight; it goes out as soon as the row answers.
-    opening: Option<String>,
+    opening: Option<(Option<String>, String)>,
     /// The session each zone has last been told about; `None` = never told.
     pub(super) told: Vec<Option<Option<i64>>>,
     /// Text waiting for the loop to write it to the clipboard.
@@ -312,7 +312,7 @@ impl App {
             Request::Quit => self.settle(Outcome::Quit),
             Request::PickProfile(profile) => self.pick_profile(profile),
             Request::Copy(text) => self.copy.push(text),
-            Request::Submit(text) => self.submit(text),
+            Request::Submit { prefix, text } => self.submit(prefix, text),
             Request::SetCwd(path) => self.set_cwd(path),
             Request::Rename(name) => self.rename(name),
             Request::SwitchModel(id) if self.session.attached().is_none() => {
@@ -369,13 +369,13 @@ impl App {
     }
 
     /// A message: the row comes first when there is none, then the text, then its echo.
-    fn submit(&mut self, text: String) {
+    fn submit(&mut self, prefix: Option<String>, text: String) {
         if self.session.attached().is_none() {
-            self.opening = Some(text);
+            self.opening = Some((prefix, text));
             self.create();
             return;
         }
-        self.session.submit(&text);
+        self.session.submit(prefix.as_deref(), &text);
         self.echo(&text);
     }
 
@@ -428,8 +428,8 @@ impl App {
             return;
         };
         self.attach(id);
-        if let Some(text) = self.opening.take() {
-            self.session.submit(&text);
+        if let Some((prefix, text)) = self.opening.take() {
+            self.session.submit(prefix.as_deref(), &text);
             self.echo(&text);
         }
     }

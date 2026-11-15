@@ -13,15 +13,18 @@ pub(crate) fn apply(api: &Api, conn: u64, viewer: &str, ask: &Value) -> Result<V
     let session = i64_of(ask, "session")?;
     emit::require_writer(api, viewer, session)?;
     let text = opt_str_of(ask, "text")?.unwrap_or_default();
-    if text.trim().is_empty() {
+    let prefix = opt_str_of(ask, "prefix")?.map(str::to_string);
+    let suffix = opt_str_of(ask, "suffix")?.map(str::to_string);
+    // A letter may be all context: `/prepare` with no words of its own.
+    if text.trim().is_empty() && prefix.is_none() && suffix.is_none() {
         api.ledger().clear_mail(session)?;
         api.relay().drop_mail(session);
         return Ok(json!({"written": false}));
     }
     let letter = Letter {
-        prefix: opt_str_of(ask, "prefix")?.map(str::to_string),
+        prefix,
         text: text.to_string(),
-        suffix: opt_str_of(ask, "suffix")?.map(str::to_string),
+        suffix,
     };
     api.ensure_booked(session)?;
     api.ledger().write_mail(session, letter)?;

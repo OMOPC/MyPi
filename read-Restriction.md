@@ -50,5 +50,4 @@
 
 ## 六、本轮没做
 
-1. `/prepare` 与 `config.ui.tui.zone.main.input.autoPrepare` 没有做。
-2. TUI 的 read 卡片只画标题行，正文不进历史卡片；`final` 的 `read` 草稿卡片里按普通文本渲染，不区分编号行与视图行。
+1. TUI 的 read 卡片只画标题行，正文不进历史卡片；`final` 的 `read` 草稿卡片里按普通文本渲染，不区分编号行与视图行。

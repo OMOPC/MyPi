@@ -71,10 +71,11 @@ fn extras(reader: &Reader, row: Value) -> Result<Value, Refuse> {
         )?;
         for block in &blocks {
             if first_user.is_none() && block["kind"].as_str() == Some("user") {
-                first_user = block["content"]
+                let body = block["content"]
                     .as_str()
                     .or_else(|| block["text"].as_str())
-                    .map(str::to_string);
+                    .filter(|text| !text.trim().is_empty());
+                first_user = body.map(str::to_string);
             }
             for key in ["content", "text", "result"] {
                 if let Some(text) = block[key].as_str() {

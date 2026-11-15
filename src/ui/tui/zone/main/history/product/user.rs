@@ -18,6 +18,10 @@ pub(crate) fn rows(block: &Block, width: usize) -> Vec<Row> {
         .as_deref()
         .or(block.text.as_deref())
         .unwrap_or("");
+    // A prepared message may have no words of its own: its context rode in the prefix.
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
     let fill = Ink::Fixed(fixed::USER_BG);
     let avail = width.saturating_sub(GUTTER_COLS);
     let mut out = vec![gutter(fill, width)];

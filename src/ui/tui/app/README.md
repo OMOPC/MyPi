@@ -49,9 +49,10 @@ A `Request` is an intent: the app names the door. `wire::land` carries every ses
 app keeps the ones that are its own — `Submit`, `SetCwd`, `Rename`, `SwitchModel` in a draft,
 `Copy`, `Attach`, `Detach`, `Structure`, `Quit`, `PickProfile`.
 A `Submit` with no session attached first creates the row (`post init` with `cwd`, `name`, `model`
-and the picked profile), parks the text, and sends it after the id lands. A draft's `SetCwd`,
-`Rename` and `SwitchModel` land here and answer with a `local` frame named after the same door, so
-the input zone can speak its receipt; a session's land on the server instead.
+and the picked profile), parks the text with the prefix it carries, and sends both after the id
+lands. A draft's `SetCwd`, `Rename` and `SwitchModel` land here and answer with a `local` frame
+named after the same door, so the input zone can speak its receipt; a session's land on the server
+instead.
 `Structure` asks the session for the structural window and hands one `Turns` snapshot to the zone
 that shows; a nested `Structure` request is dropped.
 

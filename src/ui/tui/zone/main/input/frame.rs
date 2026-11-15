@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use super::boot::{DEFAULT_MODEL_KEY, FX_CURRENCY_KEY, GIT_SCAN_KEY, LANG_KEY};
+use super::boot::{AUTO_PREPARE_KEY, DEFAULT_MODEL_KEY, FX_CURRENCY_KEY, GIT_SCAN_KEY, LANG_KEY};
 use super::ctx::{Context, Currency};
 use super::notice::Notice;
 use super::zone::InputZone;
@@ -163,6 +163,10 @@ impl InputZone {
             if let Some(seconds) = value.and_then(Value::as_u64) {
                 self.data.git_scan = Some(std::time::Duration::from_secs(seconds.max(1)));
             }
+            return;
+        }
+        if key == AUTO_PREPARE_KEY {
+            self.data.auto_prepare = value.and_then(Value::as_bool).unwrap_or(false);
             return;
         }
         if let Some(address) = key.strip_prefix("models.model.") {

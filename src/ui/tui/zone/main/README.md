@@ -46,7 +46,7 @@ to change and broadcasts only when the numbers moved.
 
 | exit | becomes |
 |---|---|
-| `Submit(text)` | `Request::Submit` |
+| `Submit { prefix, text }` | `Request::Submit { prefix, text }` |
 | `Interrupt` | `Request::Interrupt` |
 | `OpenTree` | `Outcome::Show { to: Tree }` |
 | `OpenResume` | `Outcome::Show { to: Resume }` |

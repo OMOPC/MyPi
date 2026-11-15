@@ -45,11 +45,13 @@ impl InputZone {
                 true
             }
             Route::Message if self.data.busy => {
-                self.enqueue(text);
+                let prefix = self.auto_prefix();
+                self.enqueue(prefix, text);
                 true
             }
             Route::Message => {
-                self.send(text);
+                let prefix = self.auto_prefix();
+                self.send(prefix, text);
                 true
             }
         }
@@ -60,9 +62,14 @@ impl InputZone {
         let call = Call {
             args,
             session: self.session,
+            cwd: &self.data.cwd,
         };
         match command::run(meta, &call) {
             Done::Write { request, notice } => self.wrote(request, notice),
+            Done::Submit { prefix, text } => {
+                self.leave(prefix, text);
+                return;
+            }
             Done::Exit(exit) => self.pending_exits.push(exit),
             Done::Hire(who) => self.pending_hire = Some(who),
             Done::Profile(profile) => self.outbox.push(Request::PickProfile(profile)),
@@ -129,9 +136,9 @@ impl InputZone {
     }
 
     /// A sentence sent while a round runs: the slot takes it, the round is untouched.
-    fn enqueue(&mut self, text: String) {
+    fn enqueue(&mut self, prefix: Option<String>, text: String) {
         self.take_line();
-        if let Some(request) = self.queue.push(Outgoing::new(text)) {
+        if let Some(request) = self.queue.push(Outgoing::new(prefix, text)) {
             self.outbox.push(request);
         }
         self.shouts
@@ -140,13 +147,38 @@ impl InputZone {
     }
 
     /// A sentence sent while nothing runs: it opens a turn.
-    fn send(&mut self, text: String) {
-        self.pending_exits.push(ExitRequest::Submit(text.clone()));
+    fn send(&mut self, prefix: Option<String>, text: String) {
+        if self.session.is_none() {
+            // This line opens the session: the structure that answers `init` is not a second primer.
+            self.opening_sent = true;
+        }
+        self.pending_exits.push(ExitRequest::Submit {
+            prefix,
+            text: text.clone(),
+        });
         self.in_flight = Some(text);
         self.take_line();
         self.data.busy = true;
         self.shouts
             .push(Shout::new(name::BUSY, json!({"on": true})));
+    }
+
+    /// One message a command built: the mailbox while a round runs, a new turn otherwise.
+    fn leave(&mut self, prefix: Option<String>, text: String) {
+        self.prepare_pending = false;
+        match self.data.busy {
+            true => self.enqueue(prefix, text),
+            false => self.send(prefix, text),
+        }
+    }
+
+    /// The preparation a message carries on its own, when it is due.
+    fn auto_prefix(&mut self) -> Option<String> {
+        if !self.data.auto_prepare || !self.prepare_pending {
+            return None;
+        }
+        self.prepare_pending = false;
+        command::payload(&self.data.cwd, true)
     }
 
     /// The reply to a submit that opened nothing: the sentence comes back, and says why.

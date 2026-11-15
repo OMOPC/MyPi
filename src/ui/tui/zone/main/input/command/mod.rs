@@ -7,6 +7,7 @@ mod memo;
 mod model;
 mod name;
 mod new;
+mod prepare;
 mod profile;
 mod quit;
 mod resume;
@@ -16,5 +17,6 @@ mod usage;
 mod wants;
 
 pub use call::{Call, Done};
+pub(crate) use prepare::payload;
 pub use table::{TABLE, lookup, pair, run, split};
 pub use wants::{slot, wants};

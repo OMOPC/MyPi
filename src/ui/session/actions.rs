@@ -94,9 +94,13 @@ impl Session {
         self.send("subscribe", "watch", json!({"session": Value::Null}), false);
     }
 
-    /// `subscribe submit`: one message leaves as a turn.
-    pub fn submit(&mut self, text: &str) {
-        self.act("subscribe", "submit", json!({"text": text}));
+    /// `subscribe submit`: one message leaves as a turn, with the context the command built.
+    pub fn submit(&mut self, prefix: Option<&str>, text: &str) {
+        self.act(
+            "subscribe",
+            "submit",
+            json!({"prefix": prefix, "text": text}),
+        );
     }
 
     /// `post interrupt`: stop the running turn.

@@ -20,14 +20,14 @@ What each file holds, who calls it, and what it depends on. Current state only.
 | `editor/` | the text, undo, paste store, separators and script classes, submission ring | private |
 | `semantics.rs` | key → intent, one context-free table | private |
 | `route.rs` | one line classified as a message or a command | private |
-| `command/` | the table, the answer shapes, one file per command, the completion trigger | private |
+| `command/` | the table, the answer shapes, one module per command, the completion trigger; `prepare/` also holds the payload and the listing | private |
 | `render.rs` | the container: top edge, body rows, bottom edge, cursor | private |
 | `statusline/` | the row engine, `StatusTheme`, and the seven decos | private |
 
 ## What it exposes
 
-Through `SubZone`: `claims`, `kinds`, `deliver_event`, `deliver_action`, `attach`, `detach`,
-`take_shouts`, `hear`, plus `super::pane::Pane`'s `request_height` and `assign`.
+Through `SubZone`: `claims`, `kinds`, `deliver_event`, `deliver_action`, `structure`, `attach`,
+`detach`, `take_shouts`, `hear`, plus `super::pane::Pane`'s `request_height` and `assign`.
 
 To `Main`: `take_hire`, `take_exits`, `draft`, `apply_reply`, `clear`, `boot`, `render_rows`,
 `cursor_row`, `cursor_col`, `editor`, `statusline`.
@@ -41,6 +41,7 @@ The module root re-exports `InputZone`, `ExitRequest`, `Notice`, `Ctx`, `Context
 - `ui::tui::action`, `ui::tui::theme::Accent`.
 - `ui::command` for the declaration shapes; the table and every command live under `command/`.
 - `ui::lang` for the language and the en/zh pair.
+- `serde_yaml` and `std::fs` for the preparation's declared paths, terms and manifest.
 - `super::desk::{Hire, Reply}` for what it asks the desk and what the desk hands back.
 
 ## Who calls it

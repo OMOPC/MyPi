@@ -28,6 +28,9 @@ finish itself.
 | `pending_name` | the name a `/name` asked for, until its receipt |
 | `queue: Queue` | sentences sent while a round was running, head first |
 | `in_flight` | the sentence a submit put out, until the door answers |
+| `prepare_pending` | this session's first message, or the first after a compaction, still owes the preparation |
+| `struct_seen`, `last_compact` | the structural window has been read, and its newest compaction round |
+| `opening_sent` | the line that opens a draft is out, so its `init` structure is not a second primer |
 | `shouts` | events this zone put out |
 
 ### Claims
@@ -54,10 +57,18 @@ A paste longer than the collapse thresholds becomes one marker; the marker is re
 `route::classify` uses this zone's own table (`command::split`): a known command becomes
 `Command(meta, args)`, anything else `Message`. An unknown `/xxx` is a message.
 
-Every command is one file under `command/`, and every file declares its `META` and answers with one
-`Done`: a write plus the notice it owes, an exit (`/q`, `/resume`, `/new`), a hire (`/usage`), the
-picked profile (`/profile`), a refusal notice, or `Hold` when an argument is missing — `Hold` leaves
-the line in the box and sends nothing. A plain message leaves as `ExitRequest::Submit`.
+Every command is one module under `command/`, and every file declares its `META` and answers with
+one `Done`: a write plus the notice it owes, an exit (`/q`, `/resume`, `/new`), a hire (`/usage`),
+the picked profile (`/profile`), a message with the context it built (`/prepare`), a refusal
+notice, or `Hold` when an argument is missing — `Hold` leaves the line in the box and sends
+nothing. A plain message leaves as `ExitRequest::Submit`.
+
+`/prepare` builds the workspace preparation: the directory, one terms file (`AGENTS.md`, else
+`CLAUDE.md`, else `AI.md`), the files an `AI.md` lists under a `prepare` fence, the manifest's four
+sections, and the `read(".")` listing. It travels in the message's `prefix`, so the history shows
+only the user's own words. `config.ui.tui.zone.main.input.autoPrepare` (default off) puts the same
+preparation on a session's first message and on the first message after a compaction; the
+structural window decides both.
 
 `/profile` is refused here once a session id exists. `/name`, `/cdp` and `/switch` work in a draft:
 the app keeps them until the row opens. A draft's `/cdp` lands only on a directory that exists — `~`
@@ -180,5 +191,6 @@ once more when a round starts or ends.
 | `models.model.<address>` | the whole entry: the model pill's text and the gauge's denominator |
 | `config.ui.tui.fx.currency` | the currency the cost pill counts in (`CNY` / `USD`) |
 | `config.ui.tui.zone.main.input.deco.gitScanInterval` | seconds between git scans |
+| `config.ui.tui.zone.main.input.autoPrepare` | put the workspace preparation on a session's first message and the first after a compaction |
 | `config.server.api.defaultModel` | the model a draft opens with |
 | `config.ui.lang` | the language of notices, command details and number formats |
