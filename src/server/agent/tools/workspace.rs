@@ -28,7 +28,13 @@ impl Workspace {
     /// result MUST land inside a licensed zone.
     pub fn resolve(&self, raw: &str, must_exist: bool) -> Result<std::path::PathBuf> {
         let cwd = self.cwd();
-        resolve_path(&cwd, &licensed_zones(&cwd), raw, must_exist)
+        resolve_path(&cwd, &licensed_zones(&cwd), raw, must_exist, false)
+    }
+
+    /// Resolve a path that may be a directory; `read` lists them.
+    pub fn resolve_any(&self, raw: &str, must_exist: bool) -> Result<std::path::PathBuf> {
+        let cwd = self.cwd();
+        resolve_path(&cwd, &licensed_zones(&cwd), raw, must_exist, true)
     }
 
     /// Land on a new working directory. The caller checks where it may land (see `cd`).
@@ -205,6 +211,7 @@ fn resolve_path(
     zones: &[std::path::PathBuf],
     raw: &str,
     must_exist: bool,
+    allow_dir: bool,
 ) -> Result<std::path::PathBuf> {
     anyhow::ensure!(!raw.trim().is_empty(), "empty path");
     let p = std::path::Path::new(raw);
@@ -224,7 +231,7 @@ fn resolve_path(
         if !real.exists() {
             return Err(anyhow!("file not found: {}", real.display()));
         }
-        if real.is_dir() {
+        if real.is_dir() && !allow_dir {
             return Err(anyhow!("{} is a directory", real.display()));
         }
     }

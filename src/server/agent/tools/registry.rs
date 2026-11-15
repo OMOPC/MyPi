@@ -49,8 +49,13 @@ pub fn roster(names: &[String]) -> Vec<ToolDef> {
         .collect()
 }
 
-/// Every tool name in the table, for a profile that names none.
-pub fn names() -> Vec<String> {
-    TOOLS.iter().map(|tool| tool.name.to_string()).collect()
+/// What a profile that names no list gets: everything but `edit` and `final`. `splice` is the
+/// writer a session starts with, and `final` is a child's alone.
+pub fn defaults() -> Vec<String> {
+    TOOLS
+        .iter()
+        .filter(|tool| tool.name != edit::TOOL.name && tool.name != subagent::FINAL.name)
+        .map(|tool| tool.name.to_string())
+        .collect()
 }
 

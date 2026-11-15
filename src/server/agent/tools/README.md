@@ -92,7 +92,7 @@ that tool needs (the tool checks them, not the schema).
 
 | tool | parameters, in index order |
 |---|---|
-| `read` | `files` always: one item per file, with `path` and its own `offset` (1-based, default 1) and `limit` (default 200); each file gets its own 200-line and 64 KiB budget |
+| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (default 800); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `range` always (1-based, `12-14` or `12`), `new` always |
 | `write` | `path` always, `content` always |
@@ -126,9 +126,9 @@ payloads are large enough that a batch would only move the same bytes into one a
   rest still run and still answer. The call fails when any item failed, and `fail` counts them.
 - Every item states its own outcome in `items`, aligned with the arguments' order: the front end
   never reads a status out of the text.
-- `read` budgets belong to each file, not to the call: every file gets its own 200-line and 64 KiB
-  allowance, a line over the byte cap is cut where the characters still fit, and that file's footer
-  points at bash instead of an offset.
+- `read` budgets belong to each path, not to the call: a Rust file gets its own 800-line and
+  256 KiB allowance, anything else 200 lines and 64 KiB; a line over the byte cap is cut where the
+  characters still fit, and that file's footer points at bash instead of an offset.
 - A query operation — `alias list`, `kairos list/status/result/cancel`, `mcp list` — takes no
   array and refuses one.
 - A batch whose items produce structured payloads answers a memo array, and the history cards
@@ -282,11 +282,56 @@ server and tool for `mcp`, the first template and its answer name for `task`, th
 `search`, and for `web` the operation plus the argument it names: URL, selector or expression.
 A tool name the table no longer holds shows its clipped arguments.
 
+### read
+
+`read` answers one array of paths: a file comes back as its body, a directory as its entries.
+
+A file's body carries line numbers only where a change can start or end. `splice` locates a change
+by line, so a session with `splice` numbers a Rust file at each block's first and last line: a
+declaration, a run of `use` statements, a hat of attributes and doc comments (its first and its last
+line, however many it stacks), the closing brace of any numbered block, and — inside a function
+longer than fifteen lines — the `match`, `if let`, `for`, `while` and `loop` heads. Every other line
+stays unnumbered, so every numbered block has a `(start, end)` a call can name without counting.
+Other languages keep a number on every line: only Rust is read this way.
+
+`edit` locates a change by text, so a session with `edit` and without `splice` gets no numbers at
+all: the body is the file, ready to be copied into `old`.
+
+A Rust file gets 800 lines and 256 KiB; every other file 200 lines and 64 KiB. The footer appears
+only when something is left: the offset to continue from, or the byte cap that sent the rest to
+`bash`. A file that ended, and a window that starts past its end, answer nothing.
+
+A directory answers one level: files with their total line count, directories by name. Inside
+`src/`, each direct child directory is expanded one level too; one with ten or more files folds into
+counts instead. The session root lists the same way, with `src/` expanded in place. A build tree's
+junk — `target`, `node_modules`, anything dot-prefixed — is never listed.
+
+### The module view
+
+A Rust file read inside a crate arrives with its module's context, because a module is edited as a
+whole far more often than a file is. The view names the module's exports, its submodules with their
+size, visibility, role, exported signatures and the siblings each one reaches into, and its
+upstream: the parent that declares it, and every file outside the module that imports it, with line
+numbers and the symbols it takes.
+
+The first read in a module directory carries the view; later reads there do not, because the
+conversation already holds it. Reading the module's own entry file (`mod.rs`, a dual-track `x.rs`,
+`lib.rs`) always carries it. A compaction clears that memory, so a view can come again.
+
+The upstream scan walks upward: the next directory up and its peers first, then one more up, and
+so on to the crate root. Its first level always finishes; a later level that runs out of its
+100 ms budget is dropped whole, and the view says where the walk stopped. Direct importers only: a
+`pub use` that forwards a name is not followed.
+
 ### edit and splice
 
 `edit` needs `old` (one unique run) and `new`. `splice` needs `range` (`12-14` or `12`) and `new`,
 which may be empty to remove the range. A field the table does not hold is refused, so `range` in
 an `edit` call and `old` in a `splice` call both fail on the name.
+
+A session gets one of the two, because two ways of locating one change pull the model apart. A
+profile's `tools.yaml` may name either; naming both keeps `splice` and drops `edit`, with a notice.
+A profile that names no list gets every tool but `edit` and `final`.
 
 Both answer the same line, naming what went, what took its place, and how far the rest moved:
 

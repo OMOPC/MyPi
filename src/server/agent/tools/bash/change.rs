@@ -40,6 +40,12 @@ fn indent(line: &str) -> usize {
 
 /// Whether this line declares an item rather than opening a block.
 fn is_item(line: &str) -> bool {
+    head_of(line).is_some()
+}
+
+/// The head word of a declaration, once its modifiers are behind it; `None` when the line opens
+/// no item. `pub async fn` → `fn`, `pub(crate) mod` → `mod`.
+pub(crate) fn head_of(line: &str) -> Option<&'static str> {
     for raw in line.split_whitespace() {
         if raw.starts_with('#') || raw.starts_with('!') {
             continue;
@@ -51,15 +57,15 @@ fn is_item(line: &str) -> bool {
         if word.is_empty() {
             continue;
         }
-        if HEADS.contains(&word.as_str()) {
-            return true;
+        if let Some(head) = HEADS.iter().find(|head| **head == word) {
+            return Some(head);
         }
         if MODIFIERS.contains(&word.as_str()) {
             continue;
         }
-        return false;
+        return None;
     }
-    false
+    None
 }
 
 /// Whether this line is still the item's own header, a signature wrapped over several lines.

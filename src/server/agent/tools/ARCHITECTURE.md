@@ -10,7 +10,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `contract/mod.rs` | declares the five contract groups |
 | `contract/call.rs` | `Batch`, `Cwd` |
 | `contract/output.rs` | `ToolResult`, `ToolOutput`, `Effect`, `MemoOp`, `AliasOp` |
-| `contract/env.rs` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths` |
+| `contract/env.rs` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp` |
 | `contract/view.rs` | the `Source`, `Export`, `Child`, `Draft`, `MemoRead` ports, the history shapes, and `MemoScope`, `MemoReadOp`, `MemoVersion`, `MemoView` |
 | `contract/job.rs` | the job vocabulary a tool shares with the loop: `JobSpec`, `Schedule`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink`, and the `JobHost` port |
 | `engine.rs` | `Engine`: `Batch::run` — env, gates, decode, run, stamp, measure (every tool but `read`), events; the stop that lands mid-call becomes the result's reason |
@@ -25,7 +25,10 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/bash/segment.rs` | the separator set and the segment heads; the guard and the alias expansion share both |
 | `bash/bash/guard.rs` | the command classifier: `normalize`, `classify`, `Verdict`, `RuleHit` |
 | `bash/bash/shell.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc` |
-| `bash/read/{mod,tool}.rs` | `read`: the file array, the shared line and byte caps, the per-file header |
+| `bash/read/{mod,tool}.rs` | `read`: the path array, directories, the per-kind budgets, the module view |
+| `bash/read/sparse.rs` | the sparse anchor scan: comments and literals blanked, block edges numbered |
+| `bash/read/hub.rs` | the module graph: entry files, exports, sibling edges, the upward importer scan |
+| `bash/read/dir.rs` | directory listings: one level, `src/` expanded, many files folded |
 | `bash/write/{mod,tool}.rs` | `write` |
 | `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
 | `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, with `mass_text` and `parse_range` |

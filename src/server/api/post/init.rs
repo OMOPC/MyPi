@@ -40,7 +40,7 @@ pub(crate) fn apply(api: &Api, _conn: u64, _viewer: &str, ask: &Value) -> Result
     // lists.
     let tools: Vec<String> = resolved
         .tools
-        .unwrap_or_else(registry::names)
+        .unwrap_or_else(registry::defaults)
         .into_iter()
         .filter(|name| name != FINAL.name)
         .collect();

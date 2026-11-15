@@ -153,5 +153,18 @@ fn load_tools(path: &Path, notices: &mut Vec<ConfigNotice>) -> Vec<String> {
             "all tools",
         ));
     }
+    // `edit` and `splice` locate the same change two ways; a session gets one of them.
+    let both = ["edit", "splice"]
+        .iter()
+        .all(|name| names.iter().any(|listed| listed == name));
+    if both {
+        notices.push(warn(
+            "profile.tools",
+            &file,
+            "`edit` and `splice` are exclusive; `splice` wins",
+            "`edit` dropped",
+        ));
+        return names.into_iter().filter(|name| name != "edit").collect();
+    }
     names
 }

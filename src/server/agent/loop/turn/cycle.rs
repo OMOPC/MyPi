@@ -87,6 +87,12 @@ pub(crate) fn run(
             usage,
             &reply.borrows,
         )?;
+        // The conversation no longer holds what the reads showed: a module card may come again.
+        {
+            let mut env = handle.env();
+            env.seen.dirs.clear();
+            env.seen.files.clear();
+        }
         settle(inner, handle, turn, Stop::Model, None)?;
         transcript.reload()?;
         return Ok(Stop::Model);

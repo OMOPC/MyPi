@@ -24,7 +24,8 @@ Every turn costs seconds: batch all independent reads/searches/checks into one t
 - File edits: MUST use `edit` (by matched text) or `splice` (by line number); NEVER sed/perl/python edits. Both change one file per call, and that file MUST be read first.
 - 移动会话的目录：`cd`，它改的是整个会话，不是单个调用。
 - `bash` is for real binaries and short fact pipelines; never a substitute for read, edit, splice or write.
-- `read` 的 `files` 数组一个调用读多个文件，每个文件各自有 200 行、64 KiB 的预算。
+- `read` 的 `files` 数组一个调用读多个路径：文件给正文，目录给一层清单（`src/` 里的子目录再展开一层）。Rust 文件 800 行、256 KiB；其他文件 200 行、64 KiB。
+- 会话里有 `splice` 时，Rust 文件只在块的首尾带行号；只有 `edit` 时正文完全不带行号。读 crate 内的 Rust 文件会带上所属模块的上下文，每个目录第一次读时给一次。
 - 回看本会话已经跑过的调用：`context`，不要重读。
 - 长任务或开放式命令：`kairos`，不要用阻塞的 `bash`。
 - 会话级 shell 别名：`alias`。给用户的命名笔记：`memo`。长任务的清单：`todo`，三者都能扛过压缩。

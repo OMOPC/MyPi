@@ -30,6 +30,25 @@ pub struct Env {
     pub source: Arc<dyn Source>,
     /// The site rules `web` narrows a page with: one read, when the config was loaded.
     pub rules: Arc<Rules>,
+    /// What this conversation's reads have already shown the model.
+    pub seen: Seen,
+}
+
+/// The session's reading memory: one module card per directory, and the stamp of every file it
+/// has read. A compaction clears it, because the conversation no longer holds what was shown.
+#[derive(Debug, Default)]
+pub struct Seen {
+    /// Module directories whose context card has been shown.
+    pub dirs: std::collections::HashSet<PathBuf>,
+    /// Every file read in this conversation: its line count and content hash.
+    pub files: BTreeMap<PathBuf, Stamp>,
+}
+
+/// One file as it stood when it was read.
+#[derive(Debug, Clone, Copy)]
+pub struct Stamp {
+    pub lines: usize,
+    pub hash: u64,
 }
 
 impl Env {
@@ -149,6 +168,7 @@ impl Defaults {
             paths: self.paths.clone(),
             source: self.source.clone(),
             rules: Arc::clone(&self.rules),
+            seen: Seen::default(),
         })
     }
 }
