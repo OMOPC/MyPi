@@ -63,8 +63,9 @@ pub(crate) fn anchors(text: &str) -> Vec<bool> {
             }
             break;
         }
-        // A hat that owns nothing is just prose: no number.
-        if end + 1 < n && !raw[end + 1].trim().is_empty() {
+        // A hat that owns nothing is prose, and prose gets no number — except at the file's own
+        // head, which is always worth a line a change can name.
+        if start == 0 || (end + 1 < n && !raw[end + 1].trim().is_empty()) {
             out[start] = true;
             out[end] = true;
         }
@@ -128,10 +129,8 @@ fn use_run(code: &[String], head: &[Option<&'static str>], start: usize) -> (usi
 }
 
 fn is_hat(line: &str) -> bool {
-    line.starts_with("#[")
-        || line.starts_with("#![")
-        || line.starts_with("///")
-        || line.starts_with("//!")
+    // Every comment counts, not only `///` and `//!`: a file's own head is a block like any other.
+    line.starts_with("//") || line.starts_with("#[") || line.starts_with("#![")
 }
 
 fn bracket_delta(code: &str) -> i32 {
@@ -146,12 +145,75 @@ fn bracket_delta(code: &str) -> i32 {
     delta
 }
 
+/// A line that opens a multi-line block inside a long function, in three passes: a keyword, the
+/// same keyword behind an expression prefix, then a macro call or a closure.
 fn control_head(line: &str) -> bool {
-    line.starts_with("match ")
-        || line.starts_with("if let ")
-        || line.starts_with("while ")
-        || line.starts_with("loop ")
-        || (line.starts_with("for ") && !line.starts_with("for<"))
+    let line = line.trim();
+    // A line may close the block above and open the next one: `} else if cond {`.
+    let head = line.strip_prefix('}').map(str::trim_start).unwrap_or(line);
+
+    if control_word(head) {
+        return true;
+    }
+    if control_word(expression_tail(head)) {
+        return true;
+    }
+    // A macro or a closure counts only when its `{` ends the line: `.map(|x| x + 1)` is one line,
+    // and a folded `|` is not a block.
+    line.ends_with('{') && (line.contains("!{") || line.contains("! {") || closure(line))
+}
+
+/// The words that open a block, whole: `elsewhere()` and `loop_count` are not two of them.
+fn control_word(line: &str) -> bool {
+    if line.starts_with("if ") || line.starts_with("match ") || line.starts_with("while ") {
+        return true;
+    }
+    if line.starts_with("for ") {
+        return true;
+    }
+    for word in ["else", "loop", "unsafe", "async"] {
+        if let Some(rest) = line.strip_prefix(word)
+            && (rest.is_empty() || rest.starts_with(' ') || rest.starts_with('{'))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// The expression a block may open behind: after `let x =`, after an assignment, after a jump.
+fn expression_tail(line: &str) -> &str {
+    // `let Some(x) = foo() else {` opens its block at the `else`, not at the call.
+    if line.starts_with("let ") && line.trim_end().ends_with("else {") {
+        return "else {";
+    }
+    if let Some(rest) = line.strip_prefix("return ") {
+        return rest.trim_start();
+    }
+    if let Some(rest) = line.strip_prefix("break ") {
+        return rest.trim_start();
+    }
+    match assignment(line) {
+        Some(right) => right.trim_start(),
+        None => "",
+    }
+}
+
+/// The right side of an assignment, and only an assignment: a comparison is not one.
+fn assignment(line: &str) -> Option<&str> {
+    let (left, right) = line.split_once('=')?;
+    let left = left.trim_end();
+    if right.starts_with('=') || left.ends_with(['=', '!', '<', '>']) {
+        return None;
+    }
+    Some(right)
+}
+
+/// `spawn(move || {` and `.map(|x| {`: the line opens with a closure's brace.
+fn closure(line: &str) -> bool {
+    line.strip_suffix('{')
+        .map(str::trim_end)
+        .is_some_and(|head| head.ends_with('|'))
 }
 
 /// Every `{`-`}` pair, in the order the braces open.

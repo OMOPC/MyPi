@@ -298,9 +298,12 @@ A tool name the table no longer holds shows its clipped arguments.
 
 A file's body carries line numbers only where a change can start or end. `splice` locates a change
 by line, so a session with `splice` numbers a Rust file at each block's first and last line: a
-declaration, a run of `use` statements, a hat of attributes and doc comments (its first and its last
-line, however many it stacks), the closing brace of any numbered block, and — inside a function
-longer than fifteen lines — the `match`, `if let`, `for`, `while` and `loop` heads. Every other line
+declaration, a run of `use` statements, a hat of attributes and comments (its first and its last line,
+however many it stacks; the file's own head counts even when a blank line follows it), the closing brace of any numbered block, and — inside a function
+longer than fifteen lines — every block head: `if`, `else`, `match`, `while`, `for`, `loop`,
+`unsafe` and `async`, whether it stands on its own, follows a `}`, or opens behind `let x =`, an
+assignment, `return` or `break`. A `let … else` counts, and so does a macro call or a closure whose
+`{` ends the line. No head needs its `{` on that line: a folded condition puts it three lines down. Every other line
 stays unnumbered, so every numbered block has a `(start, end)` a call can name without counting.
 Other languages keep a number on every line: only Rust is read this way.
 
