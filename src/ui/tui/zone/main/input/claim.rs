@@ -56,6 +56,22 @@ pub const CLAIMS: &[Claim] = &[
         mods: PLAIN,
     }),
     Claim::Key(Key {
+        code: KeyCode::Backspace,
+        mods: Mods {
+            ctrl: true,
+            alt: false,
+            shift: false,
+        },
+    }),
+    Claim::Key(Key {
+        code: KeyCode::Backspace,
+        mods: Mods {
+            ctrl: false,
+            alt: true,
+            shift: false,
+        },
+    }),
+    Claim::Key(Key {
         code: KeyCode::Delete,
         mods: PLAIN,
     }),

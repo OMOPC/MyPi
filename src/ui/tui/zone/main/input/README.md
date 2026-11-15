@@ -36,8 +36,9 @@ finish itself.
 ### Claims
 
 Every key the editor acts on is named: `AnyChar`, `Paste`, `Enter` (plain, alt, shift), `Esc`, `Tab`,
-`Backspace`, `Delete`, the four arrow keys (plain), `Up` with alt, `Left`/`Right`/`Home`/`End` with
-ctrl. The history zone is checked first, so `Ctrl+T`, `Ctrl+O` and `Ctrl+↑↓` never reach this table.
+`Backspace` (plain, ctrl, alt), `Delete`, the four arrow keys (plain), `Up` with alt,
+`Left`/`Right`/`Home`/`End` with ctrl. The history zone is checked first, so `Ctrl+T`, `Ctrl+O`
+and `Ctrl+↑↓` never reach this table.
 
 ### Editor
 
