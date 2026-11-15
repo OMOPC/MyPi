@@ -364,12 +364,10 @@ The downward side never walks: it reads the names the entry declares and nothing
 the session's directory, and only `.rs` files under its `src/` are read: no ignore rules and no
 external binary, so the answer is the same on every platform. `target/` is out of reach by
 construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the root documents — is one
-`read` away and never searched.
-construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the root documents — is one
 `read` away and never searched. `scope` narrows the walk to named directories under `src/`, and the
-files of one answer are read in parallel.
-pattern that does not compile is refused with the engine's own position and a reminder that the
-switch is off by default.
+files of one answer are read in parallel. `query` stands for
+itself unless `regex` is on, when it is a pattern; a pattern that does not compile is refused with
+the engine's own position and a reminder that the switch is off by default.
 
 Structure comes from the passes `read` already runs: comments and literals blanked, braces paired,
 head words recognized. A header runs to its own `{` or `;` with `(`, `[` and angle brackets
@@ -391,7 +389,6 @@ Three sections precede the hits:
   caps.
 
 Hits are answered at the density their count allows, by `deepMax` and `foldMax`. Up to `deepMax`,
-Hits are answered at the density their count allows, by `deepMax` and `foldMax`. Up to `deepMax`,
 each hit comes with its innermost item whole — or a six-line window when that item is longer than
 forty lines — under an `in:` breadcrumb of every item around it. An excerpt line carries its
 number only when it is a hit or an anchor of `read`'s own sparse scan; every other line keeps the
@@ -406,6 +403,9 @@ root. A directory that is missing, is not a directory, or stands outside `src/` 
 the rest still run, and the answer ends with one `[scope]` line per such entry naming the reason.
 Every file whose lines an answer showed is stamped in `env.seen` — line count and content hash, the
 stamp `read` writes — so `splice` works on it without a second `read`.
+
+`grep` bounds its own text, so the front door does not measure it: what it answers is what the model
+reads, however long that is.
 
 What it does not read: anything a macro generates, the `impl`s a derive writes, `include!`,
 `#[path]`, and a type renamed by `use … as`. A hit inside such code is still a hit; only its
@@ -614,9 +614,9 @@ not checked here; a bad argument is the server's error to report.
 ### Invariants
 
 1. A tool reads only `Env`; no database, no config file, no loop.
-2. A tool never measures or trims output; the front door does — `read` alone bounds its own files,
-   which is why the front door does not measure it. `grep` caps its own hit lines by the same
-   line budget and is still measured, so a wide answer spills rather than overflowing.
+2. A tool never measures or trims output; the front door does — `read` and `grep` alone bound their
+   own text, which is why the front door does not measure them. `grep` caps its own hit lines by the
+   same line budget and states every cap that bites, so nothing is spilled or dropped silently.
 3. A tool names an effect kind; the front door stamps `call_id` and `ts`.
 4. File tools read and write only inside the licensed zones; atomically, under a per-path lock.
 5. The roster is the only way the model learns a tool exists.
@@ -676,8 +676,8 @@ not checked here; a bad argument is the server's error to report.
 | `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
 | `config.server.agent.tools.edit.fullItembudget` | lines an edited item may take and still be handed over whole, default 40; a longer item hands over the window around the change |
 | `config.server.agent.tools.grep.*` | `deepMax` 6, `foldMax` 25, `fileMax` 6: the three hit thresholds. `xrayImpls` 8, `xrayItems` 12: the x-ray's own caps, which the hit thresholds do not charge |
-| `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` keeps its own |
-| `config.server.agent.tools.outputMaxBytes` | inline byte budget, default 32768; `read` keeps its own |
+| `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` and `grep` keep their own |
+| `config.server.agent.tools.outputMaxBytes` | inline byte budget, default 32768; `read` and `grep` keep their own |
 | `config.server.agent.tools.browser.bin` | the browser executable; empty = `$MYPI_BROWSER_BIN`, else `/opt/helium/helium` |
 | `config.server.agent.tools.browser.profileDir` | the persistent profile; empty = `<data dir>/browser/profile` |
 | `config.server.agent.tools.browser.port` | attach to a running debugging port instead of launching |

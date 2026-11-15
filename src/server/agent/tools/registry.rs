@@ -1,4 +1,4 @@
-//! The table: fifteen tools, one line each. The roster and the front door both derive from it, so
+//! The table: seventeen tools, one line each. The roster and the front door both derive from it, so
 //! the two readers cannot disagree.
 
 use std::collections::BTreeSet;

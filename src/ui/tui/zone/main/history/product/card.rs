@@ -16,6 +16,7 @@ pub(crate) mod draft;
 pub(crate) mod edit;
 pub(crate) mod fallback;
 pub(crate) mod file;
+pub(crate) mod grep;
 pub(crate) mod kairos;
 pub(crate) mod mcp;
 pub(crate) mod memo;

@@ -7,7 +7,7 @@ use super::super::super::local::content::ItemOk;
 use super::super::super::row::{Ink, Lead, Row, Run};
 use super::frame::{default_call, error_body, non_empty_lines, one_line, output_lines};
 use super::state::State;
-use super::{bash, context, draft, edit, fallback, file, kairos, mcp, memo, search, web};
+use super::{bash, context, draft, edit, fallback, file, grep, kairos, mcp, memo, search, web};
 use crate::ui::tui::text::duration;
 use crate::ui::tui::text::glyphs as g;
 use crate::ui::tui::theme::fixed;
@@ -195,6 +195,7 @@ fn renderer_for(name: &str) -> &'static dyn ToolRenderer {
         "bash" => &bash::Bash,
         "edit" | "splice" => &edit::Edit,
         "read" | "write" | "cd" => &file::FileTools,
+        "grep" => &grep::Grep,
         "web" => &web::Web,
         "search" => &search::Search,
         "context" => &context::Context,
