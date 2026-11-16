@@ -11,6 +11,7 @@ use crate::ui::tui::zone::main::desk::Reply;
 use crate::ui::tui::zone::main::input::command;
 use crate::ui::tui::zone::main::reserved::hand::{Hand, Report};
 use crate::ui::tui::zone::main::reserved::pools::Pools;
+use serde_json::Value;
 
 /// What the controller reads to compute candidates.
 pub struct InputCtx<'a> {
@@ -19,6 +20,8 @@ pub struct InputCtx<'a> {
     pub cwd: &'a std::path::Path,
     pub home: &'a std::path::Path,
     pub pools: Option<&'a Pools>,
+    /// The rungs the current model declares.
+    pub efforts: &'a [crate::ui::session::Effort],
     pub lang: Lang,
 }
 
@@ -67,6 +70,7 @@ impl CompletionController {
             home: cx.home,
             pools: cx.pools,
             lang: cx.lang,
+            efforts: cx.efforts,
         };
         let found = engine::suggest(cx.text, cx.cursor, &look, scan);
         let spot = (found.from, found.word.clone());
@@ -167,6 +171,8 @@ pub struct CompletionService {
     scan: Scan,
     /// The language the command details read in.
     lang: Lang,
+    /// The rungs the current model declares; empty means the popup offers `auto` alone.
+    efforts: Vec<crate::ui::session::Effort>,
 }
 
 impl CompletionService {
@@ -185,12 +191,31 @@ impl CompletionService {
             last: (String::new(), 0),
             scan: Scan::default(),
             lang: Lang::default(),
+            efforts: Vec::new(),
         }
     }
 
     /// The language the command details read in; the next edit reads it.
     pub fn set_lang(&mut self, lang: Lang) {
         self.lang = lang;
+    }
+
+    /// The model entry as the input zone heard it: its declared rungs narrow the popup.
+    /// The model entry as the input zone heard it: its declared rungs narrow the popup.
+    pub fn set_model_entry(&mut self, entry: &Value) {
+        self.efforts = entry
+            .get("reasoningEfforts")
+            .and_then(Value::as_array)
+            .map(|list| {
+                list.iter()
+                    .filter_map(Value::as_str)
+                    .filter_map(crate::ui::session::Effort::parse)
+                    .filter(|rung| *rung != crate::ui::session::Effort::Auto)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (text, cursor) = self.last.clone();
+        self.refresh(&text, cursor);
     }
 
     /// Recompute candidates after an input change.
@@ -202,6 +227,7 @@ impl CompletionService {
             home: &self.home,
             pools: self.pools.as_ref(),
             lang: self.lang,
+            efforts: &self.efforts,
         };
         self.controller.refresh(&cx, &mut self.scan);
         self.awaiting = self.pools.is_none() && self.controller.wants_names();
@@ -216,6 +242,7 @@ impl CompletionService {
             home: &self.home,
             pools: self.pools.as_ref(),
             lang: self.lang,
+            efforts: &self.efforts,
         };
         self.controller
             .on_tab(&cx, &mut self.scan)

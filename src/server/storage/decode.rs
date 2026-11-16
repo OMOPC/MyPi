@@ -59,6 +59,7 @@ pub(crate) fn block_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Block> {
         memo: r.get(19)?,
         duration_ms: r.get(20)?,
         ts: r.get(21)?,
+        images: r.get(22)?,
     })
 }
 
@@ -97,12 +98,10 @@ pub(crate) fn turn_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TurnRow> 
 
 // ---- SQL column lists shared by the readers ----
 
-/// A block row's columns, in [`block_from_row`] read order.
 pub(crate) const BLOCK_COLS: &str = "block_id, type, content, prefix, suffix,
      usage_total, usage_prompt, usage_completion, usage_cached, usage_cache_write,
      usage_reasoning, call_id, name, args, intent, text, first, ok, result, memo,
-     duration_ms, ts";
-
+     duration_ms, ts, images";
 /// A session row's columns, in [`session_meta`] read order.
 pub(crate) const SESSION_COLS: &str = "id, name, started_at, cwd, provider, model, anchor, meta";
 

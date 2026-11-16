@@ -92,6 +92,14 @@ impl ModelsConfig {
                 "currency" => Ok(Value::Text(entry.currency.as_str().to_string())),
                 "contextWindow" => Ok(optional_int(entry.context_window)),
                 "maxOutputTokens" => Ok(optional_int(entry.max_output_tokens)),
+                "vision" => Ok(Value::Bool(entry.vision)),
+                "reasoningEfforts" => Ok(Value::List(
+                    entry
+                        .efforts
+                        .iter()
+                        .map(|rung| rung.as_str().to_string())
+                        .collect(),
+                )),
                 "cost.input" => Ok(Value::Float(entry.cost.input)),
                 "cost.output" => Ok(Value::Float(entry.cost.output)),
                 "cost.cacheRead" => Ok(Value::Float(entry.cost.cache_read)),

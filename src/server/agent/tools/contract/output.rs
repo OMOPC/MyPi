@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::server::agent::request::contract::{ItemOk, Spill};
+use crate::server::agent::request::message::ImagePart;
 
 /// One finished call.
 #[derive(Debug, Clone)]
@@ -13,7 +14,8 @@ pub struct ToolResult {
     /// One entry per item the call's arguments named.
     pub items: Vec<ItemOk>,
     pub result: String,
-    /// Why the call failed, when it failed by being cut short.
+    /// Images the tool attached; empty for every text-only call.
+    pub images: Vec<ImagePart>,
     pub reason: Option<String>,
     pub memo: Option<String>,
     pub spill: Option<Spill>,
@@ -73,7 +75,8 @@ pub enum AliasOp {
 #[derive(Debug)]
 pub struct ToolOutput {
     pub text: String,
-    /// One entry per item the call's arguments named; a single-item tool leaves it empty.
+    /// Images the tool attached; empty for every text-only call.
+    pub images: Vec<ImagePart>,
     pub items: Vec<ItemOk>,
     /// A failure the text alone cannot state: the call was cut short, and why.
     pub fail: Option<String>,
@@ -86,6 +89,7 @@ impl ToolOutput {
     pub fn text(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
+            images: Vec::new(),
             items: Vec::new(),
             fail: None,
             memo: None,
@@ -97,6 +101,7 @@ impl ToolOutput {
     pub fn with_memo(text: impl Into<String>, memo: Value) -> Self {
         Self {
             text: text.into(),
+            images: Vec::new(),
             items: Vec::new(),
             fail: None,
             memo: Some(memo),

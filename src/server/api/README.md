@@ -63,9 +63,10 @@ Subscribe: `watch`, `submit`, `compact`.
   `submit` would; taking it clears it and puts `signal: mailbox` on the stream for every watcher.
 - `effort` sets how hard the session's next laps ask the model to think. It is the one write door
   that changes no row: the rung lives on the session's request config and dies with the booking. A
-  provider whose protocol names no such field answers `bad_payload` rather than accepting a value it
-  could never send.
-- `interrupt`, `cwd`, `switch`, `delete`, `rewind` act on the running session or its rows.
+  model that declares no rung answers `bad_payload` rather than accepting a value it could never
+  send, and a rung the model does not declare is refused the same way, with the declared ones named.
+  A model switch drops the rung back to `auto`, because the rung belonged to the model that declared
+  it.
   `interrupt` is silent: it stops what runs, and an idle session hears nothing. A rewind tells the
   loop to read that session's history again. `delete` writes one memo file per session it removes —
   the session and every child under it — into the memo folder before the rows go.
@@ -99,7 +100,7 @@ Subscribe: `watch`, `submit`, `compact`.
 | `post` | `name` | `session`, `name` | — |
 | `post` | `cwd` | `session`, `path` | `cwd` (resolved) |
 | `post` | `switch` | `session`, `model` | — |
-| `post` | `effort` | `session`, `effort` (`auto`, `low`, `high`, `max`) | `effort` |
+| `post` | `effort` | `session`, `effort` (`auto`, or a rung the model declares) | `effort` |
 | `post` | `delete` | `session` | — |
 | `post` | `interrupt` | `session` | — |
 | `post` | `rewind` | `session`, `turn`, `block` | `cut` |

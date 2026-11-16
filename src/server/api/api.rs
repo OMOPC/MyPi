@@ -236,6 +236,10 @@ impl Api {
             }
         };
 
+        let vision = cfg
+            .model_by_id(&format!("{provider}:{model}"))
+            .map(|resolved| resolved.entry.vision)
+            .unwrap_or(false);
         self.ledger.book(Birth {
             session,
             provider,
@@ -245,6 +249,7 @@ impl Api {
             manuals,
             compact: profile.compact_instruction,
             effort: crate::server::agent::request::Effort::Auto,
+            vision,
             meta,
             cwd,
         })?;

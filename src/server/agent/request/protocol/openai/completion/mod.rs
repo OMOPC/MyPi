@@ -5,6 +5,7 @@ use std::io::BufRead;
 
 use anyhow::Result;
 
+use crate::server::agent::request::contract::Effort;
 use crate::server::agent::request::message::AssistantMessage;
 use crate::server::agent::request::protocol::{
     self, Endpoint, Output, Protocol, ProtocolRequest, WireRequest,
@@ -31,12 +32,14 @@ impl Protocol for Completion {
         // A stored assistant turn's thinking is not serialized: one history is one size.
         let messages =
             serde_json::to_value(&req.messages).expect("Message serialization is infallible");
+        let messages = with_tool_images(messages);
         let body = body_json(
             &req.model,
             req.max_output_tokens,
             req.stream,
             messages,
             req.tools_json.as_ref(),
+            req.effort,
         );
         let mut headers = Vec::new();
         if endpoint.auth_header {
@@ -59,11 +62,6 @@ impl Protocol for Completion {
         protocol::stream::Budget::default()
     }
 
-    /// The standard body names no effort field.
-    fn supports_effort(&self) -> bool {
-        false
-    }
-
     fn decode(
         &self,
         reader: Box<dyn BufRead>,
@@ -82,6 +80,7 @@ fn body_json(
     stream: bool,
     messages: serde_json::Value,
     tools: &serde_json::Value,
+    effort: Effort,
 ) -> serde_json::Value {
     use serde_json::{Map, Value, json};
 
@@ -96,10 +95,58 @@ fn body_json(
             json!({ "include_usage": true }),
         );
     }
-    body.insert("max_tokens".to_string(), json!(max_tokens));
+    body.insert("max_completion_tokens".to_string(), json!(max_tokens));
+    // `Auto` names no rung: the field stays off the body and the host keeps its default.
+    if effort != Effort::Auto {
+        body.insert("reasoning_effort".to_string(), json!(effort.as_str()));
+    }
     // An empty roster omits the field: strict hosts reject `"tools": []`.
     if tools.as_array().is_some_and(|list| !list.is_empty()) {
         body.insert("tools".to_string(), tools.clone());
     }
     Value::Object(body)
+}
+
+/// A tool result carrying images becomes the standard content-parts array; text alone stays a
+/// string, so a text-only request keeps its bytes untouched.
+fn with_tool_images(mut messages: serde_json::Value) -> serde_json::Value {
+    use serde_json::{Value, json};
+
+    let Some(list) = messages.as_array_mut() else {
+        return messages;
+    };
+    for entry in list.iter_mut() {
+        let Some(object) = entry.as_object_mut() else {
+            continue;
+        };
+        if object.get("role").and_then(Value::as_str) != Some("tool") {
+            continue;
+        }
+        let Some(raw) = object.remove("images") else {
+            continue;
+        };
+        let images = raw.as_array().cloned().unwrap_or_default();
+        if images.is_empty() {
+            continue;
+        }
+        let text = object
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let mut parts = vec![json!({ "type": "text", "text": text })];
+        for image in images {
+            let format = image.get("format").and_then(Value::as_str).unwrap_or("png");
+            let data = image
+                .get("data")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            parts.push(json!({
+                "type": "image_url",
+                "image_url": { "url": format!("data:image/{format};base64,{data}") },
+            }));
+        }
+        object.insert("content".to_string(), Value::Array(parts));
+    }
+    messages
 }

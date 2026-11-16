@@ -91,6 +91,8 @@ pub struct NewBlock {
     pub duration_ms: Option<i64>,
     /// When this block landed.
     pub ts: Option<String>,
+    /// Result images as raw JSON (tool result); `None` = none.
+    pub images: Option<String>,
 }
 
 impl NewBlock {
@@ -120,10 +122,10 @@ impl NewBlock {
             memo: self.memo,
             duration_ms: self.duration_ms,
             ts: self.ts,
+            images: self.images,
         }
     }
 }
-
 /// One landed block: the same columns plus its id.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Block {
@@ -150,6 +152,8 @@ pub struct Block {
     pub memo: Option<String>,
     pub duration_ms: Option<i64>,
     pub ts: Option<String>,
+    /// Result images as raw JSON (tool result); `None` = none.
+    pub images: Option<String>,
 }
 
 /// A session row.

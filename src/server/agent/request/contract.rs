@@ -6,8 +6,8 @@ use std::sync::mpsc::Sender;
 use anyhow::Result;
 
 use super::live::Event;
-use super::message::Message;
 pub use super::message::Usage;
+use super::message::{ImagePart, Message};
 use super::transport::worker::SessionWorker;
 
 /// Where one request goes: which provider serves, which model answers.
@@ -126,6 +126,8 @@ pub struct ToolResult {
     /// One entry per item the call's arguments named.
     pub items: Vec<ItemOk>,
     pub result: String,
+    /// Images the call attached; empty for every text-only call.
+    pub images: Vec<ImagePart>,
     /// Why the call failed, when it failed by being cut short.
     pub reason: Option<String>,
     pub memo: Option<String>,
@@ -171,32 +173,52 @@ pub struct Block {
     /// One outcome per item the call's arguments named.
     pub ok: Option<Vec<ItemOk>>,
     pub result: Option<String>,
+    /// Images a tool result carries; read attaches them, the wire replays them.
+    pub images: Option<Vec<crate::server::agent::request::message::ImagePart>>,
     /// Extra material for a front end; never enters a request.
     pub memo: Option<String>,
     pub duration_ms: Option<u64>,
 }
 
+/// How hard a session asks the model to think.
 /// How hard a session asks the model to think. Front ends spell it; request decides what it means.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Effort {
-    /// Ask for nothing and take the host's default.
+    /// Ask for nothing and take the host's default. Never sent: the field stays off the body.
     #[default]
     Auto,
+    None,
+    Minimal,
     Low,
+    Medium,
     High,
+    Xhigh,
     Max,
 }
 
 impl Effort {
-    /// Every rung, so parsing and the one list agree on a set.
-    const ALL: [Self; 4] = [Self::Auto, Self::Low, Self::High, Self::Max];
+    /// Every rung, `Auto` first, so parsing and the one list agree on a set.
+    const ALL: [Self; 8] = [
+        Self::Auto,
+        Self::None,
+        Self::Minimal,
+        Self::Low,
+        Self::Medium,
+        Self::High,
+        Self::Xhigh,
+        Self::Max,
+    ];
 
     /// The one spelling the wire and every front end share.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
+            Self::None => "none",
+            Self::Minimal => "minimal",
             Self::Low => "low",
+            Self::Medium => "medium",
             Self::High => "high",
+            Self::Xhigh => "xhigh",
             Self::Max => "max",
         }
     }

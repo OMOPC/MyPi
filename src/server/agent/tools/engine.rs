@@ -143,6 +143,7 @@ impl Engine {
         let ToolOutput {
             text,
             items,
+            images,
             memo,
             effects,
             stop,
@@ -177,6 +178,7 @@ impl Engine {
             call_id: call.call_id.clone(),
             items,
             result: text,
+            images,
             reason,
             memo,
             spill,
@@ -185,7 +187,6 @@ impl Engine {
             stop,
         }
     }
-
     fn start(&self, env: &Env, call: &ToolCall, out: &Sender<Event>) {
         let _ = out.send(Event {
             session: env.session,
@@ -249,7 +250,7 @@ fn interrupted(call: &ToolCall) -> ToolResult {
     let items = vec![ItemOk::failed(text.clone())];
     failed(call, items, text, Instant::now(), None)
 }
-
+/// One finished call the loop reports; images stay empty on every failure path.
 fn failed(
     call: &ToolCall,
     items: Vec<ItemOk>,
@@ -257,10 +258,12 @@ fn failed(
     started: Instant,
     reason: Option<String>,
 ) -> ToolResult {
+
     ToolResult {
         call_id: call.call_id.clone(),
         items,
         result: text.into(),
+        images: Vec::new(),
         reason,
         memo: None,
         spill: None,

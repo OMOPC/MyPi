@@ -9,7 +9,7 @@ use serde_json::{Map, Value, json};
 use crate::server::agent::request::contract::Kind;
 use crate::server::agent::request::live::Stream;
 use crate::server::agent::request::message::{
-    AssistantMessage, INTERRUPTED_REPLY, Usage, WireMessage,
+    AssistantMessage, ContentPart, INTERRUPTED_REPLY, ImagePart, Usage, UserContent, WireMessage,
 };
 use crate::server::agent::request::protocol::blocks;
 use crate::server::agent::request::protocol::stitch::Calls;
@@ -44,10 +44,7 @@ impl Protocol for Deepseek {
         body.insert("max_tokens".to_string(), json!(req.max_output_tokens));
         // `Auto` names no rung: the field stays off the body and the host keeps its default.
         if req.effort != Effort::Auto {
-            body.insert(
-                "reasoning_effort".to_string(),
-                json!(req.effort.as_str()),
-            );
+            body.insert("reasoning_effort".to_string(), json!(req.effort.as_str()));
         }
         if !req.tools_json.as_array().is_some_and(Vec::is_empty) {
             body.insert("tools".to_string(), req.tools_json.as_ref().clone());
@@ -71,11 +68,6 @@ impl Protocol for Deepseek {
 
     fn budget(&self) -> Budget {
         Budget::default()
-    }
-
-    /// This host's own body carries the effort ladder.
-    fn supports_effort(&self) -> bool {
-        true
     }
 
     fn decode(
@@ -183,7 +175,12 @@ fn messages(messages: &[WireMessage]) -> Vec<Value> {
             })),
             WireMessage::User { content } => out.push(json!({
                 "role": "user",
-                "content": content.text(),
+                "content": match content {
+                    UserContent::Text(text) => json!(text),
+                    UserContent::Parts(parts) => {
+                        Value::Array(parts.iter().map(part).collect())
+                    }
+                },
             })),
             WireMessage::Assistant {
                 content,
@@ -226,14 +223,44 @@ fn messages(messages: &[WireMessage]) -> Vec<Value> {
             WireMessage::Tool {
                 tool_call_id,
                 content,
-            } => out.push(json!({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": content,
-            })),
+                images,
+            } => {
+                // A tool result with images becomes the parts array; text alone stays a string.
+                let content = if images.is_empty() {
+                    json!(content)
+                } else {
+                    let mut parts = vec![json!({ "type": "text", "text": content })];
+                    parts.extend(images.iter().map(|image| image_part(image)));
+                    Value::Array(parts)
+                };
+                out.push(json!({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": content,
+                }))
+            } // mypi:splice:c9c47172bd39fcdd 0 close
         }
     }
     out
+}
+/// One content part as the DeepSeek wire takes it; `detail` rides along only when named.
+fn part(part: &ContentPart) -> Value {
+    match part {
+        ContentPart::Text { text } => json!({ "type": "text", "text": text }),
+        ContentPart::ImageUrl { image_url } => {
+            let mut entry = json!({ "url": image_url.url });
+            if let Some(detail) = &image_url.detail {
+                entry["detail"] = json!(detail);
+            }
+            json!({ "type": "image_url", "image_url": entry })
+        }
+    }
+}
+
+/// One tool-result image as the DeepSeek wire takes it: a data URL the host decodes itself.
+fn image_part(image: &ImagePart) -> Value {
+    let url = format!("data:image/{};base64,{}", image.format, image.data);
+    json!({ "type": "image_url", "image_url": { "url": url } })
 }
 
 fn read_usage(raw: &Value) -> Usage {

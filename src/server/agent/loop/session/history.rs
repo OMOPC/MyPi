@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
 use crate::server::agent::request::contract::{Block, History, Kind, Piece, TurnView};
-use crate::server::agent::request::message::Message;
+use crate::server::agent::request::message::{ImagePart, Message};
 use crate::server::storage::Reader;
 
 /// One session's read side. The list is read when the session opens; a turn appends to it as it
@@ -217,11 +217,11 @@ fn message(row: &Value) -> Result<Message> {
         "tool_result" => Message::Result {
             call_id: need("call_id")?,
             result: need("result")?,
+            images: images(row)?,
         },
         other => bail!("a block carries an unknown kind: {other}"),
     })
 }
-
 /// One landed block as the request half reads it back.
 fn block_message(block: Block) -> Result<Message> {
     Ok(match block.kind {
@@ -244,6 +244,15 @@ fn block_message(block: Block) -> Result<Message> {
         Kind::ToolResult => Message::Result {
             call_id: block.call_id.context("a landed result carries no id")?,
             result: block.result.context("a landed result carries no text")?,
+            images: block.images.unwrap_or_default(),
         },
     })
+}
+
+/// A result row's images, read back; an unreadable column is a broken row.
+fn images(row: &Value) -> Result<Vec<ImagePart>> {
+    let Some(raw) = row["images"].as_str() else {
+        return Ok(Vec::new());
+    };
+    serde_json::from_str(raw).context("a result block carries unreadable images")
 }

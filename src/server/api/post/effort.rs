@@ -22,28 +22,33 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
     let effort = Effort::parse(raw).ok_or_else(|| Refuse::Bad(format!("no such effort: {raw}")))?;
     emit::require_writer(api, viewer, session)?;
     api.ensure_booked(session)?;
-    // A host whose wire names no effort cannot be asked for one; a front end hears it here.
-    let provider = api.ledger().provider(session)?;
-    if !names_effort(api, &provider) {
+    // The rungs a model takes are its own declaration; a front end hears the refusal here.
+    let declared = declared(api, session)?;
+    if declared.is_empty() {
         return Err(Refuse::Bad(NO_EFFORT.into()));
+    }
+    if effort != Effort::Auto && !declared.contains(&effort) {
+        let rungs = declared
+            .iter()
+            .map(|rung| rung.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(Refuse::Bad(format!(
+            "this model takes no `{}`; it declares {rungs}",
+            effort.as_str()
+        )));
     }
     api.ledger().change(session, Change::Effort(effort))?;
     emit::changed(api, viewer, session, json!({"effort": effort.as_str()}));
     Ok(serde_json::json!({"effort": effort.as_str()}))
 }
 
-/// Whether this provider's `api` field names a wire that carries a thinking effort.
-fn names_effort(api: &Api, provider: &str) -> bool {
-    let Ok(value) = api
+/// The rungs this session's model declares; empty takes none.
+fn declared(api: &Api, session: i64) -> Result<Vec<Effort>, Refuse> {
+    let (provider, model) = api.ledger().model(session)?;
+    Ok(api
         .cfg()
-        .get_json(&format!("models.provider.{provider}.api"), None)
-    else {
-        return false;
-    };
-    let Some(raw) = value.as_str() else {
-        return false;
-    };
-    crate::server::agent::request::ProtocolId::parse(raw)
-        .map(|protocol| protocol.build().supports_effort())
-        .unwrap_or(false)
+        .model_by_id(&format!("{provider}:{model}"))
+        .map(|resolved| resolved.entry.efforts)
+        .unwrap_or_default())
 }

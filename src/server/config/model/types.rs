@@ -1,5 +1,7 @@
 //! The `models.` types.
 
+use crate::server::agent::request::Effort;
+
 #[derive(Debug, Clone)]
 pub struct ModelsConfig {
     pub providers: Vec<Provider>,
@@ -21,6 +23,10 @@ pub struct ModelEntry {
     pub name: String,
     pub context_window: Option<u64>,
     pub max_output_tokens: Option<u64>,
+    /// The model accepts image parts on the wire.
+    pub vision: bool,
+    /// The thinking-effort rungs this model takes; empty takes none.
+    pub efforts: Vec<Effort>,
     pub currency: Currency,
     pub cost: Cost,
 }

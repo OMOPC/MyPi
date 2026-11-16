@@ -332,6 +332,7 @@ impl SubZone for ReservedZone {
             }
             name::MODEL_ENTRY => {
                 self.usage.display(content);
+                self.completion.set_model_entry(content);
             }
             _ => {
                 if let Some(who) = self.on_duty.clone() {

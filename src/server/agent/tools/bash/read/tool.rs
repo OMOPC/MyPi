@@ -8,14 +8,17 @@ use anyhow::{Context as _, Result, anyhow};
 
 use super::dir;
 use super::hub;
+use super::sniff;
 use super::sparse;
 use crate::server::agent::request::contract::ItemOk;
+use crate::server::agent::request::message::ImagePart;
 use crate::server::agent::tools::bash::splice::TOOL as SPLICE;
 use crate::server::agent::tools::contract::env::{Env, Stamp};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::spec::{Args, Item, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
+use base64::Engine as _;
 
 const FILES: usize = 0;
 
@@ -26,6 +29,9 @@ const MAX_BYTES_RS: usize = 256 * 1024;
 /// Every other file's budget: 200 lines, 64 KiB.
 const MAX_LINES: usize = 200;
 const MAX_BYTES: usize = 64 * 1024;
+
+/// An image's byte cap: a bigger file fails with the cap named.
+const MAX_IMAGE_BYTES: u64 = 4 * 1024 * 1024;
 
 const FILE_FIELDS: &[Param] = &[
     Param::new("path", Kind::Text, "File or directory path."),
@@ -78,17 +84,19 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let mut out = String::new();
     let mut outcomes: Vec<ItemOk> = Vec::with_capacity(total);
     let mut failed = 0usize;
+    let mut images: Vec<ImagePart> = Vec::new();
     for (item, target) in items.iter().zip(targets) {
         let result = match target {
             Ok(path) => block(env, &batch, item, &path, total > 1),
             Err(e) => Err(e),
         };
         match result {
-            Ok(text) => {
+            Ok((text, attached)) => {
                 if !out.is_empty() {
                     out.push('\n');
                 }
                 out.push_str(&text);
+                images.extend(attached);
                 outcomes.push(ItemOk::ok());
             }
             Err(e) => {
@@ -108,6 +116,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     }
     let mut produced = ToolOutput::text(out);
     produced.items = outcomes;
+    produced.images = images;
     if failed > 0 {
         produced = produced.failure(format!("{failed} of {total} paths failed"));
     }
@@ -118,6 +127,38 @@ fn resolved(env: &Env, item: &Item) -> Result<PathBuf> {
     let raw = item.text("path")?;
     anyhow::ensure!(!raw.trim().is_empty(), "`{}` has no path", item.label());
     env.workspace.resolve_any(&raw, true)
+}
+
+/// An image's answer, when the file is one and this session's model can see: a one-line card and
+/// the bytes as a part. A non-image, or a model without vision, answers `None`.
+fn image(env: &Env, path: &Path) -> Result<Option<(String, ImagePart)>> {
+    let Some(format) = sniff::detect(path)? else {
+        return Ok(None);
+    };
+    anyhow::ensure!(
+        env.vision,
+        "the session's model takes no images: `{}` answers text only",
+        path.display()
+    );
+    let bytes = std::fs::read(path).context("failed to read image")?;
+    anyhow::ensure!(
+        bytes.len() as u64 <= MAX_IMAGE_BYTES,
+        "the image is {} MiB; the cap is {} MiB",
+        bytes.len() / (1024 * 1024),
+        MAX_IMAGE_BYTES / (1024 * 1024),
+    );
+    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let card = format!(
+        "[image: {format}, {} KiB — attached as an image part]",
+        bytes.len() / 1024
+    );
+    Ok(Some((
+        card,
+        ImagePart {
+            format: format.to_string(),
+            data,
+        },
+    )))
 }
 
 /// The lines one item may take: the file's own cap, or what the call named when that is smaller.
@@ -138,17 +179,27 @@ fn block(
     item: &Item,
     path: &Path,
     headed: bool,
-) -> Result<String> {
+) -> Result<(String, Vec<ImagePart>)> {
     let raw = item.text("path")?;
     let offset = item.line("offset")?;
 
     if path.is_dir() {
         let text = dir::listing(path, &env.workspace.cwd(), !headed)?;
-        return Ok(if headed {
+        let listed = if headed {
             format!("==> {raw}\n{text}")
         } else {
             text
-        });
+        };
+        return Ok((listed, Vec::new()));
+    }
+
+    if let Some((card, image)) = image(env, path)? {
+        let text = if headed {
+            format!("==> {raw}\n{card}")
+        } else {
+            card
+        };
+        return Ok((text, vec![image]));
     }
 
     let splice = env.allows(SPLICE.name);
@@ -227,11 +278,14 @@ fn block(
         }
     }
 
-    Ok(if headed {
-        format!("==> {raw}\n{text}")
-    } else {
-        text
-    })
+    Ok((
+        if headed {
+            format!("==> {raw}\n{text}")
+        } else {
+            text
+        },
+        Vec::new(),
+    ))
 }
 
 /// How a file's lines are prefixed, if at all.

@@ -21,6 +21,8 @@ pub enum Notice {
     Effort(Effort),
 
     /// `/effort` on a model whose wire names none.
+    /// `/effort` with a rung this model does not declare.
+    NotDeclared(Effort),
     NoEffort,
 
     /// A write the server refused for a reason only it knows.
@@ -62,6 +64,7 @@ impl Notice {
             | Self::NothingToCompact
             | Self::NoDir(_)
             | Self::Refused(_)
+            | Self::NotDeclared(_)
             | Self::MemoUsage => "warn",
 
             _ => "info",
@@ -78,6 +81,9 @@ impl Notice {
             Self::Default(id) => format!("default model: {}:{}", id.provider, id.model),
             Self::Effort(effort) => format!("thinking effort: {}", effort.as_str()),
             Self::NoEffort => NO_EFFORT_EN.to_string(),
+            Self::NotDeclared(effort) => {
+                format!("this model takes no `{}` effort", effort.as_str())
+            }
             Self::Refused(text) => text.clone(),
             Self::Compacted { retention, focus } => {
                 let base = match retention {
@@ -111,6 +117,7 @@ impl Notice {
             Self::Default(id) => format!("默认模型：{}:{}", id.provider, id.model),
             Self::Effort(effort) => format!("思考强度：{}", effort.as_str()),
             Self::NoEffort => NO_EFFORT_ZH.to_string(),
+            Self::NotDeclared(effort) => format!("此模型不支持 `{}` 强度", effort.as_str()),
             Self::Refused(text) => text.clone(),
             Self::Compacted { retention, focus } => {
                 let base = match retention {

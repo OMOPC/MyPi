@@ -27,6 +27,8 @@ pub struct Env {
     pub default_budget: u32,
     /// Lines an edited item may take and still be handed over whole.
     pub full_item_budget: usize,
+    /// Whether the session's model takes image parts on the wire.
+    pub vision: bool,
     pub export: Arc<dyn Export>,
     pub paths: Paths,
     pub source: Arc<dyn Source>,
@@ -185,6 +187,7 @@ impl Defaults {
         cwd: super::call::Cwd,
         tools: Vec<String>,
         stop: Arc<crate::server::platform::stop::Stop>,
+        vision: bool,
     ) -> anyhow::Result<Env> {
         Ok(Env {
             workspace: Workspace::new(cwd),
@@ -198,6 +201,7 @@ impl Defaults {
             aliases: Aliases::new(self.aliases.clone(), self.source.aliases(session)?),
             default_budget: self.default_budget,
             full_item_budget: self.full_item_budget,
+            vision,
             export: self.export.clone(),
             paths: self.paths.clone(),
             source: self.source.clone(),

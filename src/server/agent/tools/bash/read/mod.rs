@@ -2,6 +2,7 @@
 
 mod dir;
 mod hub;
+mod sniff;
 pub(crate) mod sparse;
 mod tool;
 

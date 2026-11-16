@@ -2,6 +2,8 @@
 
 use serde_yaml::{Mapping, Value as Yaml};
 
+use crate::server::agent::request::Effort;
+
 use super::super::notice::{ConfigNotice, warn};
 use super::super::registry;
 use super::parse::unknown_keys;
@@ -61,6 +63,54 @@ pub(super) fn parse_model(
             }
         },
     };
+    let vision = match map.get("vision") {
+        None | Some(Yaml::Null) => false,
+        Some(value) => match value.as_bool() {
+            Some(flag) => flag,
+            None => {
+                notices.push(warn(&key, file, "vision must be a boolean", "false"));
+                false
+            }
+        },
+    };
+    let efforts = match map.get("reasoningEfforts") {
+        None | Some(Yaml::Null) => Vec::new(),
+        Some(Yaml::Sequence(list)) => {
+            let mut out: Vec<Effort> = Vec::new();
+            for item in list {
+                let Some(raw) = item.as_str() else {
+                    notices.push(warn(
+                        &key,
+                        file,
+                        "reasoningEfforts must hold text",
+                        "dropped",
+                    ));
+                    continue;
+                };
+                match Effort::parse(raw) {
+                    Some(Effort::Auto) => notices.push(warn(
+                        &key,
+                        file,
+                        "auto is no rung a model declares",
+                        "dropped",
+                    )),
+                    Some(rung) if out.contains(&rung) => {}
+                    Some(rung) => out.push(rung),
+                    None => notices.push(warn(
+                        &key,
+                        file,
+                        &format!("unknown effort `{raw}`"),
+                        "dropped",
+                    )),
+                }
+            }
+            out
+        }
+        Some(_) => {
+            notices.push(warn(&key, file, "reasoningEfforts must be a list", "none"));
+            Vec::new()
+        }
+    };
     let cost = match map.get("cost") {
         None => Cost::default(),
         Some(raw) => parse_cost(raw, &key, file, notices),
@@ -70,6 +120,8 @@ pub(super) fn parse_model(
         name,
         context_window,
         max_output_tokens,
+        vision,
+        efforts,
         currency,
         cost,
     })

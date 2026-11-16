@@ -68,9 +68,13 @@ instruction last. A summary not smaller than its region is an error and leaves t
 
 **The host owns the wire, the domain owns the block.** A request body is the standard chat
 completions shape and nothing else: model, messages, streaming with its usage, the token ceiling and
-the tools. A stored assistant turn's thinking is never replayed, so one history is one size whatever
-asks it. The block types are decided here, once, so the loop and the storage never learn a wire
-format.
+the tools. A user turn may carry image parts alongside text; a text-only turn stays a bare string
+on every wire, and a text-only tool result does too. The DeepSeek body renders an image part as an
+`image_url` block whose URL is a `data:` or `http(s)` address with an optional `detail`; the
+standard completion body forwards the parts untouched. Images never enter assistant turns, and the
+Files API `file_id` shape is not carried. A stored assistant turn's thinking is never replayed, so
+one history is one size whatever asks it. The block types are decided here, once, so the loop and
+the storage never learn a wire format.
 
 **The loop reads a session once.** The history port hands out one shared snapshot per session, so a
 lap never copies it. A restarted process seeds the same bytes from storage, so the prefix cache still
@@ -88,13 +92,16 @@ real collision lengthens it. Retrieval therefore never depends on which block th
 **Compaction sends only what it replaces.** The retained part stays out of the request, so the
 prefix up to the cut is byte-identical to the previous real call.
 
-**Thinking effort is the protocol's, not the body's.** A session carries one rung of a fixed ladder
-(`auto`, `low`, `high`, `max`) and every protocol decides what that means on its own wire: the
-DeepSeek body names it as `reasoning_effort`, the standard completion body names nothing and a host
-that takes none refuses the change at its door. `auto` asks for nothing and takes the host's default,
-so it costs no bytes and survives a host that later changes its own default. The effort never enters
-the stored history, so a rung changed mid-conversation cannot disturb the prefix cache: the request
-archive is keyed by model, provider, system prompt and tool manuals only.
+**What a model takes, only its own entry says.** `vision` and `reasoningEfforts` are facts about a
+model, not about a wire: one provider serves models that differ, so the entry declares each and the
+doors read the entry. A session carries one rung of the standard ladder (`none`, `minimal`, `low`,
+`medium`, `high`, `xhigh`, `max`), and only a rung its model declares may be set; `auto` names none
+of them and leaves the field off the body, so it costs no bytes and survives a host that later
+changes its own default. Both protocols name the rung as `reasoning_effort` when it is not `auto`.
+The effort never enters the stored history, so a rung changed mid-conversation cannot disturb the
+prefix cache: the request archive is keyed by model, provider, system prompt and tool manuals only.
+A model switch returns the session to `auto`, because the rung belonged to the model that declared
+it.
 
 **Retry belongs to one call.** Only "nothing arrived" and 429 are retried; anything already shown to
 a front end is never re-sent, because the front end has already drawn it.

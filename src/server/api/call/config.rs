@@ -30,18 +30,24 @@ pub(crate) fn answer(api: &Api, key: &str) -> Result<Value, Refuse> {
 fn entry(model: &ResolvedModel) -> Value {
     let entry = &model.entry;
     json!({
-        "provider": model.provider_name,
-        "address": format!("{}:{}", model.provider_name, entry.id),
-        "id": entry.id,
-        "name": entry.display_name(),
-        "contextWindow": entry.context_window,
-        "maxOutputTokens": entry.max_output_tokens,
-        "currency": entry.currency.as_str(),
-        "cost": {
-            "input": entry.cost.input,
-            "output": entry.cost.output,
-            "cacheRead": entry.cost.cache_read,
-            "cacheWrite": entry.cost.cache_write,
-        },
-    })
+            "provider": model.provider_name,
+            "address": format!("{}:{}", model.provider_name, entry.id),
+            "id": entry.id,
+            "name": entry.display_name(),
+            "contextWindow": entry.context_window,
+            "maxOutputTokens": entry.max_output_tokens,
+            "vision": entry.vision,
+            "reasoningEfforts": entry
+                .efforts
+                .iter()
+                .map(|rung| rung.as_str())
+                .collect::<Vec<_>>(),
+            "currency": entry.currency.as_str(),
+            "cost": {
+                "input": entry.cost.input,
+                "output": entry.cost.output,
+                "cacheRead": entry.cost.cache_read,
+                "cacheWrite": entry.cost.cache_write,
+            },
+        })
 }

@@ -71,9 +71,10 @@ keys! {
     PATTERN_MODELS_PROVIDER_AUTH_HEADER = "models", "provider.<name>", "authHeader", Bool, DefaultValue::Bool(true), "Send Authorization: Bearer <apiKey>.", true;
     PATTERN_MODELS_PROVIDER_MODELS = "models", "provider.<name>", "models", List, DefaultValue::List(NO_ARGS), "The model ids this provider serves.", true;
     PATTERN_MODELS_MODEL_ID = "models", "model.<address>", "id", Text, DefaultValue::Null, "The wire model id.", true;
-    PATTERN_MODELS_MODEL_NAME = "models", "model.<address>", "name", Text, DefaultValue::Null, "Display name; falls back to the id.", true;
-    PATTERN_MODELS_MODEL_CONTEXT_WINDOW = "models", "model.<address>", "contextWindow", Int, DefaultValue::Null, "Context window; a model without one is not a legal configuration.", true;
     PATTERN_MODELS_MODEL_MAX_OUTPUT_TOKENS = "models", "model.<address>", "maxOutputTokens", Int, DefaultValue::Null, "max_tokens per request; absent is a startup error.", true;
+    PATTERN_MODELS_MODEL_VISION = "models", "model.<address>", "vision", Bool, DefaultValue::Bool(false), "The model takes image parts in user and tool messages.", true;
+    PATTERN_MODELS_MODEL_REASONING_EFFORTS = "models", "model.<address>", "reasoningEfforts", List, DefaultValue::List(NO_ARGS), "The thinking-effort rungs this model takes; absent takes none.", true;
+    PATTERN_MODELS_MODEL_CONTEXT_WINDOW = "models", "model.<address>", "contextWindow", Int, DefaultValue::Null, "Context window; a model without one is not a legal configuration.", true;
     PATTERN_MODELS_MODEL_CURRENCY = "models", "model.<address>", "currency", Text, DefaultValue::Text("CNY"), "Price display currency: CNY or USD.", true;
     PATTERN_MODELS_MODEL_COST_INPUT = "models", "model.<address>.cost", "input", Float, DefaultValue::Float(0.0), "Input price per 1M tokens.", true;
     PATTERN_MODELS_MODEL_COST_OUTPUT = "models", "model.<address>.cost", "output", Float, DefaultValue::Float(0.0), "Output price per 1M tokens.", true;

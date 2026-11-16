@@ -141,6 +141,9 @@ fn land(block: Block) -> NewBlock {
         memo: block.memo,
         duration_ms: block.duration_ms.map(|ms| ms as i64),
         ts: block.ts,
+        images: block
+            .images
+            .map(|parts| serde_json::to_string(&parts).expect("result images always serialize")),
     }
 }
 

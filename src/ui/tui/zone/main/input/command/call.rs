@@ -14,8 +14,8 @@ pub struct Call<'a> {
     /// Where the conversation stands.
     pub cwd: &'a str,
 
-    /// Whether the model this front end shows reaches a wire that carries an effort.
-    pub takes_effort: bool,
+    /// The rungs the model this front end shows declares; empty takes no effort.
+    pub efforts: &'a [crate::ui::session::Effort],
 }
 
 /// What one command answers.

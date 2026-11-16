@@ -29,6 +29,8 @@ signal-hook = "0.3"
 tungstenite = "0.30"
 # HTML→Markdown：omp 同款 crate（纯 Rust，带 Aggressive 预处理去 nav/footer/form）
 html-to-markdown-rs = { version = "3.14", default-features = false }
+# base64: tool-result 图片的编码,纯 Rust 零传递依赖
+base64 = "0.22"
 # 站点规则里的 match 是正则
 regex = "1"
 # URL 解析（fetch 的 scheme 校验）

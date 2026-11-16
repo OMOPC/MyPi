@@ -24,7 +24,7 @@ finish itself.
 | `cursor_col`, `cursor_row` | the cursor inside the container, recomputed on render |
 | `statusline: StatusLine` | the deco table and the row engine |
 | `session: Option<i64>` | the conversation this zone follows; `None` = a draft |
-| `data: Data` | model, wire protocol, thinking effort, name, directory, context size and window, money, busy |
+| `data: Data` | model, the rungs it declares, thinking effort, name, directory, context size and window, money, busy |
 | `pending_name` | the name a `/name` asked for, until its receipt |
 | `queue: Queue` | sentences sent while a round was running, head first |
 | `in_flight` | the sentence a submit put out, until the door answers |
@@ -77,10 +77,11 @@ the app keeps them until the row opens. A draft's `/cdp` lands only on a directo
 expanded, a relative path read from where the draft stands — because the name travels into `init`,
 and a directory that is not there cannot be entered. Anything else is refused and said.
 `/compact` needs a session and is refused in a draft.
-`/effort` sets how hard the session asks the model to think: one rung of `auto`, `low`, `high`,
-`max`, this session only. It needs a session too, and a model whose wire names no such field is
-refused here, from the protocol the pill already asked for. `Ctrl+Tab` walks the same ladder without
-a command, and the key is inert in a draft and on a model that names none.
+`/effort` sets how hard the session asks the model to think: `auto`, or one of the rungs the model
+declares for itself, this session only. It needs a session too, a model that declares no rung is
+refused here, and a rung the model never declared is refused before the request leaves. `Ctrl+Tab`
+walks those same rungs without a command, and the key is inert in a draft and on a model that
+declares none.
 Deletion has no command: the resume picker owns it.
 
 ### Submit, interrupt, Esc
@@ -105,9 +106,9 @@ error speaks nothing — except the app's own answer for a draft's `/cdp`, which
 could not land on (`noDir`, a warn).
 Draft writes are answered by the app with the same door names, prefixed `local`.
 
-A refusal decided here (no session for `/usage`, `/effort` or `/compact`, `/effort` on a model whose
-wire names no thinking effort, a profile asked for after the session started, `/memo` without a
-usable operation) speaks at once. The line leaves the box either way.
+A refusal decided here (no session for `/usage`, `/effort` or `/compact`, `/effort` on a model that
+declares no rung, a profile asked for after the session started, `/memo` without a usable
+operation) speaks at once. The line leaves the box either way.
 
 Notices travel as a shout; the history zone draws them as short rows. A `/compact` receipt also
 puts `compact start` on the bus: a compaction round is running, and any zone may draw it.
@@ -153,11 +154,10 @@ One row, exactly the terminal width. The deco table is `activity`, `model`, `cwd
 `usage`, `session`. Each deco reads the zone's `Data`; none of them can act.
 
 `Data` is filled from four places. The conversation row gives the name and the model address;
-the `models.model.<address>` answer gives the model pill and the gauge's denominator;
-`models.provider.<provider>.api` gives the wire, so the pill's marker reads the rung on a wire that
-names a thinking effort and `M` on a wire that names none; the living thinking effort comes from
-`call init` and from each `/effort` receipt, because no row holds it; `call usage` gives the cost in
-both currencies and where the context stands. The display currency comes from
+`models.model.<address>` gives the model pill, the gauge's denominator and the rungs the model
+declares, so the pill's marker reads the rung on a model that takes one and `M` on one that declares
+none; the living thinking effort comes from `call init` and from each `/effort` receipt, because no
+row holds it, and a model switch resets it to `auto`; `call usage` gives the cost in
 `config.ui.tui.fx.currency`, never from a model.
 when the count is an estimate; the dashes carry no mark. `activity` steps one glyph per `tick`
 shout. `git` scans on its own tick: the first one at once, then once per configured interval, and

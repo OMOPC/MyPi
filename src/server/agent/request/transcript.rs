@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::message::{FunctionCall, Message, WireCall, WireMessage, complete_args};
+use super::message::{FunctionCall, ImagePart, Message, WireCall, WireMessage, complete_args};
 
 /// State that carries across one rebuild.
 #[derive(Default)]
@@ -134,7 +134,11 @@ fn one_batch(
         }
     }
 
-    type Group = (Option<String>, Vec<WireCall>, Vec<(String, String)>);
+    type Group = (
+        Option<String>,
+        Vec<WireCall>,
+        Vec<(String, String, Vec<ImagePart>)>,
+    );
     let mut groups: Vec<Group> = Vec::new();
     let mut request_nth: BTreeMap<String, u32> = BTreeMap::new();
     let mut result_nth: BTreeMap<String, u32> = BTreeMap::new();
@@ -177,13 +181,13 @@ fn one_batch(
                     },
                 });
             }
-            Message::Result { result, .. } => {
+            Message::Result { result, images, .. } => {
                 // A call the wire cannot carry takes its result with it: a lone tool reply is worse.
                 if arguments.is_none() {
                     continue;
                 }
                 if let Some(group) = groups.last_mut() {
-                    group.2.push((wire_id, result.clone()));
+                    group.2.push((wire_id, result.clone(), images.clone()));
                 }
             }
             _ => unreachable!("a batch holds only calls and results"),
@@ -200,10 +204,11 @@ fn one_batch(
             // The thinking chain preceded the whole run; only its first batch gets it.
             reasoning: state.pending_reasoning.take(),
         });
-        for (call_id, result) in results {
+        for (call_id, result, images) in results {
             out.push(WireMessage::Tool {
                 tool_call_id: call_id,
                 content: result,
+                images,
             });
         }
     }

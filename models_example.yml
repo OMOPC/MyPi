@@ -46,6 +46,8 @@ providers:
         name: My Model               # display name (statusline); falls back to id
         contextWindow: 131072        # required: the ctx gauge's denominator
         maxOutputTokens: 8192        # required: actual max_tokens per request
+        # vision: true               # the model takes image parts; absent = false
+        # reasoningEfforts: [low, high]  # the rungs it takes; absent takes none
         currency: Usd
         cost:
           input: 0.20

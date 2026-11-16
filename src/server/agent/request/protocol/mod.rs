@@ -100,9 +100,6 @@ pub trait Protocol: Send + Sync {
     /// Serialize one call for this host.
     fn request(&self, endpoint: &Endpoint, req: &ProtocolRequest) -> Result<WireRequest>;
 
-    /// Whether this host takes a thinking effort at all.
-    fn supports_effort(&self) -> bool;
-
     /// How long a silent stream may last; the worker child enforces it.
     fn budget(&self) -> stream::Budget;
 

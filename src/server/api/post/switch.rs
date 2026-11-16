@@ -15,18 +15,22 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
         ask.get("model")
             .ok_or_else(|| Refuse::Bad("missing `model`".into()))?,
     )?;
-    if api
+    let resolved = api
         .cfg()
         .model_by_id(&format!("{provider}:{model}"))
-        .is_none()
-    {
-        return Err(Refuse::Bad(format!("no such model: {provider}:{model}")));
-    }
+        .ok_or_else(|| Refuse::Bad(format!("no such model: {provider}:{model}")))?;
     emit::require_writer(api, viewer, session)?;
     api.ensure_booked(session)?;
     let address = format!("{provider}:{model}");
     api.ledger()
-        .change(session, Change::Model { provider, model })?;
+        .change(
+            session,
+            Change::Model {
+                provider,
+                model,
+                vision: resolved.entry.vision,
+            },
+        )?;
     emit::changed(api, viewer, session, json!({"model": address}));
     Ok(serde_json::json!({}))
 }

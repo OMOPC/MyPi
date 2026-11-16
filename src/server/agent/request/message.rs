@@ -3,6 +3,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// One tool-result image: a sniffed format and the file's bytes, base64-encoded.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImagePart {
+    pub format: String,
+    pub data: String,
+}
 /// The text a reply carries when the model said nothing at all. Three places must agree on
 /// these bytes byte-for-byte, otherwise a restart changes what the model saw.
 pub const DEFAULT_EMPTY_REPLY: &str = "SYSTEM: (no reply body — empty response)";
@@ -33,6 +39,7 @@ pub enum Message {
     Result {
         call_id: String,
         result: String,
+        images: Vec<ImagePart>,
     },
 }
 
@@ -60,6 +67,9 @@ pub enum WireMessage {
     Tool {
         tool_call_id: String,
         content: String,
+        /// Images the tool attached; an empty list serializes nothing.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<ImagePart>,
     },
 }
 
@@ -69,22 +79,6 @@ pub enum WireMessage {
 pub enum UserContent {
     Text(String),
     Parts(Vec<ContentPart>),
-}
-
-impl UserContent {
-    pub fn text(&self) -> String {
-        match self {
-            Self::Text(t) => t.clone(),
-            Self::Parts(parts) => parts
-                .iter()
-                .filter_map(|p| match p {
-                    ContentPart::Text { text } => Some(text.as_str()),
-                    ContentPart::ImageUrl { .. } => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n"),
-        }
-    }
 }
 
 impl From<String> for UserContent {

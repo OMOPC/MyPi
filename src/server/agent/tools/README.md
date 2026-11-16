@@ -145,10 +145,11 @@ so a batch is one write instead of several that would each need the file read ag
 ### ToolOutput
 
 ```text
-ToolOutput { text, items: Vec<ItemOk>, fail: Option<String>, memo: Option<Value>, effects: Vec<Effect>, stop: bool }
-ToolResult { call_id, items: Vec<ItemOk>, result, reason: Option<String>, memo, spill, duration_ms, effects, stop }
+ToolOutput { text, images: Vec<ImagePart>, items: Vec<ItemOk>, fail: Option<String>, memo: Option<Value>, effects: Vec<Effect>, stop: bool }
+ToolResult { call_id, items: Vec<ItemOk>, result, images: Vec<ImagePart>, reason: Option<String>, memo, spill, duration_ms, effects, stop }
 Spill      { name: String, content: String }
 ItemOk     { ok: bool, error: Option<String> }
+ImagePart  { format: String, data: String }  // base64; empty images is the text-only shape
 ```
 
 - `text` is what the model reads; `memo` is the structured payload the front end renders.
@@ -190,7 +191,8 @@ Env {
   aliases: Aliases,          // config layer above the session layer
   default_budget: u32,
   export: Arc<dyn Export>,   // a full text out of the database as a file
-  paths: Paths,              // the user's templates; the project's folders come from the live cwd
+  vision: bool,              // the session's model takes image parts; read's gate
+  export: Arc<dyn Export>,   // a full text out of the database as a file
   source: Arc<dyn Source>,   // reads the loop owns
   seen: Seen,                // the module cards shown, and every file's read stamp
   batch: Vec<ToolCall>,      // the calls now running, so one can merge with another in the same batch
@@ -297,6 +299,12 @@ A tool name the table no longer holds shows its clipped arguments.
 ### read
 
 `read` answers one array of paths: a file comes back as its body, a directory as its entries.
+
+A file whose head names a known image format (PNG, JPEG, GIF, WEBP; the bytes decide, never the
+name) answers one card line and attaches its bytes as an image part. The gate is the session's
+`vision` flag: without it the image answers an error naming the refusal, with it the file still
+obeys the 4 MiB cap. A file the head cannot name stays a text read and fails as before when it is
+not UTF-8.
 
 A file's body carries line numbers only where a change can start or end. `splice` locates a change
 by line, so a session with `splice` numbers a Rust file at each block's first and last line: a

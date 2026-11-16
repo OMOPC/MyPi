@@ -126,7 +126,9 @@ This domain owns the keys below; consumers ask it for values.
 | `config.ui.tui` | `fx.usdCny` |
 | `config.ui.tui.zone.main.history` | `cacheMargin`, `focusLine`, `cardFoldBudget`, `scrollHeight`, `todoFold` |
 | `models.provider.<name>` | `baseUrl`, `api`, `apiKey`, `authHeader`, `models` |
-| `models.model.<provider>:<id>` | `id`, `name`, `contextWindow`, `maxOutputTokens`, `currency`, `cost.*` |
+| `models.model.<provider>:<id>` | `id`, `name`, `contextWindow`, `maxOutputTokens`, `vision`, `reasoningEfforts`, `currency`, `cost.*` |
 
 `models.yml` top level is `providers` only. `baseUrl`, `api` and `models` are required; `api` has
 no default. `currency` is `CNY` or `USD`; `cost` is per 1M tokens and all-zero means no quote.
+`vision` says the model takes image parts; `reasoningEfforts` lists the thinking-effort rungs it
+takes, and an absent list means it takes none.

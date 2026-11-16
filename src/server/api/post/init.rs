@@ -76,6 +76,11 @@ pub(crate) fn apply(api: &Api, _conn: u64, _viewer: &str, ask: &Value) -> Result
         return Err(Refuse::Internal("the writer created no session row".into()));
     }
 
+    let vision = api
+        .cfg()
+        .model_by_id(&format!("{provider}:{model}"))
+        .map(|resolved| resolved.entry.vision)
+        .unwrap_or(false);
     api.ledger().book(Birth {
         session,
         provider,
@@ -85,6 +90,7 @@ pub(crate) fn apply(api: &Api, _conn: u64, _viewer: &str, ask: &Value) -> Result
         manuals,
         compact: resolved.compact_instruction,
         effort: crate::server::agent::request::Effort::Auto,
+        vision,
         meta: Some(archive),
         cwd,
     })?;

@@ -99,7 +99,9 @@ impl InputZone {
                 // A draft has no session to hold the rung, and a wire that names none cannot take it.
                 if self.session.is_some() && self.data.takes_effort() {
                     self.outbox
-                        .push(Request::SetEffort(self.data.effort.next()));
+                        .push(Request::SetEffort(
+                            self.data.effort.next(&self.data.efforts),
+                        ));
                 }
                 Effect::Nothing
             }

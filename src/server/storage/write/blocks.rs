@@ -11,9 +11,9 @@ pub(crate) fn insert(tx: &rusqlite::Transaction<'_>, turn: i64, b: &NewBlock) ->
         "INSERT INTO blocks (type, content, prefix, suffix,
                 usage_total, usage_prompt, usage_completion, usage_cached,
                 usage_cache_write, usage_reasoning, call_id, name, args, intent,
-                text, first, ok, result, memo, duration_ms, ts)
+                text, first, ok, result, memo, duration_ms, ts, images)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                 ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                 ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         rusqlite::params![
             b.kind.as_str(),
             b.content,
@@ -36,6 +36,7 @@ pub(crate) fn insert(tx: &rusqlite::Transaction<'_>, turn: i64, b: &NewBlock) ->
             b.memo,
             b.duration_ms,
             b.ts,
+            b.images,
         ],
     )?;
     let id = tx.last_insert_rowid();
@@ -43,6 +44,7 @@ pub(crate) fn insert(tx: &rusqlite::Transaction<'_>, turn: i64, b: &NewBlock) ->
         r.get(0)
     })?;
     let mut index = parse_blocks(&raw)?;
+
     // A run is one pair: an id adjacent to the last interval extends it instead of adding one.
     match index.last_mut() {
         Some(last) if last[1] + 1 == id => last[1] = id,

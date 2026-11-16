@@ -51,6 +51,8 @@ pub struct Look<'a> {
     pub home: &'a Path,
     /// Model and profile names, asked for once at startup.
     pub pools: Option<&'a Pools>,
+    /// The rungs the current model declares.
+    pub efforts: &'a [crate::ui::session::Effort],
     /// The language the command details read in.
     pub lang: Lang,
 }
@@ -166,7 +168,10 @@ fn command_line(
             let (items, total) = path_items(word, look, scan, true);
             (items, false, total)
         }
-        Some(Some(Arg::Effort)) => (effort_items(word), false, crate::ui::session::Effort::LADDER.len()),
+        Some(Some(Arg::Effort)) => {
+            let items = effort_items(word, look.efforts);
+            (items, false, look.efforts.len() + 1)
+        }
         Some(Some(Arg::Number | Arg::Text) | None) | None => (Vec::new(), false, 0),
     }
 }
@@ -225,10 +230,11 @@ fn command_items(word: &str, lang: Lang) -> Vec<Completion> {
     out.into_iter().map(|(_, c)| c).collect()
 }
 
-/// The effort ladder, as one flat list: `Effort` is the same on every host.
-fn effort_items(word: &str) -> Vec<Completion> {
+/// The rungs this model declares, `auto` first: the popup offers nothing the command would refuse.
+fn effort_items(word: &str, efforts: &[crate::ui::session::Effort]) -> Vec<Completion> {
     let mut out: Vec<(Rank, Completion)> = Vec::new();
-    for effort in crate::ui::session::Effort::LADDER {
+    let rungs = std::iter::once(crate::ui::session::Effort::Auto).chain(efforts.iter().copied());
+    for effort in rungs {
         let name = effort.as_str();
         let Some((rank, hits)) = matches(word, name, false) else {
             continue;

@@ -13,6 +13,8 @@ pub enum Change {
     Model {
         provider: String,
         model: String,
+        /// Whether the new model takes image parts; a switch reaches the tool side too.
+        vision: bool,
     },
     Cwd(PathBuf),
     /// Purely in memory: an effort never reaches the rows.
@@ -26,7 +28,11 @@ pub(crate) fn apply(
     scrooge: bool,
 ) -> Result<Option<PathBuf>> {
     match change {
-        Change::Model { provider, model } => {
+        Change::Model {
+            provider,
+            model,
+            vision,
+        } => {
             if scrooge {
                 bail!("this loop does not allow a model change mid-session");
             }
@@ -34,7 +40,9 @@ pub(crate) fn apply(
                 let mut config = handle.config_mut();
                 config.provider = provider.clone();
                 config.model = model.clone();
+                config.effort = crate::server::agent::request::Effort::Auto;
             }
+            handle.env().vision = vision;
             writer.push(Submit {
                 rows: vec![Row::Switch {
                     session: handle.id,

@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 
 /// Layout version. A mismatch wipes the database and rebuilds it.
-pub const SCHEMA_VERSION: i64 = 18;
+pub const SCHEMA_VERSION: i64 = 19;
 
 /// Open (or create) the database and make sure its layout is current.
 pub fn prepare(path: &std::path::Path) -> Result<Connection> {
@@ -84,8 +84,9 @@ pub fn prepare(path: &std::path::Path) -> Result<Connection> {
             usage_cache_write  INTEGER,
             usage_reasoning    INTEGER,
             call_id            TEXT,
-            name               TEXT,
-            args               TEXT,
+            result             TEXT,
+            images             TEXT,
+            memo               TEXT,
             intent             TEXT,
             text               TEXT,
             first              INTEGER,

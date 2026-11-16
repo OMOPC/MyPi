@@ -38,6 +38,8 @@ pub struct Birth {
     pub compact: String,
     /// How hard this session's laps ask the model to think; a child inherits it.
     pub effort: crate::server::agent::request::Effort,
+    /// Whether this session's model takes image parts on the wire.
+    pub vision: bool,
     pub meta: Option<i64>,
     /// The launch directory the front end handed `init`; a change door never writes it.
     pub cwd: PathBuf,
@@ -237,9 +239,9 @@ impl Loop {
             .map(|handle| handle.config().effort)
     }
 
-    /// The provider this session asks; a front end needs it before a host-level change.
-    pub fn provider(&self, session: i64) -> Result<String> {
-        Ok(self.handle(session)?.model().0)
+    /// The model this session asks: the provider and the id.
+    pub fn model(&self, session: i64) -> Result<(String, String)> {
+        Ok(self.handle(session)?.model())
     }
 
     /// Is this session on the table?
@@ -272,9 +274,13 @@ pub(crate) fn bind(inner: &Arc<Inner>, birth: Birth) -> Result<Arc<Handle>> {
         crate::server::agent::tools::workspace::standing_dir(&birth.cwd),
     ));
     let stop = crate::server::platform::stop::Stop::new();
-    let env = inner
-        .defaults
-        .session(birth.session, cwd.clone(), birth.tools.clone(), stop)?;
+    let env = inner.defaults.session(
+        birth.session,
+        cwd.clone(),
+        birth.tools.clone(),
+        stop,
+        birth.vision,
+    )?;
     let handle = Arc::new(Handle::new(birth, env, cwd, transcript));
     if !inner.slots.insert(handle.id, handle.clone()) {
         bail!("session {} is already booked", handle.id);
@@ -285,7 +291,6 @@ pub(crate) fn bind(inner: &Arc<Inner>, birth: Birth) -> Result<Arc<Handle>> {
     }
     Ok(handle)
 }
-
 pub(crate) fn book_child(inner: &Arc<Inner>, birth: Birth, start: String) -> Result<Arc<Handle>> {
     let handle = bind(inner, birth)?;
     start_turn(

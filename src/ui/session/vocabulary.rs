@@ -21,24 +21,41 @@ pub enum Retention {
 /// How hard the session asks the model to think. Memory-only: the server never stores it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Effort {
-    /// Ask for nothing and take the host's default.
+    /// Ask for nothing and take the host's default. Never sent: the field stays off the body.
     #[default]
     Auto,
+    None,
+    Minimal,
     Low,
+    Medium,
     High,
+    Xhigh,
     Max,
 }
 
 impl Effort {
-    /// The ladder in the order Ctrl+Tab cycles through it.
-    pub const LADDER: [Self; 4] = [Self::Auto, Self::Low, Self::High, Self::Max];
+    /// The ladder in the order Ctrl+Tab cycles through it; a model declares which rungs it takes.
+    pub const LADDER: [Self; 8] = [
+        Self::Auto,
+        Self::None,
+        Self::Minimal,
+        Self::Low,
+        Self::Medium,
+        Self::High,
+        Self::Xhigh,
+        Self::Max,
+    ];
 
     /// The one spelling the server takes.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
+            Self::None => "none",
+            Self::Minimal => "minimal",
             Self::Low => "low",
+            Self::Medium => "medium",
             Self::High => "high",
+            Self::Xhigh => "xhigh",
             Self::Max => "max",
         }
     }
@@ -50,17 +67,18 @@ impl Effort {
             .find(|effort| effort.as_str() == raw.as_str())
     }
 
-    /// The next rung, wrapping back to `Auto`.
-    pub fn next(self) -> Self {
+    /// The next rung this model declares, wrapping back to `Auto`; `Auto` is always offered.
+    pub fn next(self, declared: &[Self]) -> Self {
         let at = Self::LADDER
             .iter()
             .position(|rung| *rung == self)
             .unwrap_or(0);
-        Self::LADDER[(at + 1) % Self::LADDER.len()]
+        for step in 1..=Self::LADDER.len() {
+            let rung = Self::LADDER[(at + step) % Self::LADDER.len()];
+            if rung == Self::Auto || declared.contains(&rung) {
+                return rung;
+            }
+        }
+        Self::Auto
     }
-}
-
-/// Whether a wire protocol names a thinking effort at all.
-pub fn names_effort(protocol: &str) -> bool {
-    protocol == "openai-deepseek"
 }

@@ -170,14 +170,13 @@ impl Ask for Request {
                 Some(reason) => format!("{text}\n[{reason}]"),
                 None => text,
             };
-
             blocks.land(
                 Block {
                     kind: Kind::ToolResult,
                     ts: Some(ts.clone()),
                     call_id: Some(run.call_id.clone()),
-                    ok: Some(run.items),
                     result: Some(text),
+                    images: (!run.images.is_empty()).then(|| run.images.clone()),
                     memo: run.memo.clone(),
                     duration_ms: Some(run.duration_ms),
                     ..Block::default()

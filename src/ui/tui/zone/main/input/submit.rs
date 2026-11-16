@@ -63,7 +63,7 @@ impl InputZone {
             args,
             session: self.session,
             cwd: &self.data.cwd,
-            takes_effort: self.data.takes_effort(),
+            efforts: &self.data.efforts,
         };
         match command::run(meta, &call) {
             Done::Write { request, notice } => self.wrote(request, notice),

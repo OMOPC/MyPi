@@ -18,10 +18,10 @@ Loop::change(session, Change) -> Result<()>
 Loop::write_mail(session, Letter) -> Result<()>
 Loop::clear_mail(session) -> Result<()>
 
-Birth = { session, provider, model, system, tools, manuals, compact, effort, meta, cwd }   // tools = names
+Birth = { session, provider, model, system, tools, manuals, compact, effort, vision, meta, cwd }   // tools = names
 Message = Submit { prefix, text, suffix } | Compact { retention, focus }
 Letter = { prefix, text, suffix }   // the one sentence the mailbox slot can hold
-Change = Model { provider, model } | Cwd(path) | Effort(rung)
+Change = Model { provider, model, vision } | Cwd(path) | Effort(rung)
 ```
 
 `ask` is `Arc<dyn request::Ask>`; `out` carries the live line. The loop builds the tool layer from

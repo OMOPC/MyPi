@@ -128,19 +128,18 @@ impl InputZone {
 
     /// The model whose facts the widgets follow: the entry, and the wire behind it.
     pub(super) fn model(&mut self, address: &str, out: &mut Vec<Request>) {
+        // A model change drops the rung: the new model declares its own, and `Auto` is the one
+        // state every model shares.
+        if self.data.address.is_some() {
+            self.data.effort = crate::ui::session::Effort::Auto;
+        }
         self.data.address = Some(address.to_string());
         self.data.model = None;
         self.data.limit = 0;
+        self.data.efforts.clear();
         out.push(Request::Config {
             key: format!("models.model.{address}"),
         });
-        // The pill's marker is the effort a wire takes, so the wire's name comes with the model.
-        self.data.protocol = None;
-        if let Some((provider, _)) = address.split_once(':') {
-            out.push(Request::Config {
-                key: format!("models.provider.{provider}.api"),
-            });
-        }
     }
 
     /// One config answer: the statusline's own keys, and the running model's facts.
@@ -193,12 +192,6 @@ impl InputZone {
         }
         if key == AUTO_PREPARE_KEY {
             self.data.auto_prepare = value.and_then(Value::as_bool).unwrap_or(false);
-            return;
-        }
-        if let Some(rest) = key.strip_prefix("models.provider.")
-            && rest.ends_with(".api")
-        {
-            self.data.protocol = value.and_then(Value::as_str).map(str::to_string);
             return;
         }
         if let Some(address) = key.strip_prefix("models.model.") {
@@ -256,6 +249,17 @@ impl InputZone {
             .get("contextWindow")
             .and_then(Value::as_u64)
             .unwrap_or(0);
+        self.data.efforts = entry
+            .get("reasoningEfforts")
+            .and_then(Value::as_array)
+            .map(|list| {
+                list.iter()
+                    .filter_map(Value::as_str)
+                    .filter_map(crate::ui::session::Effort::parse)
+                    .filter(|rung| *rung != crate::ui::session::Effort::Auto)
+                    .collect()
+            })
+            .unwrap_or_default();
     }
 
     /// What the session has cost, and where its context stands. Both are the server's to say.
