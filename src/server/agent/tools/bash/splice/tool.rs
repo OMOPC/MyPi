@@ -8,9 +8,9 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use serde_json::{Value, json};
 
 use super::edit::{self, Edit, Place};
-use super::fmt;
+use super::fmt::{self, Word};
 use super::items;
-use super::receipt::{self, Row, State, Why};
+use super::receipt::{self, Row, State};
 use crate::server::agent::request::contract::ToolCall;
 use crate::server::agent::tools::bash::change;
 use crate::server::agent::tools::bash::gate;
@@ -37,7 +37,9 @@ const EDIT_FIELDS: &[Param] = &[
     Param::new(
         "new",
         Kind::Text,
-        "The replacement; any number of lines. Empty deletes the range.",
+        "The replacement; any number of lines. Empty deletes the range. `@@COPY(a..b)@@` fills \
+         in lines a..b of the file as it stands before this message; `@@CUT(a..b)@@` fills them \
+         in and also removes them from where they were.",
     ),
 ];
 
@@ -54,12 +56,19 @@ const PARAMS: &[Param] = &[
 pub(crate) const TOOL: Tool = Tool {
     name: "splice",
     about: "Replace whole lines by number in one file, many ranges at once; an empty `new` \
-            removes the range. Rust is formatted and gated by rustfmt. By matched text → `edit`.",
+            removes the range. `@@COPY(a..b)@@` reuses lines the file already holds and \
+            `@@CUT(a..b)@@` moves them. Rust is formatted by rustfmt; a text it cannot parse is \
+            still written, and said so. By matched text → `edit`.",
     fields: "path and edits are always needed. Each item has `start`, `end` (both 1-based, \
              inclusive, `end = start - 1` to insert) and `new` (any number of lines, empty to \
              delete). Ranges MUST NOT overlap; the range's own lines come from a fresh `read`. \
              Every splice call on the same file in one message is one write, and an overlapping \
-             later range is refused.",
+             later range is refused.\n\
+             To move or reuse lines the file already holds, never retype them: write \
+             `@@COPY(a..b)@@` in `new` and it stands for lines a to b of the file as it stands \
+             before this message, 1-based and inclusive. `@@CUT(a..b)@@` does the same and also \
+             removes those lines from where they were. A macro may sit anywhere in `new`, is \
+             filled on one pass, and is expanded by `splice` alone.",
     params: PARAMS,
     run,
     summary,
@@ -89,10 +98,12 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
     // The compiler runs after the file's lock is released: it reads the whole crate, not this file.
     // A file that does not parse would only repeat the formatter's verdict.
-    let check = if built.written.is_none() || built.bare.is_some() {
+    let check = if built.written.is_none() {
         gate::Check::Skipped
     } else if stop.is_stopped() {
         gate::Check::Unchecked
+    } else if matches!(built.word, Word::Unparsed(_)) {
+        gate::Check::Skipped
     } else {
         gate::check(&path, &stop)
     };
@@ -166,15 +177,10 @@ fn names(call: &ToolCall, env: &Env, path: &Path) -> bool {
     env.workspace.resolve(raw, true).ok().as_deref() == Some(path)
 }
 
-/// One call's ranges, measured against the file as it stands.
-fn read_edits(args: &Args, call: usize, total: usize) -> Result<Vec<Edit>> {
+/// One call's ranges, measured against the snapshot it was written against.
+fn read_edits(args: &Args, call: usize, base: &[&str]) -> Result<Vec<Edit>> {
     let items = args.objects(EDITS)?;
-    anyhow::ensure!(!items.is_empty(), "`edits` must name at least one range");
-    let mut out = Vec::with_capacity(items.len());
-    for (index, item) in items.iter().enumerate() {
-        out.push(Edit::read(item, call, index + 1, total)?);
-    }
-    Ok(out)
+    edit::call_edits(&items, call, base)
 }
 
 /// What one merged run leaves behind: owned, so the compiler can read the crate after the file's
@@ -191,12 +197,14 @@ struct Built {
     /// The edits that were written, as positions into `edits`, and where each one landed.
     held: Vec<usize>,
     landings: Vec<Place>,
-    /// What stopped each edit that was not written.
-    dropped: Vec<(usize, Why)>,
+    /// The edits that lost to an earlier call, as positions into `edits`.
+    dropped: Vec<usize>,
     /// The calls whose arguments could not be read at all.
     unreadable: Vec<Option<String>>,
-    /// The file did not parse before any change, so every edit was written unformatted.
-    bare: Option<gate::Broken>,
+    /// What the formatter made of the merged text.
+    word: Word,
+    /// The edits whose block does not parse on its own, with the parser's words.
+    blamed: Vec<(usize, String)>,
     written: Option<String>,
 }
 
@@ -209,6 +217,7 @@ impl Built {
         let layout = items::Layout::analyse(&self.shown);
         let (faults, elsewhere, note) = self.split_check(path, check);
         let shown = path.display().to_string();
+        let shifted = self.moved();
 
         (0..plans.len())
             .map(|at| {
@@ -224,11 +233,14 @@ impl Built {
                     .map(|index| self.row(index, &lines, &base, &layout, &faults))
                     .collect();
                 let (text, memo) = receipt::build(
-                    &shown,
-                    self.after,
-                    &anchors,
+                    receipt::Sheet {
+                        path: &shown,
+                        after: self.after,
+                        anchors: &anchors,
+                        shifted,
+                    },
                     &rows,
-                    self.bare.as_ref(),
+                    &self.word,
                     &elsewhere,
                     note.as_deref(),
                 );
@@ -241,6 +253,15 @@ impl Built {
             .collect()
     }
 
+    /// Whether a written edit above a refused one moved the refused one's lines.
+    fn moved(&self) -> bool {
+        self.dropped.iter().any(|at| {
+            self.held
+                .iter()
+                .any(|held| self.edits[*held].start < self.edits[*at].start)
+        })
+    }
+
     /// One edit, as its own call's answer shows it.
     fn row(
         &self,
@@ -251,6 +272,11 @@ impl Built {
         faults: &[Vec<String>],
     ) -> Row {
         let edit = &self.edits[at];
+        let blame = self
+            .blamed
+            .iter()
+            .find(|(index, _)| *index == at)
+            .map(|(_, why)| why.clone());
         if let Some(position) = self.held.iter().position(|held| *held == at) {
             let landing = self.landings.get(position).copied().flatten();
             let old = edit.taken(base).to_vec();
@@ -258,7 +284,10 @@ impl Built {
                 Some((first, last)) => take(lines, first, last),
                 None => Vec::new(),
             };
-            let item = landing.and_then(|(first, _)| item_of(layout, first));
+            let item = match edit.cut {
+                true => None,
+                false => landing.and_then(|(first, _)| item_of(layout, first)),
+            };
             return Row {
                 index: edit.index,
                 from: edit.start + 1,
@@ -268,16 +297,11 @@ impl Built {
                     new,
                     item,
                     faults: faults[at].clone(),
+                    blame,
                 },
             };
         }
 
-        let why = self
-            .dropped
-            .iter()
-            .find(|(index, _)| *index == at)
-            .map(|(_, why)| why.clone())
-            .unwrap_or(Why::Conflict);
         let needle: Vec<&str> = edit.taken(base).iter().map(String::as_str).collect();
         let near = self.near(at);
         let (place, taken) = match edit::locate(lines, &needle, near) {
@@ -302,7 +326,8 @@ impl Built {
                 at: place,
                 taken,
                 block: edit.block.clone(),
-                why,
+                item: place.and_then(|(first, _)| item_of(layout, first)),
+                why: "overlaps an earlier splice call on this file",
                 faults: faults[at].clone(),
             },
         }
@@ -385,7 +410,8 @@ fn compute(
     stop: &Stop,
 ) -> Result<Option<Built>> {
     let text = std::fs::read_to_string(path).context("failed to read file")?;
-    let total = text.lines().count();
+    let base: Vec<&str> = text.lines().collect();
+    let total = base.len();
     if let Some(stamp) = stamp
         && (stamp.lines != total || stamp.hash != hash(&text))
     {
@@ -397,54 +423,42 @@ fn compute(
         );
     }
 
-    let (edits, spans, unreadable) = flatten(plans, total);
-    let (kept, mut dropped) = settle_overlaps(&edits)?;
+    let (edits, spans, unreadable) = flatten(plans, &base);
+    let (kept, dropped) = settle_overlaps(&edits)?;
     let rust = path.extension().and_then(|e| e.to_str()) == Some("rs");
 
     let mut held: Vec<usize> = Vec::new();
     let mut landings: Vec<Place> = Vec::new();
-    let mut bare: Option<gate::Broken> = None;
+    let mut word = Word::Plain;
+    let mut blamed: Vec<(usize, String)> = Vec::new();
     let mut written: Option<String> = None;
 
     if !kept.is_empty() {
-        if rust {
+        let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
+        let now = if rust {
             let edition = gate::edition(path);
-            let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
             let Some(settled) = fmt::settle(&text, &picked, &edition, stop) else {
                 return Ok(None);
             };
-            bare = settled.bare;
-            for one in settled.dropped {
-                let why = match one.why {
-                    fmt::Why::Syntax(why) => Why::Syntax(why.message),
-                    fmt::Why::Conflict => Why::Conflict,
-                };
-                dropped.push((kept[one.at], why));
-            }
-            held = settled.kept.iter().map(|at| kept[*at]).collect();
-            let kept_edits: Vec<Edit> = held.iter().map(|at| edits[*at].clone()).collect();
-            if bare.is_some() {
-                // Nothing was formatted, so every block sits exactly where its own length puts it.
-                landings = edit::shifted(&kept_edits);
-            } else {
-                let refs: Vec<&Edit> = kept_edits.iter().collect();
-                landings = fmt::place(&text, &refs, &edition, stop);
-            }
-            if stop.is_stopped() {
-                return Ok(None);
-            }
-            if !held.is_empty() && settled.text != text {
-                written = Some(settled.text);
-            }
+            blamed = settled
+                .blamed
+                .iter()
+                .map(|(at, why)| (kept[*at], why.clone()))
+                .collect();
+            word = settled.word;
+            landings = settled.landings;
+            settled.text
         } else {
-            let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
             let refs: Vec<&Edit> = picked.iter().collect();
-            let out = edit::spliced(&text, &refs);
             landings = edit::shifted(&picked);
-            held = kept.clone();
-            if !held.is_empty() && out != text {
-                written = Some(out);
-            }
+            edit::spliced(&text, &refs)
+        };
+        held = kept;
+        if stop.is_stopped() {
+            return Ok(None);
+        }
+        if !held.is_empty() && now != text {
+            written = Some(now);
         }
     }
 
@@ -463,7 +477,8 @@ fn compute(
         landings,
         dropped,
         unreadable,
-        bare,
+        word,
+        blamed,
         written,
     }))
 }
@@ -472,14 +487,14 @@ fn compute(
 /// could not be read at all.
 type Flattened = (Vec<Edit>, Vec<(usize, usize)>, Vec<Option<String>>);
 
-fn flatten(plans: &[Plan], total: usize) -> Flattened {
+fn flatten(plans: &[Plan], base: &[&str]) -> Flattened {
     let mut edits = Vec::new();
     let mut spans = Vec::with_capacity(plans.len());
     let mut unreadable: Vec<Option<String>> = vec![None; plans.len()];
     for (at, plan) in plans.iter().enumerate() {
         let from = edits.len();
         match &plan.args {
-            Ok(args) => match read_edits(args, at, total) {
+            Ok(args) => match read_edits(args, at, base) {
                 Ok(list) => edits.extend(list),
                 Err(why) => unreadable[at] = Some(format!("{why:#}")),
             },
@@ -490,14 +505,12 @@ fn flatten(plans: &[Plan], total: usize) -> Flattened {
     (edits, spans, unreadable)
 }
 
-/// Which edits may run, and which lost to an earlier one: the kept positions, then the position and
-/// reason of each refusal. Two of one call's own ranges may not overlap at all — that is the model
-/// contradicting itself, and the file is left alone.
-type Overlaps = (Vec<usize>, Vec<(usize, Why)>);
-
-fn settle_overlaps(edits: &[Edit]) -> Result<Overlaps> {
+/// Which edits may run, and which lost to an earlier call: the kept positions, then the refused
+/// ones. Two of one call's own ranges may not overlap at all — that is the model contradicting
+/// itself, and the file is left alone.
+fn settle_overlaps(edits: &[Edit]) -> Result<(Vec<usize>, Vec<usize>)> {
     let mut kept: Vec<usize> = Vec::new();
-    let mut dropped: Vec<(usize, Why)> = Vec::new();
+    let mut dropped: Vec<usize> = Vec::new();
     for at in 0..edits.len() {
         let mut clash = false;
         for held in &kept {
@@ -515,7 +528,7 @@ fn settle_overlaps(edits: &[Edit]) -> Result<Overlaps> {
             break;
         }
         if clash {
-            dropped.push((at, Why::Clash));
+            dropped.push(at);
         } else {
             kept.push(at);
         }
@@ -539,7 +552,7 @@ fn take(lines: &[&str], first: usize, last: usize) -> Vec<String> {
         .collect()
 }
 
-/// The item a landing sits in, named by its own headers, outermost first.
+/// The innermost two items a landing sits in, outermost first.
 fn item_of(layout: &items::Layout, first: usize) -> Option<String> {
     let chain = layout.around(first.saturating_sub(1));
     let tail: Vec<&str> = chain
@@ -581,6 +594,7 @@ pub(crate) fn mass_text(
         start: from - 1,
         end: to,
         block: edit::block_of(new),
+        cut: false,
     };
     let updated = edit::spliced(text, &[&one]);
     let old_text = lines[from - 1..to].join("\n");

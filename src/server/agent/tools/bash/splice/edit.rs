@@ -1,6 +1,6 @@
 //! One change: the lines it takes, the lines it puts in their place, and the snapshot it lands on.
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 
 use crate::server::agent::tools::spec::Item;
 
@@ -21,11 +21,21 @@ pub(crate) struct Edit {
     pub end: usize,
     /// The lines that stand in the range's place.
     pub block: Vec<String>,
+    /// A range a `@@CUT(a..b)@@` asked to be removed; carries no `new` of its own.
+    pub cut: bool,
 }
 
 impl Edit {
-    /// One `edits[k]` of one call, read against a file of `total` lines.
-    pub(crate) fn read(item: &Item, call: usize, index: usize, total: usize) -> Result<Self> {
+    /// One `edits[k]` of one call, read against a snapshot of `base` lines. A `@@COPY(a..b)@@` in
+    /// `new` becomes the snapshot's own lines; a `@@CUT(a..b)@@` does the same and adds the change
+    /// that takes those lines away.
+    pub(crate) fn read(
+        item: &Item,
+        call: usize,
+        index: usize,
+        base: &[&str],
+    ) -> Result<Vec<Self>> {
+        let total = base.len();
         let start = item.line("start")?;
         let end = usize::try_from(item.int("end")?)
             .map_err(|_| anyhow!("`{}.end` must be a line number, 0 or more", item.label()))?;
@@ -45,23 +55,42 @@ impl Edit {
             "`{}.end` is {end}, past the last line: the file has {total} lines",
             item.label()
         );
-        Ok(Self {
+        let (text, cuts) = rewritten(&item.text("new")?, base, item)?;
+        let mut out = vec![Self {
             call,
             index,
             start: start - 1,
             end,
-            block: block_of(&item.text("new")?),
-        })
+            block: block_of(&text),
+            cut: false,
+        }];
+        for (first, last) in cuts {
+            anyhow::ensure!(
+                !(first < end && start - 1 < last),
+                "`{}.new` cuts {first}..{last}, which its own range already takes; a cut belongs \
+                 to another edit",
+                item.label()
+            );
+            out.push(Self {
+                call,
+                index,
+                start: first,
+                end: last,
+                block: Vec::new(),
+                cut: true,
+            });
+        }
+        Ok(out)
     }
 
     /// The same change with a comment around its block, so the formatter's output can be walked
-    /// back to it. `at` is its position in the list handed to the formatter.
-    pub(crate) fn marked(&self, at: usize) -> Self {
+    /// back to it. `tag` names this run and `at` its position in the list handed to the formatter.
+    pub(crate) fn marked(&self, tag: &str, at: usize) -> Self {
         let mut out = self.clone();
         let mut block = Vec::with_capacity(self.block.len() + 2);
-        block.push(format!("// {} {at} open", super::fmt::MARK));
+        block.push(format!("// {tag} {at} open"));
         block.extend(self.block.iter().cloned());
-        block.push(format!("// {} {at} close", super::fmt::MARK));
+        block.push(format!("// {tag} {at} close"));
         out.block = block;
         out
     }
@@ -82,6 +111,90 @@ pub(crate) fn block_of(new: &str) -> Vec<String> {
         .split('\n')
         .map(str::to_string)
         .collect()
+}
+
+/// One call's ranges, measured against the snapshot it was written against. A range may be cut
+/// once per call: two macros cutting into one another is the model contradicting itself.
+pub(crate) fn call_edits(items: &[Item], call: usize, base: &[&str]) -> Result<Vec<Edit>> {
+    anyhow::ensure!(!items.is_empty(), "`edits` must name at least one range");
+    let mut out: Vec<Edit> = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        out.extend(Edit::read(item, call, index + 1, base)?);
+    }
+    let mut cuts: Vec<(usize, usize, usize)> = out
+        .iter()
+        .filter(|edit| edit.cut)
+        .map(|edit| (edit.index, edit.start, edit.end))
+        .collect();
+    cuts.sort_by_key(|(_, start, _)| *start);
+    for pair in cuts.windows(2) {
+        let (first, _, end) = pair[0];
+        let (second, other, _) = pair[1];
+        anyhow::ensure!(
+            end <= other,
+            "`edits[{first}].new` and `edits[{second}].new` cut overlapping lines; a range may be \
+             cut once"
+        );
+    }
+    Ok(out)
+}
+
+/// A `new` string with its macros filled in, and the 0-based ranges it wants cut away.
+///
+/// `@@COPY(a..b)@@` and `@@CUT(a..b)@@` name lines of the snapshot, 1-based inclusive, and are
+/// filled with those lines as they stand. Filling is one pass: a token inside the copied lines is
+/// copied, never followed.
+fn rewritten(new: &str, base: &[&str], item: &Item) -> Result<(String, Vec<(usize, usize)>)> {
+    let label = item.label();
+    let mut text = String::with_capacity(new.len());
+    let mut cuts: Vec<(usize, usize)> = Vec::new();
+    let mut at = 0usize;
+    while let Some(found) = new[at..].find("@@") {
+        let from = at + found;
+        let tail = &new[from + 2..];
+        let (cut, kind, body_start) = if tail.starts_with("COPY(") {
+            (false, "COPY", from + 2 + "COPY(".len())
+        } else if tail.starts_with("CUT(") {
+            (true, "CUT", from + 2 + "CUT(".len())
+        } else {
+            bail!(
+                "`{label}.new` holds `@@` at byte {from} that starts no `@@COPY(a..b)@@` or \
+                 `@@CUT(a..b)@@`"
+            );
+        };
+        let rest = &new[body_start..];
+        let closing = rest.find(")@@").ok_or_else(|| {
+            anyhow!("`{label}.new` opens a macro at byte {from} with no closing `)@@`")
+        })?;
+        let body = &rest[..closing];
+        let (first, last) = body.split_once("..").ok_or_else(|| {
+            anyhow!("`{label}.new` has `@@{kind}({body})@@` at byte {from}; a range reads `a..b`")
+        })?;
+        let number = |raw: &str| -> Result<usize> {
+            raw.trim()
+                .parse::<usize>()
+                .map_err(|_| anyhow!("`{label}.new` names `{body}`; a range reads `a..b`"))
+        };
+        let first = number(first)?;
+        let last = number(last)?;
+        anyhow::ensure!(
+            first >= 1 && last >= first,
+            "`{label}.new` names `{body}`; a range counts upwards from 1"
+        );
+        anyhow::ensure!(
+            last <= base.len(),
+            "`{label}.new` names `{body}`, past the last line: the file has {} lines",
+            base.len()
+        );
+        text.push_str(&new[at..from]);
+        text.push_str(&base[first - 1..last].join("\n"));
+        if cut {
+            cuts.push((first - 1, last));
+        }
+        at = body_start + closing + 3;
+    }
+    text.push_str(&new[at..]);
+    Ok((text, cuts))
 }
 
 /// Whether two changes fight over the same lines. A point (an insertion) collides with the range

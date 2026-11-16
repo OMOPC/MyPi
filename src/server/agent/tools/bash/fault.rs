@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::gate::{self, Check};
+use super::gate::{self, Check, Unparsed};
 use super::skeleton;
 use crate::server::agent::tools::bash::read::sparse;
 
@@ -56,8 +56,15 @@ pub(crate) fn receipt(path: &Path, text: &str, check: &Check) -> Option<String> 
 }
 
 /// A file that did not parse: the formatter's verdict is the whole report.
-pub(crate) fn unparsed(message: &str) -> String {
-    format!("--- [Check] not type-checked: this file does not parse ---\n! {message}")
+pub(crate) fn unparsed(why: &Unparsed) -> String {
+    let at = match why.line {
+        Some(line) => format!("line {line}: "),
+        None => String::new(),
+    };
+    format!(
+        "--- [Check] not type-checked: this file does not parse ---\n! {at}{}",
+        why.message
+    )
 }
 
 /// The error's own lines, two above and two below, and the item they sit in.

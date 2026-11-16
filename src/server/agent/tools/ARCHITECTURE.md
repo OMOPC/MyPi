@@ -34,16 +34,16 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
 | `bash/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
 | `bash/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
-| `bash/write/{mod,tool}.rs` | `write`: the content through the formatter, the write, then the compiler's report |
+| `bash/write/{mod,tool}.rs` | `write`: the content through the formatter, the write whatever the formatter said, then the compiler's report unless the text does not parse |
 | `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
-| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the batch's calls on one file merged into one write; every edit's own verdict, the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
-| `bash/splice/edit.rs` | one change: its range, its block, the overlap rule, the reverse-order splice, where its lines land without a formatter, and the content search that finds a refused range in the file as it now stands |
+| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; `@@COPY(a..b)@@` and `@@CUT(a..b)@@` filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
+| `bash/splice/edit.rs` | one change: its range, its block, the macro ranges it fills and the changes it cuts, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
 | `bash/halt.rs` | the one sentence a stopped turn leaves: `INTERRUPTED`, and the answer a tool gives when nothing was written |
-| `bash/gate.rs` | the compiler gate: the formatter's outcome for one text (remembered per edition and content), the edition of the crate a file belongs to, one `cargo check` of that crate with a deadline, every child in a process group of its own |
+| `bash/gate.rs` | the formatting gate: the formatter's four outcomes for one text (only a reached verdict is remembered), the edition of the crate a file belongs to, one `cargo check` of that crate with a deadline, every child in a process group of its own |
 | `bash/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
 | `bash/fault.rs` | the compiler's report, drawn: one block per error — the item it sits in, the lines around it, what the compiler said and suggested |
-| `bash/splice/fmt.rs` | rustfmt through the gate: every change at once, then each one on its own so a refusal blames its own block, the change that breaks the company, and the comment walk that finds where each change landed |
-| `bash/splice/receipt.rs` | the receipt: the verdict on the first line, every refused edit with the lines it takes and the block it would put there, every written edit one line at its landing and the item holding it, and the segment memo a front end draws |
+| `bash/splice/fmt.rs` | rustfmt through the gate: the merged text with a marker comment around every block, the markers' lines as each change's landing, the text without them, and the per-block trials that only name what the parser blames |
+| `bash/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, and the segment memo a front end draws |
 | `bash/splice/items.rs` | items from text for the receipt's breadcrumb: a header's ends by bracket depth, each item's container, every item around one line |
 | `bash/change.rs` | `context` (the item around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
 | `bash/cd/{mod,tool}.rs` | `cd` |

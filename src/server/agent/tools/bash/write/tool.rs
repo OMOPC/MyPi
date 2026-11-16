@@ -51,13 +51,21 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
     // Rust is formatted first: the caller's content is what it meant, not what it lays out.
     let rust = p.extension().and_then(|e| e.to_str()) == Some("rs");
-    let mut parse = None;
+    let mut unparsed = None;
+    let mut undecided = None;
     let stop = &env.stop;
     let written = if rust {
         match gate::format(&content, &gate::edition(&p), stop) {
             gate::Outcome::Formatted(text) => text,
-            gate::Outcome::Broken(why) => {
-                parse = Some(why);
+            // A text the formatter cannot parse is written as it stands, and said so.
+            gate::Outcome::Unparsed(why) => {
+                unparsed = Some(why);
+                content.clone()
+            }
+            // The formatter decided nothing about the text: it is written as it stands, and the
+            // compiler is left to say what it makes of it.
+            gate::Outcome::Undecided(why) => {
+                undecided = Some(why);
                 content.clone()
             }
             // The formatter was killed: the file is untouched, and the answer says why.
@@ -79,13 +87,17 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
     // The compiler answers for the file as it now stands, outside the file's lock. A file that does
     // not parse has its verdict already; the compiler would only repeat it.
-    let check = match (rust, &parse) {
+    let check = match (rust, &unparsed) {
         (true, None) => gate::check(&p, stop),
         _ => gate::Check::Skipped,
     };
-    if let Some(why) = &parse {
+    if let Some(why) = &unparsed {
         text.push('\n');
-        text.push_str(&fault::unparsed(&why.message));
+        text.push_str(&fault::unparsed(why));
+    }
+    if let Some(why) = &undecided {
+        text.push('\n');
+        text.push_str(&format!("[i] not formatted, written as it stands: {why}"));
     }
     if let Some(report) = fault::receipt(&p, &written, &check) {
         text.push('\n');

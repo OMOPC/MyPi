@@ -12,9 +12,6 @@ use std::time::{Duration, Instant};
 use crate::server::platform::proc::{self, Signal};
 use crate::server::platform::stop::Stop;
 
-/// The comment a change is wrapped in, so the formatter's output can be walked back to it.
-pub(crate) const MARK: &str = "mypi:splice";
-
 /// How long one formatter round trip may take before its tree is killed.
 const FORMAT_LIMIT: Duration = Duration::from_secs(5);
 
@@ -31,9 +28,9 @@ const CAP: usize = 8 << 20;
 /// How many faults one answer lists.
 pub(crate) const FAULTS: usize = 12;
 
-/// What the formatter could not make sense of.
+/// What rustfmt said about a text it could not parse.
 #[derive(Debug, Clone)]
-pub(crate) struct Broken {
+pub(crate) struct Unparsed {
     /// The line it pointed at, 1-based, in the text it was given.
     pub line: Option<usize>,
 
@@ -46,7 +43,10 @@ pub(crate) struct Broken {
 pub(crate) enum Outcome {
     /// The text as rustfmt left it.
     Formatted(String),
-    Broken(Broken),
+    /// rustfmt ran and said the text does not parse.
+    Unparsed(Unparsed),
+    /// rustfmt did not finish or could not run: nothing is known about the text.
+    Undecided(String),
     /// The turn was stopped: the formatter was killed, and its answer means nothing.
     Stopped,
 }
@@ -86,15 +86,15 @@ pub(crate) struct Fault {
     pub helps: Vec<String>,
 }
 
-/// Format one text, or say what stopped it. A turn that was stopped remembers nothing: its
-/// answer depends on a kill, and a retry of the same text must go through the formatter again.
+/// Format one text, or say what stopped it. Only a verdict rustfmt reached is remembered: a
+/// timeout or a missing binary says nothing about the text and must not outlive the moment.
 pub(crate) fn format(text: &str, edition: &str, stop: &Stop) -> Outcome {
     let key = (edition.to_string(), hash(text));
     if let Some(hit) = remembered(&key) {
         return hit;
     }
     let outcome = formatter(text, edition, stop);
-    if !matches!(outcome, Outcome::Stopped) {
+    if matches!(outcome, Outcome::Formatted(_) | Outcome::Unparsed(_)) {
         remember(key, &outcome);
     }
     outcome
@@ -298,22 +298,16 @@ fn formatter(text: &str, edition: &str, stop: &Stop) -> Outcome {
     cmd.args(["--edition", edition, "--emit", "stdout", "--quiet"]);
     match run(cmd, Some(text.as_bytes()), FORMAT_LIMIT, stop) {
         Ok(ran) if ran.stopped => Outcome::Stopped,
-        Ok(ran) if ran.timed_out => Outcome::Broken(Broken {
-            line: None,
-            message: format!(
-                "rustfmt did not finish in {} s, so it was killed",
-                FORMAT_LIMIT.as_secs()
-            ),
-        }),
+        Ok(ran) if ran.timed_out => Outcome::Undecided(format!(
+            "rustfmt did not finish in {} s, so it was killed",
+            FORMAT_LIMIT.as_secs()
+        )),
         Ok(ran) if ran.code == Some(0) => Outcome::Formatted(ran.out),
-        Ok(ran) => Outcome::Broken(parse(&ran.err)),
-        Err(e) => Outcome::Broken(Broken {
-            line: None,
-            message: format!(
-                "failed to run `{}`: {e}; put rustfmt beside this executable or on PATH",
-                bin.display()
-            ),
-        }),
+        Ok(ran) => Outcome::Unparsed(parse(&ran.err)),
+        Err(e) => Outcome::Undecided(format!(
+            "failed to run `{}`: {e}; put rustfmt beside this executable or on PATH",
+            bin.display()
+        )),
     }
 }
 
@@ -448,7 +442,7 @@ fn beside(name: &str) -> PathBuf {
 }
 
 /// rustfmt's stderr, cut to the one line and the line number a model can act on.
-fn parse(stderr: &str) -> Broken {
+fn parse(stderr: &str) -> Unparsed {
     let mut message: Option<String> = None;
     let mut line = None;
     for raw in stderr.lines() {
@@ -469,7 +463,7 @@ fn parse(stderr: &str) -> Broken {
             message = Some(cleaned.trim_end_matches(':').to_string());
         }
     }
-    Broken {
+    Unparsed {
         line,
         message: message.unwrap_or_else(|| "rustfmt refused the text".to_string()),
     }
@@ -491,7 +485,7 @@ fn remember(key: Key, outcome: &Outcome) {
     // A text too large to cache is simply not cached: the retries that follow pay one process.
     let size = match outcome {
         Outcome::Formatted(text) => text.len(),
-        Outcome::Broken(_) | Outcome::Stopped => 0,
+        Outcome::Unparsed(_) | Outcome::Undecided(_) | Outcome::Stopped => 0,
     };
     if size > CACHE {
         return;
@@ -507,7 +501,7 @@ fn remember(key: Key, outcome: &Outcome) {
 fn weigh(outcome: &Outcome) -> usize {
     match outcome {
         Outcome::Formatted(text) => text.len(),
-        Outcome::Broken(_) | Outcome::Stopped => 0,
+        Outcome::Unparsed(_) | Outcome::Undecided(_) | Outcome::Stopped => 0,
     }
 }
 

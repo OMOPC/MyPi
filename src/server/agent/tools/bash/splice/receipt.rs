@@ -1,46 +1,21 @@
-//! What the model reads back: the edits that were left out, each with the lines it takes and the
-//! block it puts there, then the ones that were written, each at the lines it landed on.
-//!
-//! A line number here is a global one only where `read` would number that line; a block is
-//! numbered inside itself. Nothing else is printed.
+//! What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits —
+//! `path:line`, the item it sits in, and numbered source. A block that stands there carries `+`;
+//! a deletion shows the lines it removed with `-`. Everything else is a note at the end.
 
 use serde_json::{Value, json};
 
 use super::edit::Place;
-use crate::server::agent::tools::bash::gate::Broken;
+use super::fmt::Word;
 
 /// How many lines one side of a diff shows before its middle is folded away.
 const SIDE: usize = 12;
 
-/// How wide one source line reads inside a diff.
+/// How wide one source line reads inside the receipt.
 const WIDE: usize = 140;
-
-/// Why one edit was left out of the write.
-#[derive(Debug, Clone)]
-pub(crate) enum Why {
-    /// The file stopped parsing once this block was in it; the formatter's own words.
-    Syntax(String),
-
-    /// It fights an earlier splice call on this file for the same lines.
-    Clash,
-
-    /// It parses on its own, but not beside the other edits of this message.
-    Conflict,
-}
-
-impl Why {
-    fn says(&self) -> String {
-        match self {
-            Why::Syntax(why) => why.clone(),
-            Why::Clash => "overlaps an earlier splice call on this file".to_string(),
-            Why::Conflict => "parses on its own, not beside the other edits here".to_string(),
-        }
-    }
-}
 
 /// One edit of one call, as that call's answer shows it.
 pub(crate) struct Row {
-    /// Which item of the call's `edits`, 1-based.
+    /// Which item of the call's `edits`, 1-based; a range cut by a macro carries its owner's.
     pub index: usize,
     /// The first line it named, 1-based, in the file as it was before the write.
     pub from: usize,
@@ -53,124 +28,188 @@ pub(crate) enum State {
         at: Place,
         old: Vec<String>,
         new: Vec<String>,
-        /// The item holding it, outermost first: `impl X for Y > fn z`.
+        /// The item holding it, innermost two, outermost first: `impl X for Y > fn z`.
         item: Option<String>,
         faults: Vec<String>,
+        /// The parser's words, when its block does not parse on its own.
+        blame: Option<String>,
     },
 
-    /// It was left out: where its own lines sit now, and the block it would have put there.
+    /// It was left out: where its own lines sit now, the block it would have put there, and the
+    /// item those lines are in.
     Refused {
         at: Place,
         taken: Vec<String>,
         block: Vec<String>,
-        why: Why,
+        item: Option<String>,
+        why: &'static str,
         faults: Vec<String>,
     },
 }
 
+/// The answer's fixed points: the file, its length, where `read` numbers lines, and whether a
+/// refused edit's lines moved.
+pub(crate) struct Sheet<'a> {
+    pub path: &'a str,
+    pub after: usize,
+    pub anchors: &'a [bool],
+    pub shifted: bool,
+}
+
 /// The answer's text and the memo a front end draws from.
 pub(crate) fn build(
-    path: &str,
-    after: usize,
-    anchors: &[bool],
+    sheet: Sheet<'_>,
     rows: &[Row],
-    bare: Option<&Broken>,
+    word: &Word,
     elsewhere: &[String],
     note: Option<&str>,
 ) -> (String, Value) {
+    let Sheet {
+        path,
+        after,
+        anchors,
+        shifted,
+    } = sheet;
     let landed = rows
         .iter()
         .filter(|row| matches!(row.state, State::Applied { .. }))
         .count();
 
-    let mut out = vec![head(landed, rows.len(), after, bare), path.to_string()];
-    let width = after.to_string().len().max(2);
-    let mut sections: Vec<String> = Vec::new();
-    if let Some(why) = bare {
-        sections.push(bare_note(why));
+    let mut out = vec![head(word, landed, rows.len(), after, shifted), String::new()];
+    let width = after.to_string().len().max(3);
+    for row in rows {
+        out.push(heading(path, row));
+        if let Some(item) = item(row) {
+            out.push(format!("  in: {item}"));
+        }
+        match &row.state {
+            State::Applied {
+                old,
+                new,
+                faults,
+                blame,
+                ..
+            } => {
+                // What stands there now; a deletion has nothing to show and says what it removed.
+                if new.is_empty() {
+                    out.extend(taken_side(None, old, anchors, width));
+                }
+                out.extend(block_side(new, width));
+                if let Some(blame) = blame {
+                    out.push(format!("  ! {blame}"));
+                }
+                for fault in faults {
+                    out.push(format!("  ! {fault}"));
+                }
+            }
+            State::Refused {
+                at,
+                taken,
+                block,
+                why,
+                faults,
+                ..
+            } => {
+                // Its lines are still in the file: they are numbered where it now finds them.
+                out.extend(taken_side(
+                    at.map(|(first, _)| first),
+                    taken,
+                    anchors,
+                    width,
+                ));
+                out.extend(block_side(block, width));
+                out.push(format!("  ! {why}"));
+                for fault in faults {
+                    out.push(format!("  ! {fault}"));
+                }
+            }
+        }
     }
-    for row in rows
-        .iter()
-        .filter(|row| matches!(row.state, State::Refused { .. }))
-    {
-        sections.push(refused(row, anchors, width));
-    }
-    if let Some(section) = applied(rows) {
-        sections.push(section);
-    }
-    if !elsewhere.is_empty() {
-        sections.push(elsewhere_note(elsewhere));
+    if let Some(line) = verdict_note(word, rows) {
+        out.push(line);
     }
     if let Some(note) = note {
-        sections.push(format!("[i] {note}"));
+        out.push(format!("[i] {note}"));
     }
-    for section in sections {
-        out.push(String::new());
-        out.push(section);
+    if !elsewhere.is_empty() {
+        out.extend(elsewhere_note(elsewhere));
     }
     (out.join("\n"), memo(rows))
 }
 
 /// The verdict, then the file's length: the whole point of the first line.
-fn head(landed: usize, total: usize, after: usize, bare: Option<&Broken>) -> String {
-    let verdict = match bare {
-        Some(why) if why.line.is_some() => "WRITTEN, FILE ALREADY BROKEN",
-        Some(_) => "WRITTEN, UNVERIFIED",
-        None if landed == total => "OK",
-        None if landed == 0 => "FAILED, NOTHING WRITTEN",
-        None => "PARTLY FAILED, LINES SHIFTED",
+fn head(word: &Word, landed: usize, total: usize, after: usize, shifted: bool) -> String {
+    let verdict = if landed == 0 {
+        "FAILED, NOTHING WRITTEN"
+    } else if landed < total {
+        match shifted {
+            true => "PARTLY FAILED, LINES SHIFTED",
+            false => "PARTLY FAILED",
+        }
+    } else {
+        match word {
+            Word::Plain | Word::Formatted => "OK",
+            Word::Unparsed(_) => "WRITTEN, NOT PARSED",
+            Word::Undecided(_) => "WRITTEN, UNFORMATTED",
+        }
     };
     format!("[Splice] {verdict} · now {after} lines")
 }
 
-/// Why nothing could be judged, and what was written anyway.
-fn bare_note(why: &Broken) -> String {
-    match why.line {
-        Some(line) => format!(
-            "[i] the file did not parse before this change (line {line}): {}; every edit was written unformatted",
-            why.message
-        ),
-        None => format!(
-            "[i] the formatter could not judge the file before this change: {}; every edit was written unformatted",
-            why.message
-        ),
+/// What the formatter said about the whole text, when no edit carries the words itself.
+fn verdict_note(word: &Word, rows: &[Row]) -> Option<String> {
+    let blamed = rows
+        .iter()
+        .any(|row| matches!(&row.state, State::Applied { blame: Some(_), .. }));
+    match word {
+        Word::Unparsed(why) if !blamed => Some(format!("[i] the file does not parse: {why}")),
+        Word::Undecided(why) => Some(format!("[i] not formatted, written as it stands: {why}")),
+        _ => None,
     }
 }
 
-/// One refused edit: what it takes, what it would put there, and what stopped it.
-fn refused(row: &Row, anchors: &[bool], width: usize) -> String {
-    let State::Refused {
-        at,
-        taken,
-        block,
-        why,
-        faults,
-    } = &row.state
-    else {
-        return String::new();
-    };
-    let named = range(*at)
-        .unwrap_or_else(|| "their lines are not in the file as it now stands".to_string());
-    let mut out = vec![format!("[!] edit {} · {named}", row.index)];
-
-    out.extend(taken_side(*at, taken, anchors, width));
-    out.extend(block_side(block, width));
-    out.push(format!("  ! {}", why.says()));
-    for fault in faults {
-        out.push(format!("  ! {fault}"));
+/// One place as `grep` names a hit: `path:line`, `path:first-last`, or a line saying the range is
+/// no longer in the file.
+fn where_at(path: &str, at: Place) -> String {
+    match at {
+        Some((first, last)) if last > first => format!("{path}:{first}-{last}"),
+        Some((first, _)) => format!("{path}:{first}"),
+        None => format!("{path}: their lines are not in the file as it now stands"),
     }
-    out.join("\n")
 }
 
-/// The lines an edit takes, by their current numbers, and only where `read` would number them.
-fn taken_side(at: Place, taken: &[String], anchors: &[bool], width: usize) -> Vec<String> {
+/// Where one edit sits, as `grep` names a hit. A written edit is named where it landed; a deletion
+/// has no landing of its own, so it keeps the range it named.
+fn heading(path: &str, row: &Row) -> String {
+    match &row.state {
+        State::Applied { old, new, at, .. } => {
+            if new.is_empty() && !old.is_empty() {
+                where_at(path, Some((row.from, row.from + old.len() - 1)))
+            } else {
+                where_at(path, *at)
+            }
+        }
+        State::Refused { at, .. } => where_at(path, *at),
+    }
+}
+
+fn item(row: &Row) -> Option<&str> {
+    match &row.state {
+        State::Applied { item, .. } => item.as_deref(),
+        State::Refused { item, .. } => item.as_deref(),
+    }
+}
+
+/// The lines an edit takes, unnumbered when they are gone and by their current numbers when they
+/// are still in the file, where `read` would number them.
+fn taken_side(first: Option<usize>, taken: &[String], anchors: &[bool], width: usize) -> Vec<String> {
     if taken.is_empty() {
-        return vec![format!("  - {:>width$} | (nothing)", "", width = width)];
+        return vec![format!("- {:>width$}|(nothing)", "", width = width)];
     }
-    let Some((first, _)) = at else {
+    let Some(first) = first else {
         return taken
             .iter()
-            .map(|line| format!("  - {:>width$} | {}", "", shown(line), width = width))
+            .map(|line| format!("- {:>width$}|{}", "", shown(line), width = width))
             .collect();
     };
     let mut picked: Vec<(usize, &str)> = Vec::new();
@@ -188,15 +227,15 @@ fn taken_side(at: Place, taken: &[String], anchors: &[bool], width: usize) -> Ve
         }
     }
     fold(picked, |number, line| {
-        format!("  - {number:>width$} | {}", shown(line), width = width)
+        format!("- {number:>width$}|{}", shown(line), width = width)
     })
 }
 
-/// The block an edit would put there, numbered inside itself.
+/// A block, numbered inside itself.
 fn block_side(block: &[String], width: usize) -> Vec<String> {
     if block.is_empty() {
         return vec![format!(
-            "  + {:>width$} | (nothing: the range is gone)",
+            "+ {:>width$}|(nothing: the range is gone)",
             "",
             width = width
         )];
@@ -207,7 +246,7 @@ fn block_side(block: &[String], width: usize) -> Vec<String> {
         .map(|(at, line)| (at + 1, line.as_str()))
         .collect();
     fold(rows, |number, line| {
-        format!("  + {number:>width$} | {}", shown(line), width = width)
+        format!("+ {number:>width$}|{}", shown(line), width = width)
     })
 }
 
@@ -230,7 +269,7 @@ fn fold(rows: Vec<(usize, &str)>, row: impl Fn(usize, &str) -> String) -> Vec<St
     out
 }
 
-/// One source line as a diff row: its own indentation kept, its tail cut.
+/// One source line as a receipt row: its own indentation kept, its tail cut.
 fn shown(line: &str) -> String {
     match line.char_indices().nth(WIDE) {
         Some((cut, _)) => format!("{}…", &line[..cut]),
@@ -238,34 +277,10 @@ fn shown(line: &str) -> String {
     }
 }
 
-/// The edits that were written, one line each.
-fn applied(rows: &[Row]) -> Option<String> {
-    let mut out: Vec<String> = Vec::new();
-    for row in rows {
-        let State::Applied {
-            at, item, faults, ..
-        } = &row.state
-        else {
-            continue;
-        };
-        let named = range(*at).unwrap_or_else(|| "written, landing not found".to_string());
-        let mut line = format!("[+] edit {} · {named}", row.index);
-        if let Some(item) = item {
-            line.push_str(" in ");
-            line.push_str(item);
-        }
-        out.push(line);
-        for fault in faults {
-            out.push(format!("  ! {fault}"));
-        }
-    }
-    (!out.is_empty()).then(|| out.join("\n"))
-}
-
 /// The compiler's own words about files this call did not touch.
-fn elsewhere_note(elsewhere: &[String]) -> String {
+fn elsewhere_note(elsewhere: &[String]) -> Vec<String> {
     let mut out = vec![format!(
-        "[!] check · {} error(s) elsewhere, none of them in these edits",
+        "[i] check · {} error(s) elsewhere, none of them in these edits",
         elsewhere.len()
     )];
     for line in elsewhere.iter().take(3) {
@@ -274,18 +289,7 @@ fn elsewhere_note(elsewhere: &[String]) -> String {
     if elsewhere.len() > 3 {
         out.push(format!("  (+{} more)", elsewhere.len() - 3));
     }
-    out.join("\n")
-}
-
-/// A range as a reader names it: `84-86`, `84`, where nothing stands, or `None` when it has no
-/// place in the file as it now stands.
-fn range(at: Place) -> Option<String> {
-    let (first, last) = at?;
-    Some(match last.checked_sub(first) {
-        None => format!("nothing at line {first}"),
-        Some(0) => format!("line {first}"),
-        Some(_) => format!("{first}-{last}"),
-    })
+    out
 }
 
 /// The memo a front end draws from: one segment per edit, in the call's order.
@@ -304,11 +308,7 @@ fn memo(rows: &[Row]) -> Value {
                 }));
             }
             State::Refused {
-                at,
-                taken,
-                block,
-                why,
-                ..
+                at, taken, block, why, ..
             } => {
                 // The segment's own lines are the ones it takes now, not the ones it named before.
                 let now = at.map(|(first, _)| first).unwrap_or(row.from);
@@ -319,7 +319,7 @@ fn memo(rows: &[Row]) -> Value {
                     "atLine": now,
                     "old": taken.join("\n"),
                     "new": block.join("\n"),
-                    "error": why.says(),
+                    "error": why,
                 }));
             }
         }
