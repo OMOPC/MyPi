@@ -93,7 +93,7 @@ that tool needs (the tool checks them, not the schema).
 
 | tool | parameters, in index order |
 |---|---|
-| `grep` | `query` always, `regex` (default false), `scope` (directories under the crate's `src/`, relative to the crate root; omitted, the whole `src/`) |
+| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` file; omitted, the whole `src/`) |
 | `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
@@ -398,9 +398,10 @@ file whose hits fall in more than one item answers as its whole top level with t
 Past that, only per-file counts and a line saying the query is too wide. `fileMax` caps one file's
 hits in one answer. Every cap that bites states what it left out; nothing is dropped silently.
 
-`scope` narrows the search to directories under the crate's `src/`, named relative to the crate
-root. A directory that is missing, is not a directory, or stands outside `src/` is skipped while
-the rest still run, and the answer ends with one `[scope]` line per such entry naming the reason.
+`scope` narrows the search to paths under the crate's `src/`, named from the crate root — every
+entry starts with `src/`. A directory contributes its `.rs` files; a file must be `.rs`. An entry
+that is missing, names no `.rs` file, or stands outside `src/` is skipped while the rest still run,
+and the answer ends with one `[scope]` line per such entry naming the reason.
 Every file whose lines an answer showed is stamped in `env.seen` — line count and content hash, the
 stamp `read` writes — so `splice` works on it without a second `read`.
 

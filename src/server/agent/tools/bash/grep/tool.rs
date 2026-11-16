@@ -28,9 +28,9 @@ const PARAMS: &[Param] = &[
     Param::new(
         "scope",
         Kind::TextList,
-        "Directories to search, relative to the crate root and inside its `src/`; omitted, the \
-         whole `src/`. A directory that is missing or outside `src/` is skipped and named at the \
-         end of the answer.",
+        "Paths to read, named from the crate root and starting with `src/` — `src/ui/tui`, \
+         `src/cli.rs`, or both. An entry that is missing, is not a `.rs` file, or lies outside \
+         `src/` is skipped and named at the end of the answer.",
     ),
 ];
 
@@ -40,8 +40,9 @@ pub(crate) const TOOL: Tool = Tool {
             and `A::b` also reports where `A` declares `b` (a type's members, or a module's item). \
             Files it shows are stamped, so `splice` works on them at once.",
     fields: "`query` is the text; with `regex` off every character stands for itself. `scope` \
-             narrows the search to directories under the crate's `src/`. Hits and excerpts carry \
-             line numbers. Only .rs files under the crate's src/ are read.",
+             names paths from the crate root, so every entry starts with `src/`; left out, the \
+             whole `src/` is read. A directory contributes its `.rs` files and a file must be `.rs`. \
+             Hits and excerpts carry line numbers.",
     params: PARAMS,
     run,
     summary,
@@ -57,8 +58,8 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     } else {
         scan::Matcher::text(&query)
     };
-    let (dirs, misses) = scan::roots(&zone, &args.str_list(SCOPE)?);
-    let files = scan::collect(&dirs, &matcher);
+    let (dirs, picked, misses) = scan::roots(&zone, &args.str_list(SCOPE)?);
+    let files = scan::collect(&dirs, &picked, &matcher);
     let mode = if regex { "regex" } else { "literal" };
     let (text, shown) = render::answer(
         &query,

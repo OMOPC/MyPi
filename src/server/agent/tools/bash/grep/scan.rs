@@ -44,38 +44,50 @@ pub(crate) fn zone(cwd: &Path) -> Result<Zone> {
     ))
 }
 
-/// The directories to read, and one line per scope entry that could not be used.
-pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<String>) {
+/// The files and directories to read, and one line per scope entry that could not be used.
+pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<String>) {
     if scope.is_empty() {
-        return (vec![zone.src.clone()], Vec::new());
+        return (vec![zone.src.clone()], Vec::new(), Vec::new());
     }
     let src = canonicalize_lenient(&zone.src);
     let mut dirs: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
     let mut misses: Vec<String> = Vec::new();
+
     for entry in scope {
         let raw = entry.trim();
+
         if raw.is_empty() {
             misses.push("[scope] (empty): no path".to_string());
             continue;
         }
+
         let named = Path::new(raw);
+
         let joined = if named.is_absolute() {
             named.to_path_buf()
         } else {
             zone.root.join(named)
         };
         let real = canonicalize_lenient(&joined);
+
         if !real.exists() {
             misses.push(format!("[scope] {raw}: does not exist"));
-        } else if !real.is_dir() {
-            misses.push(format!("[scope] {raw}: is not a directory"));
         } else if !real.starts_with(&src) {
             misses.push(format!("[scope] {raw}: is outside src/"));
-        } else if !dirs.contains(&real) {
-            dirs.push(real);
+        } else if real.is_dir() {
+            if !dirs.contains(&real) {
+                dirs.push(real);
+            }
+        } else if real.extension().is_some_and(|e| e == "rs") {
+            if !files.contains(&real) {
+                files.push(real);
+            }
+        } else {
+            misses.push(format!("[scope] {raw}: only .rs files are read"));
         }
     }
-    (dirs, misses)
+    (dirs, files, misses)
 }
 
 /// What the call looks for.
@@ -113,13 +125,14 @@ pub(crate) struct File {
     pub layout: Layout,
 }
 
-/// Every `.rs` file under these directories, with the lines that match; files are read in parallel.
-pub(crate) fn collect(dirs: &[PathBuf], matcher: &Matcher) -> Vec<File> {
-    let mut named: BTreeSet<PathBuf> = BTreeSet::new();
+/// Every named file, and every `.rs` file under these directories; read in parallel.
+pub(crate) fn collect(dirs: &[PathBuf], files: &[PathBuf], matcher: &Matcher) -> Vec<File> {
+    let mut named: BTreeSet<PathBuf> = files.iter().cloned().collect();
     for dir in dirs {
         sources(dir, &mut named);
     }
     let paths: Vec<PathBuf> = named.into_iter().collect();
+
     if paths.len() <= 1 {
         return paths
             .iter()
