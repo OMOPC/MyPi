@@ -84,7 +84,7 @@ time, with a 1.5–3 s pause between them.
 
 ```text
 google  https://www.google.com/search?q=…&udm=14&pws=0&start=10×(n-1)
-bing    https://www.bing.com/search?q=…&count=10&first=10×(n-1)+1
+bing    https://www.bing.com/search?q=…&first=10×(n-1)+1
 baidu   https://www.baidu.com/s?wd=…&pn=10×(n-1)
 ```
 
@@ -104,9 +104,11 @@ baidu   https://www.baidu.com/s?wd=…&pn=10×(n-1)
   ancestor — and re-reads the document. Whatever a human sees is what the parser reads; no
   per-engine ad marker is needed. A card that is *visible* is still a hit.
 - **A gate is not diagnosed.** `normal()` answers whether the DOM is the engine's own results page —
-  parsed hits, or the engine's own "no results" wording. Consent walls, `/sorry/` traffic
-  challenges, Baidu's security check and a half-rendered shell all answer "no", and the caller
-  waits for a human instead of reasoning about which gate it is.
+  parsed hits, or the engine's own empty-results mark. Consent walls, `/sorry/` traffic challenges,
+  Baidu's security check and a half-rendered shell all answer "no", and the caller waits for a
+  human instead of reasoning about which gate it is. Wording is not a mark: Bing embeds its own
+  "no results" sentence in every page and names the empty-results class in its stylesheet, so the
+  one place that mark means a result is the `<body>` tag.
 
 ### Tabs
 

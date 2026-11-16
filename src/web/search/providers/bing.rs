@@ -13,8 +13,14 @@ pub(super) const NAME: &str = "bing";
 pub(super) struct Bing;
 
 const SEARCH_URL: &str = "https://www.bing.com/search";
-/// What an empty Bing results page says.
-const EMPTY: [&str; 1] = ["There are no results for"];
+/// What a body is marked with when the query found nothing. Bing's own script carries the "no
+/// results" wording on every page, and its own stylesheet names this class, so the body tag is
+/// the only place the mark means what it says.
+const NO_RESULTS: &str = "b_norr";
+
+fn empty(html: &str) -> bool {
+    extract_between(html, "<body", ">").is_some_and(|body| body.open_tag.contains(NO_RESULTS))
+}
 
 fn unwrap_tracking_href(href: &str) -> String {
     let href = unescape_entities(href);
@@ -75,7 +81,7 @@ impl SearchProvider for Bing {
 
     fn page_url(&self, query: &str, page: u32) -> String {
         format!(
-            "{SEARCH_URL}?q={}&count=10&first={}",
+            "{SEARCH_URL}?q={}&first={}",
             encode_query(query),
             10 * page.saturating_sub(1) + 1
         )
@@ -94,6 +100,7 @@ impl SearchProvider for Bing {
                 continue;
             };
             let title = decode_text(&h2.inner);
+
             if title.is_empty() {
                 continue;
             }
@@ -118,6 +125,6 @@ impl SearchProvider for Bing {
     }
 
     fn normal(&self, html: &str) -> bool {
-        !self.parse(html).is_empty() || EMPTY.iter().any(|marker| html.contains(marker))
+        !self.parse(html).is_empty() || empty(html)
     }
 }
