@@ -275,11 +275,11 @@ fn at(
                     break;
                 };
                 let from = skip.min(laid.rows.len());
-                for row in &laid.rows[from..] {
-                    rows.push(row.clone());
-                    if rows.len() >= height {
-                        break;
-                    }
+                let take = (height - rows.len()).min(laid.rows.len() - from);
+                rows.extend_from_slice(&laid.rows[from..from + take]);
+                // A full screen is not the end: rows of this segment still lie below it.
+                if from + take < laid.rows.len() {
+                    return (rows, missing, false);
                 }
             }
             Placed::Empty => {}
