@@ -23,6 +23,9 @@ pub(crate) fn block(args: &str, result: Option<ToolOutcome<'_>>, cwd: &str) -> V
             template
         };
         let mut text = format!(": template -> {template}");
+        if let Some(model) = scalar(item, "model") {
+            text.push_str(&format!(", model {model}"));
+        }
         if let Some(budget) = scalar(item, "maxToolCalls") {
             text.push_str(&format!(", toolbudget {budget}"));
         }
