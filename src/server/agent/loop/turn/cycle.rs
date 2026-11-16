@@ -230,7 +230,7 @@ fn laps(
             .map(|call| call.call_id.clone())
             .collect();
         blocks.drop_calls(&unanswered);
-        let (children, deletes) = effects(&blocks, &results, &config)?;
+        let (children, deletes) = effects(inner, &blocks, &results, &config, handle.env().vision)?;
         let stopped = results.iter().any(|result| result.stop);
         let reported = ResultsInput {
             session: handle.id,
@@ -263,14 +263,14 @@ fn laps(
                 id,
                 Birth {
                     session: id,
-                    provider: config.provider.clone(),
-                    model: config.model.clone(),
+                    provider: spec.model.0.clone(),
+                    model: spec.model.1.clone(),
                     system: config.system.clone(),
                     tools: spec.tools,
                     manuals: spec.manuals,
                     compact: config.compact.clone(),
                     effort: config.effort,
-                    vision: handle.env().vision,
+                    vision: spec.vision,
                     meta: Some(meta),
                     cwd: spec.cwd,
                 },
@@ -335,7 +335,17 @@ fn child_tools(tools: &[String]) -> Vec<String> {
     out
 }
 
-/// One sub-session a batch asked for.
+/// The model a child runs on: the one its call named, else the parent's own.
+/// The roster only hands out `provider:model` addresses, so the split cannot fail.
+fn child_model(
+    named: Option<&str>,
+    config: &super::super::session::config::Config,
+) -> (String, String) {
+    match named.and_then(|address| address.split_once(':')) {
+        Some((provider, model)) => (provider.to_string(), model.to_string()),
+        None => (config.provider.clone(), config.model.clone()),
+    }
+}
 struct Spawn {
     tools: Vec<String>,
     manuals: Arc<Vec<crate::server::agent::request::message::ToolDef>>,
@@ -343,15 +353,21 @@ struct Spawn {
     start: String,
     budget: u32,
     answer: std::path::PathBuf,
+    /// The model this child runs on.
+    model: (String, String),
+    /// Whether the child's model takes image parts on the wire.
+    vision: bool,
     /// The row that holds the child's own request archive.
     meta_at: usize,
 }
 
 /// Put every effect into the lap's commit; return what still needs acting after it lands.
 fn effects(
+    inner: &Inner,
     blocks: &Pen,
     results: &[ToolResult],
     config: &super::super::session::config::Config,
+    parent_vision: bool,
 ) -> Result<(Vec<(usize, Spawn)>, Vec<pen::effect::Delete>)> {
     let mut children = Vec::new();
     let mut deletes = Vec::new();
@@ -369,8 +385,14 @@ fn effects(
                     cwd,
                     start,
                     max_tool_calls,
+                    model: model_of,
                     answer,
                 } => {
+                    let (provider, model) = child_model(model_of.as_deref(), config);
+                    let vision = match model_of.as_deref() {
+                        Some(address) => inner.visions.get(address).copied().unwrap_or(false),
+                        None => parent_vision,
+                    };
                     let meta_at = blocks.len();
                     let tools = child_tools(tools);
                     let manuals = Arc::new(roster(&tools));
@@ -379,8 +401,8 @@ fn effects(
                     blocks.push(vec![
                         Row::Request {
                             meta: RequestMeta {
-                                model: config.model.clone(),
-                                provider: config.provider.clone(),
+                                model: model.clone(),
+                                provider: provider.clone(),
                                 system: config.system.clone(),
                                 tools_json,
                                 baseline_prompt: None,
@@ -389,7 +411,7 @@ fn effects(
                         Row::Session {
                             started_at: now_stamp(),
                             cwd: cwd.to_string_lossy().into_owned(),
-                            model: Some((config.provider.clone(), config.model.clone())),
+                            model: Some((provider.clone(), model.clone())),
                             name: None,
                             anchor: Some(anchor),
                             meta: Some(Ref::Batch(meta_at)),
@@ -404,6 +426,8 @@ fn effects(
                             start: start.clone(),
                             budget: *max_tool_calls,
                             answer: answer.clone(),
+                            model: (provider.clone(), model.clone()),
+                            vision,
                             meta_at,
                         },
                     ));
@@ -420,7 +444,6 @@ fn effects(
     }
     Ok((children, deletes))
 }
-
 /// One finished call, as the request half takes it.
 fn report(result: ToolResult) -> Reported {
     Reported {

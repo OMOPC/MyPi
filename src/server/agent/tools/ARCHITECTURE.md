@@ -67,7 +67,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `memo/todo/ops.rs` | the three todo operations (`set`, `tick`, `view`) and their batch apply |
 | `memo/todo/state.rs` | `TodoItem`, `counts` |
 | `subagent/mod.rs` | declarations and re-exports (`TASK`, `FINAL`), and `project_dir` |
-| `subagent/task.rs` | the `task` tool: the call's project folder, template, variables, answer name, the `Child` effect |
+| `subagent/task.rs` | the `task` tool: the call's project folder, template, variables, answer name, the child's model, the `Child` effect |
 | `subagent/final.rs` | the `final` tool: the child's draft, its edits, the one submit |
 | `subagent/template.rs` | template lookup (project, then global, then the named path), front matter, `{{var}}` rendering, roster subset checks, the stem |
 | `subagent/answer.rs` | the answer file: the first free name inside the project's `answers` folder, taken against the names one call already handed out, and the one stamped write |

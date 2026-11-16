@@ -47,6 +47,13 @@ Subscribe: `watch`, `submit`, `compact`.
   stored stamps and nothing else: a lap counts once, when the block carrying its usage lands. A
   running turn therefore shows up one lap late and settles the moment it closes, so the answer only
   ever grows inside a session. One answer serves the cost pill, the usage panel and the gauge.
+
+- `usage` also bills the session's subagents: one pool, every session this conversation spawned
+  (its child rows hang on blocks the session's own ranges hold), each child billed at the model its
+  turns recorded, at that model's price. The answer carries `subagent_price` (`cny`/`usd`, `null`
+  when no priced model ran) and `subagent_groups` in the same shape as `groups`. Children cannot
+  spawn children, so one level of enumeration is exact; rewind sweeps dead children with the
+  blocks they hang on, so the pool follows the visible history like the session's own bill.
 - `usage` also answers where the context stands: the prompt of the newest stored stamp. A
   compaction is the exception: the context is then the summary plus whatever tail it kept, so
   `usage` estimates it instead of reporting the pre-compaction prompt. The compaction round
@@ -89,7 +96,7 @@ Subscribe: `watch`, `submit`, `compact`.
 | `call` | `init` | `session` | `structure` (`turn` + `ranges` + `compact` per round, the whole list, borrowed rounds left out), `blocks` (newest 32, whole rows), `todo` (the list, or null), `effort` (the rung the session runs with now) |
 | `call` | `blocks` | `session`, `ranges` | `blocks`, whole rows, in request order |
 | `call` | `meta` | `session` | the session row |
-| `call` | `usage` | `session` | session totals, `cache_hit_rate`, `cny`, `usd`, `context`, `estimated`, `baseline_prompt`, and `groups` by `provider:model` |
+| `call` | `usage` | `session` | session totals, `cache_hit_rate`, `cny`, `usd`, `context`, `estimated`, `baseline_prompt`, `groups` by `provider:model`, and the subagents' `subagent_price` + `subagent_groups` |
 | `call` | `todo` | `session` | the replayed list, `[{"text", "done"}]` |
 | `call` | `memo` | `session` (current only), `op`, `scope`, `name` | `names`, or `content`, or `history` |
 | `call` | `children` | `session` | `rows`, each a child session's `id` and `anchor` |

@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use crate::server::api::{Api, Refuse};
 use crate::server::config::ResolvedModel;
 use crate::server::storage::Reader;
+use crate::server::storage::query::{Cond, Order, Query, Sheet};
 
 use super::estimate;
 
@@ -98,6 +99,9 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
     // carry older blocks, and the cut is a block id.
     stamps.sort_by_key(|stamp| stamp.at);
 
+    // The subagents: one pool, the sessions this conversation spawned, each billed at its own model.
+    let sub = collect_subagents(&reader, session)?;
+
     let cfg = api.cfg();
     let fx = cfg
         .get_json("config.ui.tui.fx.usdCny", None)
@@ -129,34 +133,46 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
             cny += quote.cny;
             usd += quote.usd;
         }
-        rows.push(json!({
-            "address": address,
-            "provider": provider,
-            "model": model,
-            "rounds": tally.rounds,
-            "prompt_tokens": tally.prompt,
-            "completion_tokens": tally.completion,
-            "cached_tokens": tally.cached,
-            "cache_write_tokens": tally.written,
-            "share": share(tally.prompt + tally.completion, total),
-            "price": quote.map(|quote| json!({
-                "currency": quote.currency,
-                "input": quote.input,
-                "output": quote.output,
-                "cache_read": quote.cache_read,
-                "cache_write": quote.cache_write,
-                "total": quote.total,
-                "cny": quote.cny,
-                "usd": quote.usd,
-            })),
-        }));
+        rows.push(row_json(
+            address,
+            provider,
+            model,
+            tally,
+            share(tally.prompt + tally.completion, total),
+            quote.as_ref().map(price_json),
+        ));
     }
-    rows.sort_by(|left, right| {
-        let share = |row: &Value| row["share"].as_f64().unwrap_or(0.0);
-        share(right)
-            .partial_cmp(&share(left))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    by_share(&mut rows);
+
+    // The subagents' pool: tokens summed straight, money only where a price entry exists.
+    let mut sub_cny = 0.0;
+    let mut sub_usd = 0.0;
+    let mut sub_priced = false;
+    let mut sub_tokens = 0i64;
+    for tally in sub.values() {
+        sub_tokens += tally.prompt + tally.completion;
+    }
+    let mut sub_rows: Vec<Value> = Vec::with_capacity(sub.len());
+    for (address, tally) in &sub {
+        let (provider, model) = address.split_once(':').unwrap_or(("", address));
+        let quote = cfg
+            .model_by_id(address)
+            .map(|resolved| quote(&resolved, tally, fx));
+        if let Some(quote) = &quote {
+            sub_priced = true;
+            sub_cny += quote.cny;
+            sub_usd += quote.usd;
+        }
+        sub_rows.push(row_json(
+            address,
+            provider,
+            model,
+            tally,
+            share(tally.prompt + tally.completion, sub_tokens),
+            quote.as_ref().map(price_json),
+        ));
+    }
+    by_share(&mut sub_rows);
 
     let (context, estimated) = estimate::context(&ordered, &stamps, baseline);
 
@@ -173,6 +189,11 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
         "estimated": estimated,
         "baseline_prompt": baseline,
         "groups": rows,
+        "subagent_price": match sub_priced {
+            true => json!({"cny": sub_cny, "usd": sub_usd}),
+            false => Value::Null,
+        },
+        "subagent_groups": sub_rows,
     }))
 }
 
@@ -206,6 +227,91 @@ fn spans(turns: &[Value]) -> Vec<(&Value, [i64; 2])> {
     out
 }
 
+/// Every session this one spawned, its bill added into the pools by model address.
+fn collect_subagents(reader: &Reader, session: i64) -> Result<BTreeMap<String, Tally>> {
+    let ranges = reader.ranges(session)?;
+    let rows = reader.query(
+        &Query::new(Sheet::Sessions)
+            .columns(&["id"])
+            .filter(vec![Cond::Within("anchor", ranges)])
+            .order("id", Order::Asc),
+    )?;
+    let mut out: BTreeMap<String, Tally> = BTreeMap::new();
+    for row in &rows {
+        let Some(child) = row["id"].as_i64() else {
+            continue;
+        };
+        let turns = reader.turns(child)?;
+        for turn in &turns {
+            if let Some((provider, model)) = pair_of(turn) {
+                out.entry(format!("{provider}:{model}")).or_default().rounds += 1;
+            }
+        }
+        for (turn, span) in spans(&turns) {
+            for block in reader.blocks(&[span])? {
+                let Some(prompt) = block["usage_prompt"].as_i64() else {
+                    continue;
+                };
+                let address = pair_of(turn)
+                    .map(|(provider, model)| format!("{provider}:{model}"))
+                    .unwrap_or_default();
+                let tally = out.entry(address).or_default();
+                tally.prompt += prompt.max(0);
+                tally.completion += block["usage_completion"].as_i64().unwrap_or(0).max(0);
+                tally.cached += block["usage_cached"].as_i64().unwrap_or(0);
+                tally.written += block["usage_cache_write"].as_i64().unwrap_or(0);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// One group's row: the shape both the session's bill and the subagents' pool carry.
+fn row_json(
+    address: &str,
+    provider: &str,
+    model: &str,
+    tally: &Tally,
+    share_of: f64,
+    price: Option<Value>,
+) -> Value {
+    json!({
+        "address": address,
+        "provider": provider,
+        "model": model,
+        "rounds": tally.rounds,
+        "prompt_tokens": tally.prompt,
+        "completion_tokens": tally.completion,
+        "cached_tokens": tally.cached,
+        "cache_write_tokens": tally.written,
+        "share": share_of,
+        "price": price,
+    })
+}
+
+/// One quote as the answer carries it.
+fn price_json(quote: &Quote) -> Value {
+    json!({
+        "currency": quote.currency,
+        "input": quote.input,
+        "output": quote.output,
+        "cache_read": quote.cache_read,
+        "cache_write": quote.cache_write,
+        "total": quote.total,
+        "cny": quote.cny,
+        "usd": quote.usd,
+    })
+}
+
+/// Rows by their share, greatest first.
+fn by_share(rows: &mut [Value]) {
+    rows.sort_by(|left, right| {
+        let share = |row: &Value| row["share"].as_f64().unwrap_or(0.0);
+        share(right)
+            .partial_cmp(&share(left))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
 /// The smallest context this session's request archive ever carried; `None` until one is known.
 pub(crate) fn baseline_prompt(reader: &Reader, session: i64) -> Option<u64> {
     let meta = reader.session(session).ok()??["meta"].as_i64()?;

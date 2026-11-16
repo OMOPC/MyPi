@@ -77,6 +77,8 @@ pub(crate) struct Inner {
     pub(crate) slots: Arc<super::jobs::Slots>,
     /// What every session's tool side starts from.
     pub(crate) defaults: Defaults,
+    /// Whether each model takes image parts on the wire: address → vision, read once.
+    pub(crate) visions: std::collections::BTreeMap<String, bool>,
     /// One sub-session's deadline; `task` never borrows kairos' numbers.
     pub(crate) task_timeout: std::time::Duration,
 }
@@ -116,6 +118,15 @@ impl Loop {
                 shell: crate::server::platform::shell::Shell::default(),
             },
             aliases: cfg.aliases(),
+            models: cfg
+                .models()
+                .map(|(provider, entry)| {
+                    (
+                        format!("{provider}:{}", entry.id),
+                        entry.display_name().to_string(),
+                    )
+                })
+                .collect(),
             default_budget: cfg.subagent_budget(),
             full_item_budget: cfg.full_item_budget(),
             export,
@@ -140,6 +151,10 @@ impl Loop {
                 source,
                 slots,
                 defaults,
+                visions: cfg
+                    .models()
+                    .map(|(provider, entry)| (format!("{provider}:{}", entry.id), entry.vision))
+                    .collect(),
                 task_timeout: cfg.task_timeout(),
             }),
         }

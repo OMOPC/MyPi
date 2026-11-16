@@ -39,6 +39,10 @@ a server being configured locally.
 Two names are settled when a child is spawned, in `loop/turn/cycle.rs`:
 
 - `task` is dropped from every child's list. A child never spawns a child.
+- `task`'s `model` names one `provider:model` from the roster the loop copied out of `models.yml`
+  when it was built; an unknown address is refused with the roster printed, and `list` prints it
+  on demand. A child without `model` runs on its parent's model, as before. The roster is a
+  loop-start snapshot: models.yml edits land with the next loop, like every other tool fact.
 - `final` is appended to every child's list. The parent does not name it and does not know it
   exists.
 
@@ -102,7 +106,7 @@ that tool needs (the tool checks them, not the schema).
 | `bash` | `command` always |
 | `alias` | `type` (`add`/`list`/`del`), `aliases` (type=add: one item per alias, `name` and `command`), `names` (type=del) |
 | `kairos` | `type` (`now`/`after`/`every`/`list`/`status`/`result`/`cancel`), `tasks` (type=now/after/every: one item per task, with `content`, `kind` (`command`/`text`, default `command`), `timeout`, `delay`, `expr`, `count` (default 3)), `id` |
-| `task` | `tasks` always: one item per child, with `template`, `vars` (object of strings), `cwd`, `maxToolCalls`, `name` |
+| `task` | `tasks` always: one item per child, with `template`, `vars` (object of strings), `cwd`, `maxToolCalls`, `name`, `model`; `list` (default `false`, `true` prints the model roster instead of spawning) |
 | `final` | `type` (`write`/`edit`/`read`/`submit`), `content`, `old`, `new`, `range` |
 | `mcp` | `type` (`list`/`call`), `calls` (type=call: one item per call, `server`, `tool`, `args` (object)), `server` (type=list) |
 | `web` | `type` (`read`/`open`/`click`/`fill`/`select`/`scroll`/`eval`/`screenshot`), `url`, `raw` (default false), `selector`, `value`, `pixels` (default 600), `full_page` (default false) |

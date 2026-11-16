@@ -61,6 +61,8 @@ half's types, re-exported from this domain's root.
   `pen::turn::settle`. A lap that dies returns to `cycle::run`, which flushes its blocks and settles
   the turn before the error goes up. A compaction reloads the transcript after it settles.
 - A child effect lands as an archive row, a session row and the result block in one submission; the
+  child's rows carry the model its `task` call named, and the loop re-derives `vision` from the
+  model facts it copied at start.
   session row points at the child's own archive. After the commit the loop attaches the child's
   `State` (draft, budget, answer path) and starts an `agent` job; `session::agent::AgentRunner`
   books the child, waits on the handle's settle bell until the turn ends (or the task's deadline

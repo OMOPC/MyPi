@@ -17,6 +17,8 @@ use super::answer;
 use super::template;
 
 const TASKS: usize = 0;
+/// The roster switch.
+const LIST: usize = 1;
 
 /// One child a call asks for.
 const TASK_FIELDS: &[Param] = &[
@@ -45,13 +47,26 @@ const TASK_FIELDS: &[Param] = &[
         Kind::Text,
         "Answer file name; the template's stem when omitted.",
     ),
+    Param::new(
+        "model",
+        Kind::Text,
+        "Model this child runs on, `provider:model`; the parent's own when omitted.",
+    ),
 ];
 
-const PARAMS: &[Param] = &[Param::new(
-    "tasks",
-    Kind::Objects(TASK_FIELDS),
-    "One item per child, spawned in this order. One item's failure never stops the ones after it.",
-)];
+const PARAMS: &[Param] = &[
+    Param::new(
+        "tasks",
+        Kind::Objects(TASK_FIELDS),
+        "One item per child, spawned in this order. One item's failure never stops the ones after it.",
+    ),
+    Param::df(
+        "list",
+        Kind::Flag,
+        "Print the models a child may name in `model`, instead of spawning.",
+        "false",
+    ),
+];
 
 pub(crate) const TOOL: Tool = Tool {
     name: "task",
@@ -61,7 +76,8 @@ pub(crate) const TOOL: Tool = Tool {
             template's tool list must not name it.",
     fields: "tasks is the only field a call needs: one item per child, with `template`, the \
             `vars` that fill its slots, the child's `cwd` (needs the parent's cd), its \
-            `maxToolCalls` budget, and the `name` its answer file lands under.",
+            `maxToolCalls` budget, the `model` it runs on, and the `name` its answer file lands \
+            under. `list=true` prints the model roster instead of spawning.",
     params: PARAMS,
     run,
     summary,
@@ -72,6 +88,9 @@ const CONTRACT: &str = "You are a subagent. You cannot ask the user anything, yo
                         another subagent, and only `final submit` ends your task.";
 
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
+    if args.flag(LIST)? {
+        return Ok(ToolOutput::text(roster(env)));
+    }
     let items = args.objects(TASKS)?;
     anyhow::ensure!(!items.is_empty(), "`tasks` must name at least one child");
 
@@ -131,6 +150,19 @@ fn spawn(
     let stem = item
         .opt_str("name")?
         .unwrap_or_else(|| template::stem(&template_name));
+    let model = match item.opt_str("model")? {
+        Some(raw) => {
+            let address = raw.trim().to_string();
+            anyhow::ensure!(
+                env.models.contains_key(&address),
+                "`{}` names no model `{address}`; the roster holds {}",
+                item.label(),
+                env.models.keys().cloned().collect::<Vec<_>>().join(", ")
+            );
+            Some(address)
+        }
+        None => None,
+    };
     let answers = project.join("answers");
     std::fs::create_dir_all(&answers)
         .with_context(|| format!("cannot create the answers folder {}", answers.display()))?;
@@ -142,9 +174,19 @@ fn spawn(
         cwd,
         start: start_text(&template.body),
         max_tool_calls: max,
+        model,
         answer: path,
     };
     Ok((name, effect))
+}
+
+/// The roster `list` prints: one `address — name` line per model.
+fn roster(env: &Env) -> String {
+    let mut out = String::new();
+    for (address, name) in &env.models {
+        out.push_str(&format!("{address} — {name}\n"));
+    }
+    out.trim_end().to_string()
 }
 
 fn start_text(body: &str) -> String {
@@ -177,9 +219,9 @@ fn vars(item: &Item) -> Result<BTreeMap<String, String>> {
     };
     let mut out = BTreeMap::new();
     for (name, value) in map {
-        let text = value.as_str().ok_or_else(|| {
-            anyhow::anyhow!("`{}.vars.{name}` must be a string", item.label())
-        })?;
+        let text = value
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("`{}.vars.{name}` must be a string", item.label()))?;
         out.insert(name, text.to_string());
     }
     Ok(out)

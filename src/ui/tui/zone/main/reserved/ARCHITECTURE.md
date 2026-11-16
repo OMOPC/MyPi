@@ -10,7 +10,7 @@ What each file holds, who calls it, and what it depends on. Current state only.
 | `hand.rs` | `Hand`, `Report`, `IDLE_ROWS`, `MAX_ROWS`, `window_start` | private |
 | `pools.rs` | `Pools`: model addresses and profile names, decoded from `call pools` | private |
 | `hands/completion/` | `controller` (the hand), `engine` (candidates), `popup` (drawing) | private |
-| `hands/usage.rs` | `UsagePanel`: the `/usage` table | private |
+| `hands/usage.rs` | `UsagePanel`: the `/usage` table and the subagents' section under it | private |
 | `hands/memo/` | `mod` (state, faces, asks), `list` (the name list), `history` (versions), `keys` (borrowed keys) | private |
 
 ## What it exposes

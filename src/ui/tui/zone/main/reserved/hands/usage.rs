@@ -161,6 +161,8 @@ pub struct UsagePanel {
     /// The numbers arrived at least once.
     loaded: bool,
     rows: Vec<Row>,
+    /// The subagents' pool, one row per model, decoded from the same answer.
+    subs: Vec<Row>,
     lang: Lang,
     currency: Currency,
     align: Align,
@@ -178,7 +180,12 @@ impl UsagePanel {
             return Vec::new();
         };
         self.rows = groups.iter().map(row_of).collect();
-        for row in &mut self.rows {
+        self.subs = answer
+            .get("subagent_groups")
+            .and_then(Value::as_array)
+            .map(|groups| groups.iter().map(row_of).collect())
+            .unwrap_or_default();
+        for row in self.rows.iter_mut().chain(self.subs.iter_mut()) {
             if let Some((display, provider)) = self.displays.get(&row.address) {
                 row.display = Some(display.clone());
                 row.provider = Some(provider.clone());
@@ -188,6 +195,7 @@ impl UsagePanel {
         self.loaded = true;
         self.rows
             .iter()
+            .chain(self.subs.iter())
             .filter(|row| !self.displays.contains_key(&row.address) && !row.address.is_empty())
             .map(|row| crate::ui::tui::zone::Request::Config {
                 key: format!("models.model.{}", row.address),
@@ -201,6 +209,7 @@ impl UsagePanel {
         self.selected = 0;
         self.loaded = false;
         self.rows.clear();
+        self.subs.clear();
     }
 
     /// The display language the fixed rows and headers follow.
@@ -234,7 +243,7 @@ impl UsagePanel {
             address.to_string(),
             (name.to_string(), provider.to_string()),
         );
-        for row in &mut self.rows {
+        for row in self.rows.iter_mut().chain(self.subs.iter_mut()) {
             if row.address == address {
                 row.display = Some(name.to_string());
                 row.provider = Some(provider.to_string());
@@ -255,12 +264,21 @@ impl UsagePanel {
         self.selected = next.rem_euclid(self.rows.len() as isize) as usize;
     }
 
-    /// Two summary rows, the blank, the head, and one row per model. The desk caps the body.
+    /// The two summary rows, the blank, the head, one row per model, and the subagents'
+    /// section when its pool carries a bill. The desk caps the body.
     fn height(&self) -> usize {
         if !self.loaded {
             return 1;
         }
-        4 + self.rows.len()
+        4 + self.rows.len() + self.section_len()
+    }
+
+    /// The rows the subagents' section takes: nothing when the pool holds no bill.
+    fn section_len(&self) -> usize {
+        match self.subs.iter().any(|row| row.total() > 0) {
+            true => 2 + self.subs.len(),
+            false => 0,
+        }
     }
 
     /// The header words of one face.
@@ -541,14 +559,18 @@ impl UsagePanel {
             };
             out.push(Line::default());
             out.push(Line::from(vec![
-                Span::raw(pad),
+                Span::raw(pad.clone()),
                 Span::styled(word, Style::new().fg(fixed::MUTED)),
             ]));
+            self.section(&plan, &pad, &mut out);
             return out;
         }
         out.push(Line::default());
         out.push(Line::from(format!("{pad}{}", self.head(&plan))));
-        let room = rows.saturating_sub(out.len());
+        // The section is pinned under the table, so the rolling window leaves its rows free.
+        let room = rows
+            .saturating_sub(out.len())
+            .saturating_sub(self.section_len());
         let start = window_start(self.rows.len(), room, self.selected);
         for (i, row) in self.rows.iter().enumerate().skip(start).take(room) {
             let text = format!("{pad}{}", self.line(row, &plan));
@@ -557,7 +579,30 @@ impl UsagePanel {
                 false => Span::raw(text),
             }));
         }
+        self.section(&plan, &pad, &mut out);
         out
+    }
+
+    /// The subagents' section: blank, rule, head, one row per model. Pinned under the main
+    /// table; drawn only when the pool carries a bill.
+    fn section(&self, plan: &Plan, pad: &str, out: &mut Vec<Line<'static>>) {
+        if self.section_len() == 0 {
+            return;
+        }
+        let word = match (self.lang, plan.short) {
+            (Lang::En, false) => "Subagents",
+            (Lang::En, true) => "SUB",
+            (Lang::Zh, _) => "子代理",
+        };
+        out.push(Line::default());
+        out.push(Line::from(vec![
+            Span::raw(pad.to_string()),
+            Span::styled(rule(word, plan.block()), Style::new().fg(fixed::MUTED)),
+        ]));
+        out.push(Line::from(format!("{pad}{}", self.head(plan))));
+        for row in &self.subs {
+            out.push(Line::from(format!("{pad}{}", self.line(row, plan))));
+        }
     }
 }
 
@@ -601,6 +646,18 @@ impl Hand for UsagePanel {
     fn left(&mut self) {
         self.close();
     }
+}
+
+/// The section rule: `+--- word ---+`, exactly the table block's width; a block too narrow
+/// for the frame leaves the bare word.
+fn rule(word: &str, block: usize) -> String {
+    let used = display_width(word) + 4;
+    if block <= used {
+        return word.to_string();
+    }
+    let fill = block - used;
+    let (left, right) = (fill / 2, fill - fill / 2);
+    format!("+{} {word} {}+", "-".repeat(left), "-".repeat(right))
 }
 
 /// A cell cut to `w` cells, the cut marked.

@@ -16,7 +16,7 @@ What each file holds, who calls it, and what it depends on. Current state only.
 | `frame.rs` | the frames this zone decodes | private |
 | `boot.rs` | startup questions, session enter/leave, the draft reset, the config keys | private |
 | `notice.rs` | the sentences a command earns, both languages | private |
-| `ctx.rs` | `Data`, `Ctx`, `Money`, `Context`, `Currency` — what the parts read | private |
+| `ctx.rs` | `Data`, `Ctx`, `Money` (with the subagents' pool), `Context`, `Currency` — what the parts read | private |
 | `editor/` | the text, undo, paste store, separators and script classes, submission ring | private |
 | `semantics.rs` | key → intent, one context-free table | private |
 | `route.rs` | one line classified as a message or a command | private |

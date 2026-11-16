@@ -36,17 +36,25 @@ impl Currency {
 pub struct Money {
     pub cny: f64,
     pub usd: f64,
+    /// The subagents' pool in the display currency; `None` = no price known or all zero.
+    pub sub: Option<f64>,
     pub currency: Currency,
 }
 
 impl Money {
-    /// The pill's text: always one, `¥0.00` until the first price is known.
+    /// The pill's text: `¥1.23(+0.45)` while the subagents' pool carries a price, `¥1.23` alone
+    /// when it does not; `¥0.00` until the first price is known.
     pub fn text(&self) -> String {
         let total = match self.currency {
             Currency::Cny => self.cny,
             Currency::Usd => self.usd,
         };
-        num::money(total, self.currency.symbol())
+        let mut out = num::money(total, self.currency.symbol());
+        if let Some(sub) = self.sub.filter(|sub| *sub > 0.0) {
+            // The same currency and precision as the pill itself, without the symbol.
+            out.push_str(&format!("(+{})", num::money(sub, "")));
+        }
+        out
     }
 }
 

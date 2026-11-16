@@ -94,6 +94,9 @@ loop only adds tool events to it.
   is what the parent reads, not the session row.
 - **A child has its own archive.** The row pair — the child's `request_meta` and its `sessions` row —
   lands in one submission; the child's baseline never touches its parent's.
+- **A child runs on its own model.** `task`'s `model` names a `provider:model` address; the loop
+  stamps it on the child's rows and re-derives the child's vision from it. No `model` means the
+  parent's model, as before. The valid addresses come from the loop's own start snapshot.
 - **Baseline is the first request's prompt.** Only a session's first turn contributes, from its first
   lap; the archive keeps the smallest such value across the sessions that share it. It never rises,
   and later turns never contribute.

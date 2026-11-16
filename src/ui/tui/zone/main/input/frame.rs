@@ -267,6 +267,14 @@ impl InputZone {
         let number = |key: &str| content.get(key).and_then(Value::as_f64).unwrap_or(0.0);
         self.data.money.cny = number("cny");
         self.data.money.usd = number("usd");
+        self.data.money.sub = content
+            .get("subagent_price")
+            .filter(|price| !price.is_null())
+            .map(|price| match self.data.money.currency {
+                Currency::Cny => price.get("cny").and_then(Value::as_f64).unwrap_or(0.0),
+                Currency::Usd => price.get("usd").and_then(Value::as_f64).unwrap_or(0.0),
+            })
+            .filter(|sub| *sub > 0.0);
         self.data.context = Context {
             tokens: content.get("context").and_then(Value::as_u64),
             estimated: content

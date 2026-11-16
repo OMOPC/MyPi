@@ -22,6 +22,8 @@ pub struct Env {
     pub session: i64,
     pub batch_len: usize,
     pub tools: BTreeSet<String>,
+    /// The model roster the config knew when the loop was built: address → display name.
+    pub models: ModelNames,
     pub aliases: Aliases,
     /// The budget a spawned sub-session gets when the call names none.
     pub default_budget: u32,
@@ -164,6 +166,9 @@ pub struct GrepLimits {
     pub items: usize,
 }
 
+/// The model roster: address → display name, as the config knew it when the loop was built.
+pub type ModelNames = std::collections::BTreeMap<String, String>;
+
 /// What every session's [`Env`] starts from: the process-level facts, read once.
 #[derive(Clone)]
 pub struct Defaults {
@@ -171,6 +176,7 @@ pub struct Defaults {
     pub grep: GrepLimits,
     pub bash: BashEnv,
     pub aliases: BTreeMap<String, String>,
+    pub models: ModelNames,
     pub default_budget: u32,
     pub full_item_budget: usize,
     pub export: Arc<dyn Export>,
@@ -198,6 +204,7 @@ impl Defaults {
             session,
             batch_len: 0,
             tools: tools.into_iter().collect(),
+            models: self.models.clone(),
             aliases: Aliases::new(self.aliases.clone(), self.source.aliases(session)?),
             default_budget: self.default_budget,
             full_item_budget: self.full_item_budget,

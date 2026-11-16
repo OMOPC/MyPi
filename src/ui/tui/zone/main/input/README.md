@@ -158,7 +158,9 @@ One row, exactly the terminal width. The deco table is `activity`, `model`, `cwd
 declares, so the pill's marker reads the rung on a model that takes one and `M` on one that declares
 none; the living thinking effort comes from `call init` and from each `/effort` receipt, because no
 row holds it, and a model switch resets it to `auto`; `call usage` gives the cost in
-`config.ui.tui.fx.currency`, never from a model.
+`config.ui.tui.fx.currency`, never from a model. The cost pill reads `¥1.23(+0.45)` while
+the subagents' pool carries a price — same currency, same precision, no symbol inside the
+parentheses — and hides the parentheses when the pool holds none.
 when the count is an estimate; the dashes carry no mark. `activity` steps one glyph per `tick`
 shout. `git` scans on its own tick: the first one at once, then once per configured interval, and
 once more when a round starts or ends.

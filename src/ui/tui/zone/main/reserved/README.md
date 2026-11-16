@@ -35,6 +35,16 @@ A hand reports:
 | `text` | it wants the editor's text and cursor after every edit |
 | `col` | it wants the cursor's column after every draw |
 
+### The usage hand
+
+One answer, one table. The main table is the session's own bill, one row per model. Under it, when
+the subagents' pool carries any token, a section: blank line, the rule `+--- Subagents ---+` (its
+width is the table block's width; English shortens to `SUB` with the table's own abbreviations,
+Chinese stays 子代理), the same header, then one row per model — the same `Row` cells, the same
+width plan, so both tables always align. The section is pinned below the rolling window and cannot
+be selected. The pill's `(+x)` and this section read the same pool.
+
+A hand also has:
 A hand also has:
 
 - `arrived()` — before the first report;

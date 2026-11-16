@@ -44,6 +44,8 @@ pub enum Effect {
         cwd: PathBuf,
         start: String,
         max_tool_calls: u32,
+        /// The model this child runs on, `provider:model`; `None` = the parent's own.
+        model: Option<String>,
         /// Where the sub-session's final text is written; the name is fixed when it is spawned.
         answer: PathBuf,
     },
