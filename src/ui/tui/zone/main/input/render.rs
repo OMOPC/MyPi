@@ -2,10 +2,10 @@
 //! the last visible row runs into the bottom edge.
 //!
 //! ```text
-//! +--pi > [M] model > [D] path ... --+     <- statusline, 1 row
-//! | first body line                  |     <- only when the body is longer
-//! | second body line                 |
-//! +-last body line-------------------+     <- bottom edge, `+-` / `-+`
+//! +--pi > [auto] model > [D] path ... --+     <- statusline, 1 row
+//! | first body line                     |     <- only when the body is longer
+//! | second body line                    |
+//! +-last body line----------------------+     <- bottom edge, `+-` / `-+`
 //! ```
 //!
 //! Rules: the statusline is exactly the container's width; the bottom edge holds

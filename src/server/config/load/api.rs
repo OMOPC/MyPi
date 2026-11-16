@@ -26,9 +26,9 @@ use super::super::schema::{
     KEY_CONFIG_SERVER_AGENT_TOOLS_EDIT_FULL_ITEM_BUDGET,
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FILE_MAX,
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS,
-    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS,
-    KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES, KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES,
-    KEY_CONFIG_SERVER_API_DEFAULT_MODEL, KEY_CONFIG_SERVER_REQUEST_COMPACT_INSTRUCTION_FILE,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS, KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES, KEY_CONFIG_SERVER_API_DEFAULT_MODEL,
+    KEY_CONFIG_SERVER_REQUEST_COMPACT_INSTRUCTION_FILE,
     KEY_CONFIG_SERVER_REQUEST_COMPACT_RETAIN_TAIL, KEY_CONFIG_SERVER_REQUEST_STREAMING,
     KEY_CONFIG_WEB_BRING_TO_FRONT,
 };
@@ -258,16 +258,6 @@ impl Config {
         }
         Ok(target)
     }
-
-    /// Whether this provider's wire names a thinking effort at all.
-    pub fn takes_effort(&self, provider: &str) -> bool {
-        self.inner
-            .models
-            .provider(provider)
-            .and_then(|p| crate::server::agent::request::ProtocolId::parse(&p.api).ok())
-            .is_some_and(|protocol| protocol.build().supports_effort())
-    }
-
     /// Every provider the request half can reach, credentials expanded.
     pub fn providers(&self) -> Vec<crate::server::agent::request::Provider> {
         self.inner

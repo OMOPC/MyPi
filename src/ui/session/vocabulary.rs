@@ -1,4 +1,5 @@
-//! The words the front end and the api both use: a model address, a compaction budget, an effort.
+//! The words a front end and the api both use: a model address, a compaction budget, an effort, and
+//! which wire names one.
 
 /// A model address: the provider and the id.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,4 +58,9 @@ impl Effort {
             .unwrap_or(0);
         Self::LADDER[(at + 1) % Self::LADDER.len()]
     }
+}
+
+/// Whether a wire protocol names a thinking effort at all.
+pub fn names_effort(protocol: &str) -> bool {
+    protocol == "openai-deepseek"
 }

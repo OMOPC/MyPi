@@ -70,6 +70,8 @@ pub struct Data {
     pub address: Option<String>,
     /// How hard this session asks the model to think; memory-only, `Auto` by default.
     pub effort: crate::ui::session::Effort,
+    /// The provider's wire protocol, from `models.provider.<name>.api`; `None` until it says.
+    pub protocol: Option<String>,
     /// The conversation's name; a draft session shows its directory instead.
     pub name: Option<String>,
     /// Where the conversation runs.
@@ -90,6 +92,15 @@ pub struct Data {
     pub auto_prepare: bool,
     /// A round is running.
     pub busy: bool,
+}
+
+impl Data {
+    /// Whether the model this zone shows reaches a wire that carries a thinking effort.
+    pub fn takes_effort(&self) -> bool {
+        self.protocol
+            .as_deref()
+            .is_some_and(crate::ui::session::names_effort)
+    }
 }
 
 /// What one part is handed: the zone's data.

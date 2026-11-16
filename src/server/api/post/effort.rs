@@ -23,10 +23,27 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
     emit::require_writer(api, viewer, session)?;
     api.ensure_booked(session)?;
     // A host whose wire names no effort cannot be asked for one; a front end hears it here.
-    if !api.cfg().takes_effort(&api.ledger().provider(session)?) {
+    let provider = api.ledger().provider(session)?;
+    if !names_effort(api, &provider) {
         return Err(Refuse::Bad(NO_EFFORT.into()));
     }
     api.ledger().change(session, Change::Effort(effort))?;
     emit::changed(api, viewer, session, json!({"effort": effort.as_str()}));
     Ok(serde_json::json!({"effort": effort.as_str()}))
+}
+
+/// Whether this provider's `api` field names a wire that carries a thinking effort.
+fn names_effort(api: &Api, provider: &str) -> bool {
+    let Ok(value) = api
+        .cfg()
+        .get_json(&format!("models.provider.{provider}.api"), None)
+    else {
+        return false;
+    };
+    let Some(raw) = value.as_str() else {
+        return false;
+    };
+    crate::server::agent::request::ProtocolId::parse(raw)
+        .map(|protocol| protocol.build().supports_effort())
+        .unwrap_or(false)
 }

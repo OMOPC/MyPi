@@ -1,4 +1,4 @@
-//! The model pill — `[M] [<effort>] <display name> (<provider>)`.
+//! The model pill — `[<effort>] <display name> (<provider>)`, `[M]` when the wire names none.
 
 use ratatui::text::Span;
 
@@ -18,14 +18,14 @@ impl Deco for Model {
         let Some(name) = ctx.data.model.as_deref() else {
             return Vec::new();
         };
-        // `auto` names no rung: the pill stays as short as the host's own default.
-        let rung = match ctx.data.effort {
-            crate::ui::session::Effort::Auto => String::new(),
-            effort => format!("[{}] ", effort.as_str()),
+        // The brackets always stand; inside is the rung, or `M` for a wire that names none.
+        let tag = match ctx.data.takes_effort() {
+            true => ctx.data.effort.as_str(),
+            false => "M",
         };
         let text = match ctx.data.provider.as_deref() {
-            Some(provider) => format!("[M] {rung}{name} ({provider})"),
-            None => format!("[M] {rung}{name}"),
+            Some(provider) => format!("[{tag}] {name} ({provider})"),
+            None => format!("[{tag}] {name}"),
         };
         vec![t.capsule(text, t.get(Slot::Accent))]
     }

@@ -22,6 +22,10 @@ pub fn run(call: &Call<'_>) -> Done {
     if call.session.is_none() {
         return Done::Notice(Notice::NoSession);
     }
+    // A wire that names no effort would take the rung and never send it.
+    if !call.takes_effort {
+        return Done::Notice(Notice::NoEffort);
+    }
     let Some(effort) = Effort::parse(call.args) else {
         return Done::Hold;
     };

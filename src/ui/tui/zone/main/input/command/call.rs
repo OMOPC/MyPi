@@ -10,8 +10,12 @@ pub struct Call<'a> {
     pub args: &'a str,
     /// The session this front end follows; `None` = a draft.
     pub session: Option<i64>,
+
     /// Where the conversation stands.
     pub cwd: &'a str,
+
+    /// Whether the model this front end shows reaches a wire that carries an effort.
+    pub takes_effort: bool,
 }
 
 /// What one command answers.

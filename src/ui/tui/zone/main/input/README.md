@@ -24,7 +24,7 @@ finish itself.
 | `cursor_col`, `cursor_row` | the cursor inside the container, recomputed on render |
 | `statusline: StatusLine` | the deco table and the row engine |
 | `session: Option<i64>` | the conversation this zone follows; `None` = a draft |
-| `data: Data` | model, thinking effort, name, directory, context size and window, money, busy |
+| `data: Data` | model, wire protocol, thinking effort, name, directory, context size and window, money, busy |
 | `pending_name` | the name a `/name` asked for, until its receipt |
 | `queue: Queue` | sentences sent while a round was running, head first |
 | `in_flight` | the sentence a submit put out, until the door answers |
@@ -78,9 +78,9 @@ expanded, a relative path read from where the draft stands — because the name 
 and a directory that is not there cannot be entered. Anything else is refused and said.
 `/compact` needs a session and is refused in a draft.
 `/effort` sets how hard the session asks the model to think: one rung of `auto`, `low`, `high`,
-`max`, this session only. It needs a session too, and a provider whose wire names no such field is
-refused by the server rather than here. `Ctrl+Tab` walks the same ladder without a command, and the
-key is inert in a draft because there is no session to hold the rung.
+`max`, this session only. It needs a session too, and a model whose wire names no such field is
+refused here, from the protocol the pill already asked for. `Ctrl+Tab` walks the same ladder without
+a command, and the key is inert in a draft and on a model that names none.
 Deletion has no command: the resume picker owns it.
 
 ### Submit, interrupt, Esc
@@ -101,14 +101,13 @@ Deletion has no command: the resume picker owns it.
 A write (`/switch`, `/effort`, `/model`, `/cdp`, `/name`, `/compact`) owes one line. The text is
 built from what this zone sent, in the display language, and spoken only when the receipt for that
 door arrives: `cwd`, `name`, `switch`, `effort`, `default_model`, `compact`. A receipt carrying an
-error speaks nothing — except two whose refusal the user can act on: `/effort` on a host that takes
-no thinking effort, and the app's own answer for a draft's `/cdp`, which names the directory it could
-not land on (`noDir`, a warn).
+error speaks nothing — except the app's own answer for a draft's `/cdp`, which names the directory it
+could not land on (`noDir`, a warn).
 Draft writes are answered by the app with the same door names, prefixed `local`.
 
-A refusal decided here (no session for `/usage` or `/compact`, a profile asked for after the
-session started, `/memo` without a usable operation) speaks at once. The line leaves the box
-either way.
+A refusal decided here (no session for `/usage`, `/effort` or `/compact`, `/effort` on a model whose
+wire names no thinking effort, a profile asked for after the session started, `/memo` without a
+usable operation) speaks at once. The line leaves the box either way.
 
 Notices travel as a shout; the history zone draws them as short rows. A `/compact` receipt also
 puts `compact start` on the bus: a compaction round is running, and any zone may draw it.
@@ -153,12 +152,13 @@ clock runs in `tick_statusline`, once a round.
 One row, exactly the terminal width. The deco table is `activity`, `model`, `cwd`, `git`, `cost`,
 `usage`, `session`. Each deco reads the zone's `Data`; none of them can act.
 
-`Data` is filled from three places. The conversation row gives the name and the model address;
-the `models.model.<address>` answer gives the model pill and the gauge's denominator; the living
-thinking effort comes from `call init` and from each `/effort` receipt, because no row holds it;
-`call usage` gives the cost in both currencies and where the context stands. The display currency
-comes from
-`config.ui.tui.fx.currency`, never from a model. The gauge reads `~` in front of the percentage
+`Data` is filled from four places. The conversation row gives the name and the model address;
+the `models.model.<address>` answer gives the model pill and the gauge's denominator;
+`models.provider.<provider>.api` gives the wire, so the pill's marker reads the rung on a wire that
+names a thinking effort and `M` on a wire that names none; the living thinking effort comes from
+`call init` and from each `/effort` receipt, because no row holds it; `call usage` gives the cost in
+both currencies and where the context stands. The display currency comes from
+`config.ui.tui.fx.currency`, never from a model.
 when the count is an estimate; the dashes carry no mark. `activity` steps one glyph per `tick`
 shout. `git` scans on its own tick: the first one at once, then once per configured interval, and
 once more when a round starts or ends.
@@ -188,9 +188,7 @@ once more when a round starts or ends.
 
 ## 3. Unresolved
 
-1. A server refusal (an error receipt) speaks nothing, except `/effort`: a host whose wire names no
-   thinking effort is a refusal the user caused and can act on, so that one door speaks it. Every
-   other refusal leaves the server's own notice as the only trace.
+1. A server refusal (an error receipt) speaks nothing: the server's own notice is the only trace.
 2. `Ctrl+C` clears the draft; its final meaning is undecided.
 3. The usage gauge is hidden until the model's window is known.
 4. Terminal-too-small behaviour is a clamped container.
