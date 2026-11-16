@@ -51,6 +51,9 @@ const GAP: usize = 2;
 /// Numeric columns after the label: total, input, output, cache read, cache write.
 const COLS: usize = 5;
 
+/// The rule the subagents' section opens with, above its rows.
+const SECTION_FIXED: usize = 1;
+
 /// Where the block sits in the strip.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Align {
@@ -191,7 +194,7 @@ impl UsagePanel {
                 row.provider = Some(provider.clone());
             }
         }
-        self.selected = self.selected.min(self.rows.len().saturating_sub(1));
+        self.selected = self.selected.min(self.picks().saturating_sub(1));
         self.loaded = true;
         self.rows
             .iter()
@@ -255,30 +258,52 @@ impl UsagePanel {
         self.open = false;
     }
 
-    /// Move the selection, wrapping around.
+    /// Move the selection, stopping at either end of the main table and the subagents' rows.
     fn step(&mut self, delta: isize) {
-        if self.rows.is_empty() {
+        let picks = self.picks();
+        if picks == 0 {
             return;
         }
         let next = self.selected as isize + delta;
-        self.selected = next.rem_euclid(self.rows.len() as isize) as usize;
+        self.selected = next.clamp(0, picks as isize - 1) as usize;
     }
 
-    /// The two summary rows, the blank, the head, one row per model, and the subagents'
-    /// section when its pool carries a bill. The desk caps the body.
+    /// The two summary rows, the blank, and the body. The desk caps the height.
     fn height(&self) -> usize {
         if !self.loaded {
             return 1;
         }
-        4 + self.rows.len() + self.section_len()
+        3 + self.body_len()
     }
 
     /// The rows the subagents' section takes: nothing when the pool holds no bill.
     fn section_len(&self) -> usize {
         match self.subs.iter().any(|row| row.total() > 0) {
-            true => 2 + self.subs.len(),
+            true => SECTION_FIXED + self.subs.len(),
             false => 0,
         }
+    }
+
+    /// The rows the cursor walks: the main table's, then the subagents'.
+    fn picks(&self) -> usize {
+        match self.section_len() {
+            0 => self.rows.len(),
+            _ => self.rows.len() + self.subs.len(),
+        }
+    }
+
+    /// The body line a pick sits on: the head, the main rows, then the section.
+    fn line_of(&self, pick: usize) -> usize {
+        let main = self.rows.len();
+        if pick < main {
+            return 1 + pick;
+        }
+        1 + main + SECTION_FIXED + (pick - main)
+    }
+
+    /// The lines the body holds: the head, the main rows, and the section.
+    fn body_len(&self) -> usize {
+        1 + self.rows.len() + self.section_len()
     }
 
     /// The header words of one face.
@@ -552,40 +577,57 @@ impl UsagePanel {
         for text in self.summary(&plan, avail) {
             out.push(Line::from(format!("{pad}{text}")));
         }
+        out.push(Line::default());
+        let body = self.body(&plan, &pad, accent);
+        let room = rows.saturating_sub(out.len());
+        let start = window_start(body.len(), room, self.line_of(self.selected));
+        out.extend(body.into_iter().skip(start).take(room));
+        out
+    }
+
+    /// The scrollable body: the head and the main rows, then the subagents' section. Both
+    /// share one window, so the cursor walks from either table into the other.
+    fn body(&self, plan: &Plan, pad: &str, accent: &Accent) -> Vec<Line<'static>> {
+        let mut out: Vec<Line<'static>> = Vec::new();
         if self.rows.is_empty() {
             let word = match self.lang {
                 Lang::En => "No usage yet",
                 Lang::Zh => "还没有用量",
             };
-            out.push(Line::default());
             out.push(Line::from(vec![
-                Span::raw(pad.clone()),
+                Span::raw(pad.to_string()),
                 Span::styled(word, Style::new().fg(fixed::MUTED)),
             ]));
-            self.section(&plan, &pad, &mut out);
-            return out;
+        } else {
+            out.push(Line::from(format!("{pad}{}", self.head(plan))));
+            for (i, row) in self.rows.iter().enumerate() {
+                out.push(self.model_line(row, plan, pad, accent, i == self.selected));
+            }
         }
-        out.push(Line::default());
-        out.push(Line::from(format!("{pad}{}", self.head(&plan))));
-        // The section is pinned under the table, so the rolling window leaves its rows free.
-        let room = rows
-            .saturating_sub(out.len())
-            .saturating_sub(self.section_len());
-        let start = window_start(self.rows.len(), room, self.selected);
-        for (i, row) in self.rows.iter().enumerate().skip(start).take(room) {
-            let text = format!("{pad}{}", self.line(row, &plan));
-            out.push(Line::from(match i == self.selected {
-                true => accent.span(text),
-                false => Span::raw(text),
-            }));
-        }
-        self.section(&plan, &pad, &mut out);
+        self.section(plan, pad, accent, &mut out);
         out
     }
 
-    /// The subagents' section: blank, rule, head, one row per model. Pinned under the main
-    /// table; drawn only when the pool carries a bill.
-    fn section(&self, plan: &Plan, pad: &str, out: &mut Vec<Line<'static>>) {
+    /// One model row, accented while the cursor sits on it.
+    fn model_line(
+        &self,
+        row: &Row,
+        plan: &Plan,
+        pad: &str,
+        accent: &Accent,
+        selected: bool,
+    ) -> Line<'static> {
+        let text = format!("{pad}{}", self.line(row, plan));
+        match selected {
+            true => Line::from(accent.span(text)),
+            false => Line::from(Span::raw(text)),
+        }
+    }
+
+    /// The subagents' section: the rule, then one row per model under the main table's own
+    /// header. It scrolls with the main table and its rows take the cursor. Drawn only when the
+    /// pool carries a bill.
+    fn section(&self, plan: &Plan, pad: &str, accent: &Accent, out: &mut Vec<Line<'static>>) {
         if self.section_len() == 0 {
             return;
         }
@@ -594,14 +636,13 @@ impl UsagePanel {
             (Lang::En, true) => "SUB",
             (Lang::Zh, _) => "子代理",
         };
-        out.push(Line::default());
         out.push(Line::from(vec![
             Span::raw(pad.to_string()),
             Span::styled(rule(word, plan.block()), Style::new().fg(fixed::MUTED)),
         ]));
-        out.push(Line::from(format!("{pad}{}", self.head(plan))));
-        for row in &self.subs {
-            out.push(Line::from(format!("{pad}{}", self.line(row, plan))));
+        let base = self.rows.len();
+        for (i, row) in self.subs.iter().enumerate() {
+            out.push(self.model_line(row, plan, pad, accent, base + i == self.selected));
         }
     }
 }
@@ -648,16 +689,27 @@ impl Hand for UsagePanel {
     }
 }
 
-/// The section rule: `+--- word ---+`, exactly the table block's width; a block too narrow
-/// for the frame leaves the bare word.
+/// The section rule: `+- - - - word - - - -+`, exactly the table block's width; a block too
+/// narrow for the frame leaves the bare word.
 fn rule(word: &str, block: usize) -> String {
-    let used = display_width(word) + 4;
-    if block <= used {
+    let word_w = display_width(word);
+    if block < word_w + 6 {
         return word.to_string();
     }
-    let fill = block - used;
-    let (left, right) = (fill / 2, fill - fill / 2);
-    format!("+{} {word} {}+", "-".repeat(left), "-".repeat(right))
+    let inner = block - 2;
+    let left = ((inner - word_w) / 2) & !1;
+    let right = inner - word_w - left;
+    format!("+{}{word}{}+", dash(left), gap(right))
+}
+
+/// `-` and spaces, a dash first and a space last.
+fn dash(n: usize) -> String {
+    (0..n).map(|i| if i % 2 == 0 { '-' } else { ' ' }).collect()
+}
+
+/// `-` and spaces, a space first and a dash last.
+fn gap(n: usize) -> String {
+    (0..n).map(|i| if i % 2 == 0 { ' ' } else { '-' }).collect()
 }
 
 /// A cell cut to `w` cells, the cut marked.

@@ -37,12 +37,14 @@ A hand reports:
 
 ### The usage hand
 
-One answer, one table. The main table is the session's own bill, one row per model. Under it, when
-the subagents' pool carries any token, a section: blank line, the rule `+--- Subagents ---+` (its
-width is the table block's width; English shortens to `SUB` with the table's own abbreviations,
-Chinese stays 子代理), the same header, then one row per model — the same `Row` cells, the same
-width plan, so both tables always align. The section is pinned below the rolling window and cannot
-be selected. The pill's `(+x)` and this section read the same pool.
+One answer, one table. The main table is the session's own bill, one row per model. Under its last
+row, when the subagents' pool carries any token, a section: the rule `+- - - - Subagents - - - -+`
+(its width is the table block's width; English shortens to `SUB` with the table's own abbreviations,
+Chinese stays 子代理; a block too narrow for the frame leaves the bare word), then one row per model
+— the same `Row` cells, the same width plan, under the main table's own header, so both tables
+always align. The section scrolls with the main table and its rows take the cursor: `↑↓` walk from
+the main table's rows into the section's and back. The pill's `(+x)` and this section read the same
+pool.
 
 A hand also has:
 A hand also has:
@@ -68,8 +70,10 @@ pads or cuts what comes back.
 
 ### The usage panel
 
-`UsagePanel` draws two summary rows, a blank row, a head row, and one row per model; its height is
-`4 + models`, which the desk clamps to the body cap. One tier is picked per frame, widest first:
+`UsagePanel` draws two summary rows, a blank row, and one scrollable body: the head row and one row
+per model, then the subagents' section. Its height is the three fixed rows plus the body, which the
+desk clamps to the body cap; the window follows the cursor. One tier is picked per frame, widest
+first:
 
 | tier | label | token columns | heads and summary words |
 |---|---|---|---|
@@ -82,7 +86,9 @@ pads or cuts what comes back.
 Every cell is cut to the width the plan hands it, so no line is wider than the strip. The block keeps
 its natural width and `config.ui.tui.zone.main.reserved.usageAlign` places it: `left`, `center` (the
 default) or `right`. Tab swaps exact counts for percentages in the room tier only. The hit rate is
-`cached / (prompt + completion)` over the whole session.
+`cached / (prompt + completion)` over the whole session. `↑` and `↓` move the cursor over the main
+table's rows and the section's in one run and stop at either end; the section's rule takes no
+cursor.
 
 The four token columns are one partition of that model's own total: `Input` is the prompt no cache
 reported, then `CacheRead` and `CacheWrite`, then `Output`. A percentage column is that column over
