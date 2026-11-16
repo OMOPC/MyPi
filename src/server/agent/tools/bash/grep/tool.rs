@@ -17,32 +17,28 @@ const PARAMS: &[Param] = &[
     Param::new(
         "query",
         Kind::Text,
-        "The word exactly as it appears in code; no character is special.",
+        "Exact literal string (or regex if `regex: true`). Supports `A::b` to locate `b` inside type/module `A`.",
     ),
     Param::df(
         "regex",
         Kind::Flag,
-        "Read `query` as a pattern instead of as text",
-        "false",
+        "Parse `query` as regex", 
+        "false"
     ),
     Param::new(
         "scope",
         Kind::TextList,
-        "Paths to read, named from the crate root and starting with `src/` — `src/ui/tui`, \
-         `src/cli.rs`, or both. An entry that is missing, is not a `.rs` file, or lies outside \
-         `src/` is skipped and named at the end of the answer.",
+        "`src/...` files or dirs (`.rs` only; defaults to whole `src/`; invalid entries skipped).",
     ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
     name: "grep",
-    about: "Search the crate's own src/ for a word. Each hit comes with the Rust item it sits in, \
-            and `A::b` also reports where `A` declares `b` (a type's members, or a module's item). \
-            Files it shows are stamped, so `splice` works on them at once.",
-    fields: "`query` is the text; with `regex` off every character stands for itself. `scope` \
-             names paths from the crate root, so every entry starts with `src/`; left out, the \
-             whole `src/` is read. A directory contributes its `.rs` files and a file must be `.rs`. \
-             Hits and excerpts carry line numbers.",
+    about: "Structural search across `src/**/*.rs`. Returns hits with enclosing Rust item \
+            hierarchy and line numbers. Supports `A::b` member lookup.",
+    fields: "Requires `query`; `regex` and `scope` are optional.\n\
+             - `A::b` syntax: besides literal matches, also locates where type/trait/module `A` declares `b`.\n\
+             - Output: 1-based line numbers + surrounding item scopes.",
     params: PARAMS,
     run,
     summary,
