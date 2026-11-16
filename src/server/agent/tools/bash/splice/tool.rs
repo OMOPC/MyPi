@@ -55,20 +55,14 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "splice",
-    about: "Replace whole lines by number in one file, many ranges at once; an empty `new` \
-            removes the range. `@@COPY(a..b)@@` reuses lines the file already holds and \
-            `@@CUT(a..b)@@` moves them. Rust is formatted by rustfmt; a text it cannot parse is \
-            still written, and said so. By matched text → `edit`.",
-    fields: "path and edits are always needed. Each item has `start`, `end` (both 1-based, \
-             inclusive, `end = start - 1` to insert) and `new` (any number of lines, empty to \
-             delete). Ranges MUST NOT overlap; the range's own lines come from a fresh `read`. \
-             Every splice call on the same file in one message is one write, and an overlapping \
-             later range is refused.\n\
-             To move or reuse lines the file already holds, never retype them: write \
-             `@@COPY(a..b)@@` in `new` and it stands for lines a to b of the file as it stands \
-             before this message, 1-based and inclusive. `@@CUT(a..b)@@` does the same and also \
-             removes those lines from where they were. A macro may sit anywhere in `new`, is \
-             filled on one pass, and is expanded by `splice` alone.",
+    about: "Batch 1-based inclusive line edits in one file. Supports `@@COPY(a..b)@@` / \
+            `@@CUT(a..b)@@` line macros. Auto-formats Rust via rustfmt \
+            (writes and warns on syntax error). By matched text → `edit`.",
+    fields: "Requires `path` and non-overlapping `edits` (`{start, end, new}`). \
+             Delete: `new: \"\"`. Insert before `start`: `end = start - 1`. \
+             Same-file calls in one turn merge into one write against pre-turn line numbers.\n\
+             Macros in `new` (1-based inclusive, pre-turn snapshot, single-pass): \
+             `@@COPY(a..b)@@` copies lines `a..b`; `@@CUT(a..b)@@` moves them (auto-deletes `a..b`).",
     params: PARAMS,
     run,
     summary,
