@@ -22,7 +22,7 @@ pub struct Env {
     pub session: i64,
     pub batch_len: usize,
     pub tools: BTreeSet<String>,
-    /// The model roster the config knew when the loop was built: address → display name.
+    /// The roster a child may be named: the models flagged for children, plus the session's own.
     pub models: ModelNames,
     pub aliases: Aliases,
     /// The budget a spawned sub-session gets when the call names none.
@@ -196,8 +196,33 @@ pub struct GrepLimits {
     pub items: usize,
 }
 
-/// The model roster: address → display name, as the config knew it when the loop was built.
+/// The model roster a session offers its children: address → display name.
 pub type ModelNames = std::collections::BTreeMap<String, String>;
+
+/// One model as the table holds it: its display name and whether `task` may offer it.
+#[derive(Debug, Clone)]
+pub struct ModelFacts {
+    pub name: String,
+    pub subagent: bool,
+}
+
+/// The whole model table: address → facts, as the config knew it when the loop was built.
+pub type Models = std::collections::BTreeMap<String, ModelFacts>;
+
+/// The roster one session sees: every model flagged for children, plus its own.
+pub fn roster(models: &Models, own: &str) -> ModelNames {
+    let mut out: ModelNames = models
+        .iter()
+        .filter(|(_, facts)| facts.subagent)
+        .map(|(address, facts)| (address.clone(), facts.name.clone()))
+        .collect();
+    let name = models
+        .get(own)
+        .map(|facts| facts.name.clone())
+        .unwrap_or_else(|| own.to_string());
+    out.insert(own.to_string(), name);
+    out
+}
 
 /// What every session's [`Env`] starts from: the process-level facts, read once.
 #[derive(Clone)]
@@ -206,7 +231,7 @@ pub struct Defaults {
     pub grep: GrepLimits,
     pub bash: BashEnv,
     pub aliases: BTreeMap<String, String>,
-    pub models: ModelNames,
+    pub models: Models,
     pub default_budget: u32,
     pub full_item_budget: usize,
     pub export: Arc<dyn Export>,
@@ -216,7 +241,7 @@ pub struct Defaults {
 }
 
 impl Defaults {
-    /// One session's conditions: its own directory, tools, aliases and stop flag.
+    /// One session's conditions: its own directory, tools, roster, aliases and stop flag.
     pub fn session(
         &self,
         session: i64,
@@ -224,6 +249,7 @@ impl Defaults {
         tools: Vec<String>,
         stop: Arc<crate::server::platform::stop::Stop>,
         vision: bool,
+        own: &str,
     ) -> anyhow::Result<Env> {
         Ok(Env {
             workspace: Workspace::new(cwd),
@@ -234,7 +260,7 @@ impl Defaults {
             session,
             batch_len: 0,
             tools: tools.into_iter().collect(),
-            models: self.models.clone(),
+            models: roster(&self.models, own),
             aliases: Aliases::new(self.aliases.clone(), self.source.aliases(session)?),
             default_budget: self.default_budget,
             full_item_budget: self.full_item_budget,

@@ -10,7 +10,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `contract/mod.rs` | declares the five contract groups |
 | `contract/call.rs` | `Batch`, `Cwd` |
 | `contract/output.rs` | `ToolResult`, `ToolOutput`, `Effect`, `MemoOp`, `AliasOp` |
-| `contract/env.rs` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp` |
+| `contract/env.rs` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp`, the model table (`Models`, `ModelFacts`) and the child roster derived from it (`roster`) |
 | `contract/view.rs` | the `Source`, `Export`, `Child`, `Draft`, `MemoRead` ports, the history shapes, and `MemoScope`, `MemoReadOp`, `MemoVersion`, `MemoView` |
 | `contract/job.rs` | the job vocabulary a tool shares with the loop: `JobSpec`, `Schedule`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink`, and the `JobHost` port |
 | `engine.rs` | `Engine`: `Batch::run` — env, gates, decode, run, stamp, measure (every tool but `read`), events; a call whose arguments arrived answers, and a stop landing mid-call becomes the result's reason |
@@ -110,6 +110,8 @@ Engine::run
 ```
 
 - `Env` is built once when a session is booked, from `Defaults`; the engine runs it as it stands.
+  Its child roster is derived at the same moment: every model flagged `subagent` plus the
+  session's own, and a model switch rebuilds it.
 - A `JobHost` and a sub-session's `Child` reach a tool through `Source`; the loop attaches both when
   it books a session and takes both off when it drops one. A job is only ever created by the loop.
 - The guard is used in two places — the `bash` tool and `alias add` — and judges the expanded

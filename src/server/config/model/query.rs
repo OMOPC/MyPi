@@ -87,6 +87,7 @@ impl ModelsConfig {
                 .ok_or_else(|| format!("unknown model: {address}"))?;
             let entry = &model.entry;
             return match suffix.as_str() {
+                "subagent" => Ok(Value::Bool(entry.subagent)),
                 "id" => Ok(Value::Text(entry.id.clone())),
                 "name" => Ok(Value::Text(entry.display_name().to_string())),
                 "currency" => Ok(Value::Text(entry.currency.as_str().to_string())),

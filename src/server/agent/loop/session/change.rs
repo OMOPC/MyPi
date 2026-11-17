@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 
 use super::handle::Handle;
+use crate::server::agent::tools::contract::env::{Defaults, roster};
 use crate::server::storage::{Row, Submit, Writer};
 
 /// One session-scoped change.
@@ -26,6 +27,7 @@ pub(crate) fn apply(
     change: Change,
     writer: &Writer,
     scrooge: bool,
+    defaults: &Defaults,
 ) -> Result<Option<PathBuf>> {
     match change {
         Change::Model {
@@ -43,6 +45,7 @@ pub(crate) fn apply(
                 config.effort = crate::server::agent::request::Effort::Auto;
             }
             handle.env().vision = vision;
+            handle.env().models = roster(&defaults.models, &format!("{provider}:{model}"));
             writer.push(Submit {
                 rows: vec![Row::Switch {
                     session: handle.id,

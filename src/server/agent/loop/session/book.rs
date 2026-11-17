@@ -123,7 +123,10 @@ impl Loop {
                 .map(|(provider, entry)| {
                     (
                         format!("{provider}:{}", entry.id),
-                        entry.display_name().to_string(),
+                        crate::server::agent::tools::contract::env::ModelFacts {
+                            name: entry.display_name().to_string(),
+                            subagent: entry.subagent,
+                        },
                     )
                 })
                 .collect(),
@@ -243,6 +246,7 @@ impl Loop {
             change,
             &self.inner.writer,
             self.inner.settings.scrooge,
+            &self.inner.defaults,
         )
     }
 
@@ -289,12 +293,14 @@ pub(crate) fn bind(inner: &Arc<Inner>, birth: Birth) -> Result<Arc<Handle>> {
         crate::server::agent::tools::workspace::standing_dir(&birth.cwd),
     ));
     let stop = crate::server::platform::stop::Stop::new();
+    let own = format!("{}:{}", birth.provider, birth.model);
     let env = inner.defaults.session(
         birth.session,
         cwd.clone(),
         birth.tools.clone(),
         stop,
         birth.vision,
+        &own,
     )?;
     let handle = Arc::new(Handle::new(birth, env, cwd, transcript));
     if !inner.slots.insert(handle.id, handle.clone()) {

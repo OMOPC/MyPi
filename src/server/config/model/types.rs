@@ -25,6 +25,8 @@ pub struct ModelEntry {
     pub max_output_tokens: Option<u64>,
     /// The model accepts image parts on the wire.
     pub vision: bool,
+    /// Whether the `task` tool may offer this model to a child.
+    pub subagent: bool,
     /// The thinking-effort rungs this model takes; empty takes none.
     pub efforts: Vec<Effort>,
     pub currency: Currency,

@@ -60,6 +60,7 @@ keys! {
     KEY_CONFIG_UI_TUI_HISTORY_TODO_FOLD = "config", "ui.tui.zone.main.history", "todoFold", BoolOrInt, DefaultValue::Bool(false), "Fold the task list; true = 8 rows, N = N rows.", true;
     KEY_CONFIG_UI_TUI_FX_USD_CNY = "config", "ui.tui.fx", "usdCny", Float, DefaultValue::Float(6.0), "1 USD in CNY, for display only.", true;
     KEY_CONFIG_UI_TUI_FX_CURRENCY = "config", "ui.tui.fx", "currency", Text, DefaultValue::Text("CNY"), "The currency the cost pill counts in: CNY or USD.", true;
+    PATTERN_MODELS_MODEL_SUBAGENT = "models", "model.<address>", "subagent", Bool, DefaultValue::Bool(false), "The `task` tool may offer this model to a child.", true;
     KEY_CONFIG_UI_TUI_DECO_GIT_SCAN = "config", "ui.tui.zone.main.input.deco", "gitScanInterval", Int, DefaultValue::Int(3), "Seconds between git scans of the workspace.", true;
     KEY_CONFIG_UI_TUI_INPUT_AUTO_PREPARE = "config", "ui.tui.zone.main.input", "autoPrepare", Bool, DefaultValue::Bool(false), "Prepend the workspace preparation to a session's first message and to the first message after a compaction.", true;
     KEY_CONFIG_UI_TUI_RESERVED_USAGE_ALIGN = "config", "ui.tui.zone.main.reserved", "usageAlign", Text, DefaultValue::Text("center"), "Horizontal placement of the usage panel's block: left, center or right.", true;

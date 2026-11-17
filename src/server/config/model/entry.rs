@@ -73,6 +73,16 @@ pub(super) fn parse_model(
             }
         },
     };
+    let subagent = match map.get("subagent") {
+        None | Some(Yaml::Null) => false,
+        Some(value) => match value.as_bool() {
+            Some(flag) => flag,
+            None => {
+                notices.push(warn(&key, file, "subagent must be a boolean", "false"));
+                false
+            }
+        },
+    };
     let efforts = match map.get("reasoningEfforts") {
         None | Some(Yaml::Null) => Vec::new(),
         Some(Yaml::Sequence(list)) => {
@@ -121,6 +131,7 @@ pub(super) fn parse_model(
         context_window,
         max_output_tokens,
         vision,
+        subagent,
         efforts,
         currency,
         cost,

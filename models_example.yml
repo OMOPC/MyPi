@@ -47,6 +47,7 @@ providers:
         contextWindow: 131072        # required: the ctx gauge's denominator
         maxOutputTokens: 8192        # required: actual max_tokens per request
         # vision: true               # the model takes image parts; absent = false
+        # subagent: true             # the task tool may offer this model to a child; absent = false
         # reasoningEfforts: [low, high]  # the rungs it takes; absent takes none
         currency: Usd
         cost:
