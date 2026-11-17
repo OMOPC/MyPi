@@ -5,10 +5,9 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use crate::server::agent::tools::contract::env::{GrepLimits, Seen, Stamp};
-use crate::server::agent::tools::fs::read::sparse;
+use crate::server::agent::tools::fs::lang::{self, Line, Table};
 use crate::server::agent::tools::summary;
 
-use super::rust::{self, Item};
 use super::{outline, scan};
 
 /// One answered call's text, and the files whose lines it showed.
@@ -76,26 +75,21 @@ fn type_section(
     for (at, file) in files.iter().enumerate() {
         let raw: Vec<&str> = file.text.lines().collect();
         let label = rel(zone, &file.path);
-        for (index, item) in file.layout.items.iter().enumerate() {
-            if !matches!(item.kind, "impl" | "trait" | "struct" | "enum" | "union") {
-                continue;
-            }
-            let holds = item.name.as_deref() == Some(a) || item.trait_name.as_deref() == Some(a);
-            if !holds {
+        for (index, piece) in file.table.pieces() {
+            if !bears(piece) || !names(piece, a) {
                 continue;
             }
             let mut mine: Vec<String> = Vec::new();
-            if matches!(item.kind, "impl" | "trait") {
-                for member in file.layout.inner(index) {
-                    if member.name.as_deref() == Some(b)
-                        && matches!(member.kind, "fn" | "const" | "type" | "static")
-                    {
-                        mine.push(member_row(member));
+            if is_impl(piece) || lang::shape(piece) == Some("trait") {
+                for (member_at, member) in file.table.inner(index) {
+                    if names(member, b) && declared(member) {
+                        mine.push(member_row(&file.table, member_at));
                     }
                 }
             }
-            if matches!(item.kind, "enum" | "struct") {
-                for line in rust::members(&raw, item, b) {
+            if matches!(lang::shape(piece), Some("enum" | "struct")) {
+                let end = file.table.end(index).unwrap_or(index);
+                for line in members(&raw, index + 1, end, b) {
                     mine.push(format!("{}  {}", line + 1, summary::clip(raw[line], 120)));
                 }
             }
@@ -103,7 +97,11 @@ fn type_section(
                 continue;
             }
             shown.insert(at);
-            rows.push(format!("  {label}:{}  {}", item.head + 1, item.sig));
+            rows.push(format!(
+                "  {label}:{}  {}",
+                index + 1,
+                summary::clip(exact(piece), 200)
+            ));
             for row in mine.iter().take(caps.items) {
                 rows.push(format!("    {row}"));
             }
@@ -142,12 +140,13 @@ fn module_section(
         let Some(base) = file.path.parent() else {
             continue;
         };
-        for declaration in file.layout.items.iter() {
-            if declaration.kind != "mod" || declaration.name.as_deref() != Some(a) {
+        for (index, declaration) in file.table.pieces() {
+            if lang::shape(declaration) != Some("mod") || !names(declaration, a) {
                 continue;
             }
             // `mod a { … }` lives in this file; `mod a;` names a sibling file or directory.
-            let inline = declaration.close > declaration.open;
+            let end = file.table.end(index).unwrap_or(index);
+            let inline = end > index;
             let mut roots: Vec<std::path::PathBuf> = Vec::new();
             if !inline {
                 let dir = base.join(a);
@@ -171,26 +170,23 @@ fn module_section(
                     continue;
                 }
                 let label = rel(zone, &target.path);
-                for item in target.layout.items.iter() {
-                    if item.name.as_deref() != Some(b) || item.kind == "use" {
+                for (item_at, item) in target.table.pieces() {
+                    if !names(item, b) || lang::shape(item) == Some("use") {
                         continue;
                     }
-                    if other == at
-                        && inline
-                        && !(item.head > declaration.open && item.close <= declaration.close)
-                    {
+                    if other == at && inline && !(item_at > index && item_at <= end) {
                         continue;
                     }
-                    if !seen.insert((label.clone(), item.head)) {
+                    if !seen.insert((label.clone(), item_at)) {
                         continue;
                     }
                     shown.insert(other);
                     rows.push(format!(
                         "  {label}:{}  {}  ({}..{})",
-                        item.head + 1,
-                        item.sig,
-                        item.head + 1,
-                        item.close + 1
+                        item_at + 1,
+                        summary::clip(exact(item), 200),
+                        item_at + 1,
+                        target.table.end(item_at).unwrap_or(item_at) + 1
                     ));
                 }
             }
@@ -222,27 +218,32 @@ fn x_ray(
     caps: GrepLimits,
     shown: &mut BTreeSet<usize>,
 ) -> String {
-    let declares = |item: &Item| {
-        matches!(item.kind, "struct" | "enum" | "trait" | "union")
-            && item.name.as_deref() == Some(name)
+    let declares = |line: &Line| {
+        matches!(
+            lang::shape(line),
+            Some("struct" | "enum" | "trait" | "union")
+        ) && names(line, name)
     };
     if !files
         .iter()
-        .any(|file| file.layout.items.iter().any(declares))
+        .any(|file| file.table.pieces().iter().any(|(_, line)| declares(line)))
     {
         return String::new();
     }
     let mut out = format!("[x-ray] {name}\n");
     for (at, file) in files.iter().enumerate() {
         let label = rel(zone, &file.path);
-        for item in file.layout.items.iter().filter(|item| declares(item)) {
+        for (index, line) in file.table.pieces() {
+            if !declares(line) {
+                continue;
+            }
             shown.insert(at);
             out.push_str(&format!(
                 "  {label}:{}  {}  ({}..{})\n",
-                item.head + 1,
-                item.sig,
-                item.head + 1,
-                item.close + 1
+                index + 1,
+                summary::clip(exact(line), 200),
+                index + 1,
+                file.table.end(index).unwrap_or(index) + 1
             ));
         }
     }
@@ -250,13 +251,8 @@ fn x_ray(
     let mut listed = 0usize;
     for (at, file) in files.iter().enumerate() {
         let label = rel(zone, &file.path);
-        for (index, item) in file.layout.items.iter().enumerate() {
-            if item.kind != "impl" {
-                continue;
-            }
-            let mine =
-                item.name.as_deref() == Some(name) || item.trait_name.as_deref() == Some(name);
-            if !mine {
+        for (index, line) in file.table.pieces() {
+            if !is_impl(line) || !names(line, name) {
                 continue;
             }
             blocks += 1;
@@ -267,13 +263,13 @@ fn x_ray(
             shown.insert(at);
             out.push_str(&format!(
                 "  {label}:{}..{}  {}\n",
-                item.head + 1,
-                item.close + 1,
-                item.sig
+                index + 1,
+                file.table.end(index).unwrap_or(index) + 1,
+                summary::clip(exact(line), 200)
             ));
-            let members = file.layout.inner(index);
-            for member in members.iter().take(caps.items) {
-                out.push_str(&format!("    {}\n", member_row(member)));
+            let members = file.table.inner(index);
+            for (member_at, _) in members.iter().take(caps.items) {
+                out.push_str(&format!("    {}\n", member_row(&file.table, *member_at)));
             }
             if members.len() > caps.items {
                 out.push_str(&format!("    [+{} more]\n", members.len() - caps.items));
@@ -288,9 +284,62 @@ fn x_ray(
     out
 }
 
-/// One member as a row: its span, and its signature.
-fn member_row(member: &Item) -> String {
-    format!("{}..{}  {}", member.head + 1, member.close + 1, member.sig)
+/// Whether this piece is an impl block, of either shape.
+fn is_impl(line: &Line) -> bool {
+    matches!(lang::shape(line), Some("impl"))
+}
+
+/// Whether this piece is one of the kinds `A::b` asks about.
+fn bears(line: &Line) -> bool {
+    matches!(
+        lang::shape(line),
+        Some("impl" | "trait" | "struct" | "enum" | "union")
+    )
+}
+
+/// Whether this piece's body declares functions, consts, types or statics by name.
+fn declared(line: &Line) -> bool {
+    matches!(lang::shape(line), Some("fn" | "const" | "type" | "static"))
+}
+
+/// Whether this piece binds `word`: its own name, or the trait and target of an `impl`.
+fn names(line: &Line, word: &str) -> bool {
+    lang::binds(line, word)
+}
+
+/// The line a row shows: the piece's own header, never the shape.
+fn exact(line: &Line) -> &str {
+    line.exact.as_deref().unwrap_or("")
+}
+
+/// One member as a row: its span, and its own name.
+fn member_row(table: &Table, at: usize) -> String {
+    let end = table.end(at).unwrap_or(at);
+    format!(
+        "{}..{}  {}",
+        at + 1,
+        end + 1,
+        table.line(at).map_or("", exact)
+    )
+}
+
+/// Lines inside one piece's body whose own line binds `name`: a variant, a field, a const.
+fn members(raw: &[&str], from: usize, to: usize, name: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    for at in from..to.min(raw.len()) {
+        let line = raw[at].trim();
+        let Some(rest) = line.strip_prefix(name) else {
+            continue;
+        };
+        let next = rest.chars().next();
+        if matches!(
+            next,
+            None | Some(' ' | ',' | '{' | '(' | '=' | ':' | ';' | '<')
+        ) {
+            out.push(at);
+        }
+    }
+    out
 }
 
 // ---- the hits ----
@@ -392,25 +441,26 @@ fn touched_after(files: &[scan::File], at: usize) -> usize {
         .count()
 }
 
-/// One hit with the item it sits in, whole when the item is short enough.
+/// One hit with the piece it sits in, whole when the piece is short enough.
 fn block(file: &scan::File, raw: &[&str], label: &str, line: usize) -> String {
     let mut out = format!("{label}:{}\n", line + 1);
-    let chain = file.layout.around(line);
+    let chain = file.table.around(line);
     if !chain.is_empty() {
         let parts: Vec<String> = chain
             .iter()
-            .map(|index| {
-                let item = &file.layout.items[*index];
-                format!("{} ({}..{})", item.label(), item.head + 1, item.close + 1)
+            .filter_map(|(at, piece)| {
+                piece
+                    .exact
+                    .as_deref()
+                    .map(|exact| format!("{exact} ({}..{})", at + 1, piece.mate.unwrap_or(*at) + 1))
             })
             .collect();
         out.push_str(&format!("  in: {}\n", parts.join(" > ")));
     }
     let (from, to) = excerpt(file, line);
     let width = (raw.len().to_string().len()).max(3);
-    let anchors = sparse::anchors(&file.text);
     for index in from..=to {
-        let numbered = index == line || anchors.get(index).copied().unwrap_or(false);
+        let numbered = index == line || file.table.key(index);
         let number = if numbered {
             format!("{:>width$}", index + 1)
         } else {
@@ -421,17 +471,24 @@ fn block(file: &scan::File, raw: &[&str], label: &str, line: usize) -> String {
     out
 }
 
-/// The lines one hit hands over: its item when that is short, else a window around it.
+/// The lines one hit hands over: its piece when that is short, else a window around it.
 fn excerpt(file: &scan::File, line: usize) -> (usize, usize) {
     const ITEM_CAP: usize = 40;
     const WINDOW: usize = 6;
     let lines = file.text.lines().count();
-    match file.layout.innermost(line) {
-        Some(index) if file.layout.items[index].body() <= ITEM_CAP => {
-            let item = &file.layout.items[index];
-            (item.head, item.close)
+    match file.table.innermost(line) {
+        Some((open, piece)) => {
+            let end = piece.mate.unwrap_or(open);
+            if end.saturating_sub(open) <= ITEM_CAP {
+                (open, end)
+            } else {
+                (
+                    line.saturating_sub(WINDOW),
+                    (line + WINDOW).min(lines.saturating_sub(1)),
+                )
+            }
         }
-        _ => (
+        None => (
             line.saturating_sub(WINDOW),
             (line + WINDOW).min(lines.saturating_sub(1)),
         ),

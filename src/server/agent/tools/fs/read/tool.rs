@@ -9,12 +9,12 @@ use anyhow::{Context as _, Result, anyhow};
 use super::dir;
 use super::hub;
 use super::sniff;
-use super::sparse;
 use crate::server::agent::request::contract::ItemOk;
 use crate::server::agent::request::message::ImagePart;
 use crate::server::agent::tools::contract::env::{Env, Stamp};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
+use crate::server::agent::tools::fs::lang::{self, Table};
 use crate::server::agent::tools::fs::splice::TOOL as SPLICE;
 use crate::server::agent::tools::spec::{Args, Item, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
@@ -52,8 +52,8 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "read",
-    about: "Read files or directories; .rs files answer with anchor line numbers under splice, an \
-            800-line budget, and a module view on their entry file.",
+    about: "Read files or directories; a sorted language answers with key line numbers under \
+            splice, an 800-line budget, and a module view on an `.rs` entry file.",
     fields: "`files` takes one item per path, with `offset` (1-based, default 1) and `limit` \
              (default: 800 for a `.rs` file, 200 otherwise, never above that file's own cap). A \
              file answers its lines. A directory answers its immediate children, files with \
@@ -216,15 +216,10 @@ fn block(
         Some(text) => {
             let lines: Vec<&str> = text.lines().collect();
             let total = lines.len();
-            let anchors = if splice {
-                sparse::anchors(text)
-            } else {
-                Vec::new()
-            };
-            let numbers = if splice {
-                Numbers::Anchors(&anchors)
-            } else {
-                Numbers::None
+            let table = lang::table(path, text);
+            let numbers = match splice {
+                true => Numbers::Table(&table),
+                false => Numbers::None,
             };
             assemble(
                 offset,
@@ -296,8 +291,8 @@ enum Numbers<'a> {
     None,
     /// Another language under `splice`: every line carries one.
     All,
-    /// Rust under `splice`: only the anchors do.
-    Anchors(&'a [bool]),
+    /// A sorted language under `splice`: only the key lines do.
+    Table(&'a Table),
 }
 
 impl Numbers<'_> {
@@ -310,7 +305,7 @@ impl Numbers<'_> {
         match self {
             Numbers::None => false,
             Numbers::All => true,
-            Numbers::Anchors(anchors) => anchors.get(at.saturating_sub(1)).copied().unwrap_or(true),
+            Numbers::Table(table) => table.key(at.saturating_sub(1)),
         }
     }
 }

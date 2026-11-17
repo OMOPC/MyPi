@@ -1,7 +1,9 @@
 //! Rust read by line: `mod` declarations, `pub` items, `pub use`, and the use trees under them.
 
+use std::path::Path;
+
 use super::text::{clip, strip_attrs, strip_vis};
-use crate::server::agent::tools::fs::change;
+use crate::server::agent::tools::fs::lang::{self, Table};
 
 /// `pub mod x;` lines, in the order the hub writes them.
 pub(super) fn declarations(text: &str) -> Vec<(String, String)> {
@@ -40,22 +42,14 @@ pub(super) fn declarations(text: &str) -> Vec<(String, String)> {
 }
 
 /// A file's `pub` items, signature only: no bodies, no private items.
-pub(super) fn export_items(text: &str) -> Vec<String> {
+pub(super) fn export_items(path: &Path, text: &str) -> Vec<String> {
     let lines: Vec<&str> = text.lines().collect();
+    let table = lang::table(path, text);
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let raw = strip_attrs(lines[i].trim_start());
-        if !raw.starts_with("pub") {
-            i += 1;
-            continue;
-        }
-        let rest = strip_vis(raw);
-        let Some(head) = change::head_of(rest) else {
-            i += 1;
-            continue;
-        };
-        if matches!(head, "use" | "impl" | "mod") {
+        if !raw.starts_with("pub") || !exportable(&table, i) {
             i += 1;
             continue;
         }
@@ -78,6 +72,12 @@ pub(super) fn export_items(text: &str) -> Vec<String> {
         i = j + 1;
     }
     out
+}
+/// Whether this line opens a piece a child may export: not `use`, not `impl`, not `mod`.
+fn exportable(table: &Table, at: usize) -> bool {
+    table.line(at).is_some_and(|line| {
+        line.head() && !matches!(lang::shape(line), None | Some("use" | "impl" | "mod"))
+    })
 }
 
 /// The hub's `pub use` statements, each on one line.

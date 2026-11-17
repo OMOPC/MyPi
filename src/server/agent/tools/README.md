@@ -300,11 +300,12 @@ files of one answer are read in parallel. `query` stands for
 itself unless `regex` is on, when it is a pattern; a pattern that does not compile is refused with
 the engine's own position and a reminder that the switch is off by default.
 
-Structure comes from the passes `read` already runs: comments and literals blanked, braces paired,
-head words recognized. A header runs to its own `{` or `;` with `(`, `[` and angle brackets
-counted, so a wrapped signature, a `where` clause and nested generics stay inside one header, and
-`->` contributes no closing angle. An `impl` type is the text after `for`, or after `impl` when
-there is none, with `&`, `&mut`, `!`, lifetimes, `dyn` and generics stripped.
+Structure comes from the language sorter, the same table `read`, `splice` and `edit` read: comments
+and literals blanked, braces paired, head words recognized. A header runs to its own `{` or `;` with
+`(`, `[` and angle brackets counted, so a wrapped signature, a `where` clause and nested generics
+stay inside one header, and `->` contributes no closing angle. Each line carries a stamp, the shape
+it reads by, and the line it names: `impl Display for Env` reads `impl a for b` and binds both
+`Display` and `Env`; `pub async fn send` reads `pub async fn` and binds `send`.
 
 Three sections precede the hits:
 
@@ -322,7 +323,7 @@ Three sections precede the hits:
 Hits are answered at the density their count allows, by `deepMax` and `foldMax`. Up to `deepMax`,
 each hit comes with its innermost item whole — or a six-line window when that item is longer than
 forty lines — under an `in:` breadcrumb of every item around it. An excerpt line carries its
-number only when it is a hit or an anchor of `read`'s own sparse scan; every other line keeps the
+number only when it is a hit or a key line of the sorter's own table; every other line keeps the
 gutter blank, so a number means a line `splice` may start or end on. Up to `foldMax`, each file
 answers as its skeleton: one row per item, the hit lines under the item that holds them, and a
 file whose hits fall in more than one item answers as its whole top level with those items opened.

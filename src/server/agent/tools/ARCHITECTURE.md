@@ -22,8 +22,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `fs/mod.rs` | declares the fs family |
 | `fs/read/` | the `read` tool, directory listings and the module graph; see `fs/read/ARCHITECTURE.md` |
 | `fs/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its three parameters, its summary |
-| `fs/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the `.rs` files under them read in parallel, the matcher, each file's hits |
-| `fs/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
+| `fs/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the `.rs` files under them read in parallel, the matcher, each file's hits, its line table |
 | `fs/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
 | `fs/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
 | `fs/write/{mod,tool}.rs` | `write`: the content through the formatter, the write whatever the formatter said, then the compiler's report unless the text does not parse |
@@ -31,12 +30,15 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `fs/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the copy and cut macros filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
 | `fs/splice/edit.rs` | one change: its range, its block, the macro ranges it fills and the changes it cuts, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
 | `fs/gate.rs` | the formatting gate: the formatter's four outcomes for one text (only a reached verdict is remembered), the edition and name of the crate a file belongs to, one deadline-free `cargo check` of a crate (`gate::check_crate`, errors and warnings), every child in a process group of its own |
-| `fs/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
+| `fs/skeleton.rs` | the report's skeleton over a line table: the innermost piece holding a line, the seam drawn around a range |
 | `fs/fault.rs` | the batch's audit: one check per crate written into, every error and warning landing once — under the edit whose lines it hit, under the write that replaced the file whole, or in the crate's list on the last answer that can take it |
 | `fs/splice/fmt.rs` | rustfmt through the gate: the merged text with a marker comment around every block, the markers' lines as each change's landing, the text without them, and the per-block trials that only name what the parser blames |
 | `fs/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, and the segment memo a front end draws |
-| `fs/splice/items.rs` | items from text for the receipt's breadcrumb: a header's ends by bracket depth, each item's container, every item around one line |
-| `fs/change.rs` | `context` (the item around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
+| `fs/change.rs` | `context` (the piece around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
+| `fs/lang/mod.rs` | the sorter its suffix names, or every line as its own piece |
+| `fs/lang/table.rs` | one file's line table: each line's stamp, the shape it reads by, the line it names, its other end; the pieces holding a line, the shallowest pieces of a range, roots and children |
+| `fs/lang/blank.rs` | the blanker every sorter shares: a cursor and a line buffer, a language's delimiters driving it, and the brace pairs counted on the result |
+| `fs/lang/rust.rs` | the Rust sorter: its suffix, head words, key-line passes, head templates, what a piece binds, and the comment and literal delimiters |
 | `shell/mod.rs` | declares the shell family |
 | `shell/bash/mod.rs` | declares the command tool, the admission gate, the segment scanner, the guard and the runner |
 | `shell/bash/tool.rs` | the `bash` tool |
@@ -96,9 +98,8 @@ Engine::run
   → registry::spec              and env.allows
   → Args::fill
   → Tool::run
-      fs/*            ── file tools and the language rules they lean on
-      fs/grep         ── scan (the walk) ── rust (sparse's blanker and frames)
-      grep            ── scan (the walk) ── rust (sparse's blanker and frames)
+      fs/*            ── file tools and one line table they all read
+      fs/grep         ── scan (the walk) ── lang (the table a sorter answers)
       kairos          ── Source::jobs (a JobHost) ── loop/job
       task            ── template, answer name ── Effect::Child
       final           ── Source::child (a Child) ── draft, answer file
@@ -156,10 +157,13 @@ Engine::run
     and one batch gives one check per crate.
 16. `splice` and `write` both read a file's edition and formatter outcome from `gate`; the answer's
     own `Outcome` and `Check` are borrowed there, never rebuilt here.
-17. `skeleton` and `fault`: the compiler's seam walks the same item tree the outline does, so a
-    change to what counts as an item reaches both.
-18. `splice::items` copies that tree rather than sharing it: the receipt needs the item a landing
-    sits in and nothing else, and the two readerships move apart.
+17. `lang::table` is the one place a file's structure is read: `change`, `skeleton`, `fault`,
+    `read`, `splice`, `grep` and `read::hub` all ask it, so a change to what counts as a piece
+    reaches every one of them.
+18. `lang::rust::shape` and `lang::rust::binds` are the decisions a consumer reads: a tool judges
+    what a piece is and whether it binds a word through those two, never by cutting a label itself.
+19. A sorter answers a table and nothing else: display caps, sorting, folding and prose stay in the
+    tool that shows them.
 
 ## Not wired yet
 

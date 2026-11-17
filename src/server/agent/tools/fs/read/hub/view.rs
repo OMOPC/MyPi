@@ -106,12 +106,12 @@ fn children(module: &Module, hub_text: &str) -> (Vec<Child>, bool) {
         let exports = if hub {
             let re = re_exports(&text);
             if re.is_empty() {
-                export_items(&text)
+                export_items(&path, &text)
             } else {
                 re
             }
         } else {
-            export_items(&text)
+            export_items(&path, &text)
         };
         let mut chain = module.chain.clone();
         chain.push(name.clone());

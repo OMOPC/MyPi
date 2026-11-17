@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
 
-use super::rust::{self, Layout};
+use crate::server::agent::tools::fs::lang::{self, Table};
 use crate::server::agent::tools::workspace::canonicalize_lenient;
 
 /// A file this big is not read line by line.
@@ -56,21 +56,17 @@ pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf
 
     for entry in scope {
         let raw = entry.trim();
-
         if raw.is_empty() {
             misses.push("[scope] (empty): no path".to_string());
             continue;
         }
-
         let named = Path::new(raw);
-
         let joined = if named.is_absolute() {
             named.to_path_buf()
         } else {
             zone.root.join(named)
         };
         let real = canonicalize_lenient(&joined);
-
         if !real.exists() {
             misses.push(format!("[scope] {raw}: does not exist"));
         } else if !real.starts_with(&src) {
@@ -116,13 +112,13 @@ impl Matcher {
     }
 }
 
-/// One source file, its matching lines, and its items.
+/// One source file, its matching lines, and its pieces.
 pub(crate) struct File {
     pub path: PathBuf,
     pub text: String,
     /// Matching lines, 0-based.
     pub hits: Vec<usize>,
-    pub layout: Layout,
+    pub table: Table,
 }
 
 /// Every named file, and every `.rs` file under these directories; read in parallel.
@@ -160,7 +156,7 @@ fn read_all(paths: &[PathBuf], matcher: &Matcher) -> Vec<File> {
         .collect()
 }
 
-/// One file's hits; a file with none keeps no layout, which is the expensive half.
+/// One file's hits and its table; a file that cannot be read is simply not there.
 fn read(path: &Path, matcher: &Matcher) -> Option<File> {
     let size = std::fs::metadata(path).ok()?.len();
     if size > LARGE {
@@ -173,12 +169,12 @@ fn read(path: &Path, matcher: &Matcher) -> Option<File> {
         .filter(|(_, line)| matcher.hits(line))
         .map(|(at, _)| at)
         .collect();
-    let layout = rust::analyse(&text);
+    let table = lang::table(path, &text);
     Some(File {
         path: path.to_path_buf(),
         text,
         hits,
-        layout,
+        table,
     })
 }
 

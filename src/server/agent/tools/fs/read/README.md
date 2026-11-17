@@ -21,7 +21,8 @@ A file's budget comes from its kind; `limit` narrows the line count and never wi
 ### A file's body
 
 A body carries line numbers only where a change can start or end. `splice` locates a change by line,
-so a session with `splice` numbers a Rust file at each block's first and last line: a declaration, a
+so a session with `splice` numbers a file whose suffix has a sorter at each key line its table
+stamps: a declaration, a
 run of `use` statements, a hat of attributes and comments (its first and its last line, however many
 it stacks; the file's own head counts even when a blank line follows it), the closing brace of any
 numbered block, and — inside a function longer than fifteen lines — every block head: `if`, `else`,
@@ -29,8 +30,8 @@ numbered block, and — inside a function longer than fifteen lines — every bl
 or opens behind `let x =`, an assignment, `return` or `break`. A `let … else` counts, and so does a
 macro call or a closure whose `{` ends the line. No head needs its `{` on that line: a folded
 condition puts it three lines down. Every other line stays unnumbered, so every numbered block has a
-`(start, end)` a call can name without counting. Other languages keep a number on every line: only
-Rust is read this way.
+`(start, end)` a call can name without counting. A file no sorter takes is one whole piece per line:
+every line carries a number.
 
 `edit` locates a change by text, so a session with `edit` and without `splice` gets no numbers at
 all: the body is the file, ready to be copied into `old`.

@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use super::edit::Place;
 use super::fmt::Word;
+use crate::server::agent::tools::fs::lang::Table;
 
 /// How many lines one side of a diff shows before its middle is folded away.
 const SIDE: usize = 12;
@@ -46,12 +47,12 @@ pub(crate) enum State {
     },
 }
 
-/// The answer's fixed points: the file, its length, where `read` numbers lines, and whether a
+/// The answer's fixed points: the file, its length, the line table `read` numbers by, and whether a
 /// refused edit's lines moved.
 pub(crate) struct Sheet<'a> {
     pub path: &'a str,
     pub after: usize,
-    pub anchors: &'a [bool],
+    pub table: &'a Table,
     pub shifted: bool,
 }
 
@@ -60,7 +61,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
     let Sheet {
         path,
         after,
-        anchors,
+        table,
         shifted,
     } = sheet;
     let landed = rows
@@ -82,7 +83,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
             } => {
                 // What stands there now; a deletion has nothing to show and says what it removed.
                 if new.is_empty() {
-                    out.extend(taken_side(None, old, anchors, width));
+                    out.extend(taken_side(None, old, table, width));
                 }
                 out.extend(block_side(new, width));
                 if let Some(blame) = blame {
@@ -97,12 +98,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
                 ..
             } => {
                 // Its lines are still in the file: they are numbered where it now finds them.
-                out.extend(taken_side(
-                    at.map(|(first, _)| first),
-                    taken,
-                    anchors,
-                    width,
-                ));
+                out.extend(taken_side(at.map(|(first, _)| first), taken, table, width));
                 out.extend(block_side(block, width));
                 out.push(format!("  ! {why}"));
             }
@@ -180,12 +176,7 @@ fn item(row: &Row) -> Option<&str> {
 
 /// The lines an edit takes, unnumbered when they are gone and by their current numbers when they
 /// are still in the file, where `read` would number them.
-fn taken_side(
-    first: Option<usize>,
-    taken: &[String],
-    anchors: &[bool],
-    width: usize,
-) -> Vec<String> {
+fn taken_side(first: Option<usize>, taken: &[String], table: &Table, width: usize) -> Vec<String> {
     if taken.is_empty() {
         return vec![format!("- {:>width$}|(nothing)", "", width = width)];
     }
@@ -198,11 +189,11 @@ fn taken_side(
     let mut picked: Vec<(usize, &str)> = Vec::new();
     for (offset, line) in taken.iter().enumerate() {
         let number = first + offset;
-        if anchors.get(number - 1).copied().unwrap_or(false) {
+        if table.key(number - 1) {
             picked.push((number, line));
         }
     }
-    // A range that holds no anchor still took lines: its own ends are what a reader needs.
+    // A range that holds no key line still took lines: its own ends are what a reader needs.
     if picked.is_empty() {
         picked.push((first, &taken[0]));
         if taken.len() > 1 {

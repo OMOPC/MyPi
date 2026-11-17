@@ -1,8 +1,7 @@
-//! splice: replace whole lines by number, many ranges at once.
+// splice: replace whole lines by number, many ranges at once.
 
 mod edit;
 mod fmt;
-mod items;
 mod receipt;
 mod tool;
 

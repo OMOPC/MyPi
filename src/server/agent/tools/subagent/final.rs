@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
-use crate::server::agent::tools::fs::{edit, splice};
+use crate::server::agent::tools::fs::{edit, lang, splice};
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 
@@ -69,20 +69,23 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                 range.is_none() || args.opt_str(OLD)?.is_none(),
                 "`range` and `old` pick different ways to locate the edit; give one"
             );
-            let (text, _, message) = match range {
+            let text = draft.read()?;
+            let table = lang::Table::plain(&text);
+            let (updated, _, message) = match range {
                 Some(range) => {
                     let (from, to) = splice::parse_range(&range)?;
                     let block = args.str(NEW)?;
-                    splice::mass_text(&draft.read()?, from, to, &block, env.full_item_budget)?
+                    splice::mass_text(&text, &table, from, to, &block, env.full_item_budget)?
                 }
                 None => edit::exact_text(
-                    &draft.read()?,
+                    &text,
+                    &table,
                     &args.str(OLD)?,
                     &args.str(NEW)?,
                     env.full_item_budget,
                 )?,
             };
-            draft.write(&text)?;
+            draft.write(&updated)?;
             Ok(ToolOutput::text(message))
         }
         "read" => {

@@ -5,6 +5,7 @@ pub(crate) mod edit;
 pub(crate) mod fault;
 pub(crate) mod gate;
 pub(crate) mod grep;
+pub(crate) mod lang;
 pub(crate) mod read;
 pub(crate) mod skeleton;
 pub(crate) mod splice;

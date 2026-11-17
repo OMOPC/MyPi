@@ -9,7 +9,6 @@ use serde_json::{Value, json};
 
 use super::edit::{self, Edit, Place};
 use super::fmt::{self, Word};
-use super::items;
 use super::receipt::{self, Row, State};
 use crate::server::agent::request::contract::ToolCall;
 use crate::server::agent::tools::contract::env::{Answer, Env, Shell, Slot, Stamp};
@@ -18,7 +17,7 @@ use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::change;
 use crate::server::agent::tools::fs::gate;
-use crate::server::agent::tools::fs::read::sparse;
+use crate::server::agent::tools::fs::lang::{self, Table};
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 use crate::server::agent::tools::workspace::write_atomic;
@@ -232,8 +231,7 @@ impl Built {
     fn answers(&self, plans: &[Plan], path: &Path) -> Vec<(Answer, Vec<Slot>)> {
         let lines: Vec<&str> = self.shown.lines().collect();
         let base: Vec<String> = self.base.lines().map(str::to_string).collect();
-        let anchors = sparse::anchors(&self.shown);
-        let layout = items::Layout::analyse(&self.shown);
+        let table = lang::table(path, &self.shown);
         let shown = path.display().to_string();
         let shifted = self.moved();
 
@@ -258,7 +256,7 @@ impl Built {
                         .iter()
                         .position(|held| *held == index)
                         .and_then(|position| self.landings.get(position).copied().flatten());
-                    rows.push(self.row(index, &lines, &base, &layout));
+                    rows.push(self.row(index, &lines, &base, &table));
                     slots.push(Slot {
                         landing,
                         insert_at: 0,
@@ -268,7 +266,7 @@ impl Built {
                     receipt::Sheet {
                         path: &shown,
                         after: self.after,
-                        anchors: &anchors,
+                        table: &table,
                         shifted,
                     },
                     &rows,
@@ -299,7 +297,7 @@ impl Built {
     }
 
     /// One edit, as its own call's answer shows it.
-    fn row(&self, at: usize, lines: &[&str], base: &[String], layout: &items::Layout) -> Row {
+    fn row(&self, at: usize, lines: &[&str], base: &[String], table: &Table) -> Row {
         let edit = &self.edits[at];
         let blame = self
             .blamed
@@ -315,7 +313,7 @@ impl Built {
             };
             let item = match edit.cut {
                 true => None,
-                false => landing.and_then(|(first, _)| item_of(layout, first)),
+                false => landing.and_then(|(first, _)| item_of(table, first)),
             };
             return Row {
                 index: edit.index,
@@ -354,7 +352,7 @@ impl Built {
                 at: place,
                 taken,
                 block: edit.block.clone(),
-                item: place.and_then(|(first, _)| item_of(layout, first)),
+                item: place.and_then(|(first, _)| item_of(table, first)),
                 why: "overlaps an earlier splice call on this file",
             },
         }
@@ -527,14 +525,14 @@ fn take(lines: &[&str], first: usize, last: usize) -> Vec<String> {
 }
 
 /// The innermost two items a landing sits in, outermost first.
-fn item_of(layout: &items::Layout, first: usize) -> Option<String> {
-    let chain = layout.around(first.saturating_sub(1));
+fn item_of(table: &Table, first: usize) -> Option<String> {
+    let chain = table.around(first.saturating_sub(1));
     let tail: Vec<&str> = chain
         .iter()
         .rev()
         .take(2)
         .rev()
-        .map(|item| item.sig.as_str())
+        .filter_map(|(_, line)| line.exact.as_deref())
         .collect();
     (!tail.is_empty()).then(|| tail.join(" > "))
 }
@@ -549,6 +547,7 @@ fn hash(text: &str) -> u64 {
 /// Replace whole lines by 1-based number: `from..=to` becomes `new`, any number of lines.
 pub(crate) fn mass_text(
     text: &str,
+    table: &Table,
     from: usize,
     to: usize,
     new: &str,
@@ -572,7 +571,7 @@ pub(crate) fn mass_text(
     };
     let updated = edit::spliced(text, &[&one]);
     let old_text = lines[from - 1..to].join("\n");
-    let mut memo = change::context(text, from, to - from + 1, cap);
+    let mut memo = change::context(table, text, from, to - from + 1, cap);
     memo["atLine"] = json!(from);
     memo["old"] = json!(old_text);
     Ok((

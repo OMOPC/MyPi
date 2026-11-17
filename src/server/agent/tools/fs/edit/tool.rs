@@ -7,6 +7,7 @@ use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::change;
+use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 use crate::server::agent::tools::workspace::write_atomic;
@@ -46,8 +47,10 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
     env.workspace.with_write(&p, || {
         let text = std::fs::read_to_string(&p).context("failed to read file")?;
+        let table = lang::table(&p, &text);
         let (updated, memo, message) = exact_text(
             &text,
+            &table,
             &args.str(OLD)?,
             &args.str(NEW)?,
             env.full_item_budget,
@@ -63,6 +66,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 /// Replace one unique run of text.
 pub(crate) fn exact_text(
     text: &str,
+    table: &lang::Table,
     old: &str,
     new: &str,
     cap: usize,
@@ -79,7 +83,7 @@ pub(crate) fn exact_text(
             let total = text.lines().count() + new_lines - old_lines;
             Ok((
                 text.replacen(old, new, 1),
-                change::context(text, at, old_lines, cap),
+                change::context(table, text, at, old_lines, cap),
                 change::receipt(at, old_lines, new_lines, total),
             ))
         }

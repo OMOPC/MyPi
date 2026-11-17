@@ -8,7 +8,7 @@ use super::gate::{self, Check, Fault, Unparsed};
 use super::skeleton;
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::output::ToolResult;
-use crate::server::agent::tools::fs::read::sparse;
+use crate::server::agent::tools::fs::lang;
 use crate::server::platform::stop::Stop;
 
 /// How many lines one error block may take.
@@ -208,7 +208,7 @@ fn hanging(fault: &Fault) -> String {
 fn seam_block(root: &Path, fault: &Fault) -> Vec<String> {
     let mut out = vec![format!("--- {}:{} ---", fault.file, fault.line)];
     if let Ok(source) = std::fs::read_to_string(root.join(&fault.file)) {
-        out.extend(seam(&source, fault.line));
+        out.extend(seam(&source, fault.line, &root.join(&fault.file)));
     }
     out.push(format!("! {}", fault.message));
     for help in &fault.helps {
@@ -276,15 +276,15 @@ fn append(results: &mut [ToolResult], call_id: &str, lines: &[String]) {
     result.result = text;
 }
 
-/// The error's own lines, two above and two below, and the item they sit in.
-fn seam(text: &str, line: usize) -> Vec<String> {
+/// The error's own lines, two above and two below, and the piece they sit in.
+fn seam(text: &str, line: usize, path: &Path) -> Vec<String> {
     let raw: Vec<&str> = text.lines().collect();
-    let code = sparse::stripped(text);
-    let closes = skeleton::closes(&code);
+    let table = lang::table(path, text);
     let mut out: Vec<String> = Vec::new();
     let width = raw.len().to_string().len().max(3);
     let spot = line.saturating_sub(1);
-    if let Some(block) = skeleton::innermost(&raw, &code, &closes, spot) {
+
+    if let Some(block) = skeleton::innermost(&table, spot) {
         out.push(format!(
             "in: {} ({}..{})",
             block.head,
