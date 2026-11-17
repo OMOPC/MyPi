@@ -9,7 +9,7 @@ mod text;
 mod up;
 mod view;
 
-pub(crate) use entries::entries_all;
+pub(crate) use entries::{entries, entries_all};
 pub(crate) use locate::{canonical, declares_modules, locate, src_of};
 pub(crate) use text::plural;
 pub(crate) use view::view;

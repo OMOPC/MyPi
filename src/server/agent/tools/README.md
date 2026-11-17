@@ -105,7 +105,7 @@ that tool needs (the tool checks them, not the schema).
 | tool | parameters, in index order |
 |---|---|
 | `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`) |
-| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
+| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1), `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap) and `item` (a piece's own header: every piece under the path whose text carries it answers whole, every line numbered) |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
 | `write` | `path` always, `content` always |

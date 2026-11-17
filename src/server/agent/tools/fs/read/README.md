@@ -7,9 +7,9 @@ module's context. The tool bounds its own answer, which is why the front door ne
 
 ### One call
 
-`files` is one item per path, each with its own `offset` (1-based, default 1) and `limit`. Items are
-answered in the order the call names them, and one item's failure never stops the ones after it. A
-session with one item answers that item's error as the call's own.
+`files` is one item per path, each with its own `offset` (1-based, default 1), `limit` and `item`.
+Items are answered in the order the call names them, and one item's failure never stops the ones
+after it. A session with one item answers that item's error as the call's own.
 
 A file's budget comes from its kind; `limit` narrows the line count and never widens it.
 
@@ -96,6 +96,23 @@ A kept document is never weighed and never vouched for: it cannot earn `latest`,
 level from being vouched for, and it is stamped like any other file when the level is not. A level
 holding no document at all is vouched for, so an ordinary source directory answers as it always
 did. A file whose moment cannot be read leaves its level unjudged, which stamps the level.
+
+### Item mode
+
+An item that names `item` turns its path into a scope: every piece under it whose own text carries
+that string answers whole, every line numbered, in line order. What is matched is a piece's `exact`
+— the header as the file writes it (`impl Shout for Dumb`) — never its label template (`impl a for
+b`); runs of whitespace collapse on both sides, so spacing never hides a match, and nothing else is
+normalized.
+
+A piece answers with its own header and its span. When another piece holds it, the holder's exact
+follows in parentheses: `fn walk(&self) (impl List)  2..5`. A directory scopes every source file
+under it, and each answer's file is named above its first piece: `==> src/a/b.rs`.
+
+`offset` and `limit` belong to the body read and take no part here. The answer spends the source
+file's own budget, 800 lines and 256 KiB, and pieces past it are counted in `[+N more items]`. Every
+file it drew from is stamped in `env.seen`, as a body read stamps one, so `splice` needs no second
+read.
 
 ### The module view
 

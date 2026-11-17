@@ -9,6 +9,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `mod.rs` | module declarations and the one re-export |
 | `tool.rs` | the `read` tool: the path array, the per-kind budgets and the per-item `limit` under them, one path's answer, and the module view that follows a Rust body |
 | `dir.rs` | directory listings: one level per directory, each level's stamp verdict, entry counts, junk named but never opened |
+| `items.rs` | the item mode: the pieces whose own text carries the remembered header, under one file or a whole directory |
 | `sniff.rs` | an image's format from its first bytes |
 | `hub/mod.rs` | declares the graph's files and re-exports its outward names |
 | `hub/locate.rs` | the module a file belongs to: its entry file, its crate, its chain, and a path relative to the crate |
@@ -34,6 +35,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 ```text
 read::TOOL
   → dir::listing          a directory: one level's entries, each level's verdict, then the children
+  → items::answer         a remembered header: every piece under the path whose own text carries it
   → block                 one file: an image card, or a body
       → Numbers           the sorter's key lines under splice, every line under a file it does not
                           take, none under edit

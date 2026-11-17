@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 /// One directory's entries for a scan: junk and dot entries are dropped, so no walk enters a
 /// build tree. Directories come first, and the order is case-insensitive.
-pub(super) fn entries(dir: &Path) -> Vec<(String, PathBuf, bool)> {
+pub(crate) fn entries(dir: &Path) -> Vec<(String, PathBuf, bool)> {
     entries_where(dir, false)
 }
 

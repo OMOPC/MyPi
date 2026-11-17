@@ -2,6 +2,7 @@
 
 mod dir;
 mod hub;
+mod items;
 mod sniff;
 mod tool;
 

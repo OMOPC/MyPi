@@ -6,9 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, anyhow};
 
-use super::dir;
-use super::hub;
-use super::sniff;
+use super::{dir, hub, items, sniff};
 use crate::server::agent::request::contract::ItemOk;
 use crate::server::agent::request::message::ImagePart;
 use crate::server::agent::tools::contract::env::{Env, Stamp};
@@ -23,8 +21,8 @@ use base64::Engine as _;
 const FILES: usize = 0;
 
 /// A source file's own budget: 800 lines, 256 KiB.
-const MAX_LINES_SOURCE: usize = 800;
-const MAX_BYTES_SOURCE: usize = 256 * 1024;
+pub(crate) const MAX_LINES_SOURCE: usize = 800;
+pub(crate) const MAX_BYTES_SOURCE: usize = 256 * 1024;
 
 /// Every other file's budget: 200 lines, 64 KiB.
 const MAX_LINES: usize = 200;
@@ -42,6 +40,13 @@ const FILE_FIELDS: &[Param] = &[
         "Max lines this file may take; a source file answers 800 when this is left out, anything else \
          200, and neither cap moves.",
     ),
+    Param::new(
+        "item",
+        Kind::Text,
+        "A piece's own header, as the model remembers it: every piece under this path whose header \
+         says that text answers whole, every line numbered. Omitted: the path answers as a file or a \
+         listing, and `offset` and `limit` hold.",
+    ),
 ];
 
 const PARAMS: &[Param] = &[Param::new(
@@ -55,14 +60,17 @@ pub(crate) const TOOL: Tool = Tool {
     about: "Read files or directories; a sorted language answers with key line numbers under \
             splice, a source file with an 800-line budget and a module view when it has one, \
             anything else 200.",
-    fields: "`files` takes one item per path, with `offset` (1-based, default 1) and `limit` \
-             (default: 800 for a source file, 200 otherwise, never above that file's own cap). A \
-             file answers its lines. A directory answers its immediate children, files with \
-             their line counts and directories by name, then opens each child one level further, \
-             folding a directory of ten files or more into counts. A level whose upper-case `.md` \
-             documents are newer than every file beside it drops the stamps and marks them \
-             `(latest)`; a document the user keeps current is marked `(persistent)` and never \
-             dated. Any other level stamps every file of it. The session root carries a bonus.",
+    fields: "`files` takes one item per path, with `offset` (1-based, default 1), `limit` (default: \
+             800 for a source file, 200 otherwise, never above that file's own cap) and `item`. \
+             Without `item`, a file answers its lines and a directory its entries. A directory \
+             answers its immediate children, files with their line counts and directories by name, \
+             then opens each child one level further, folding a directory of ten files or more into \
+             counts. A level whose upper-case `.md` documents are newer than every file beside it \
+             drops the stamps and marks them `(latest)`; a document the user keeps current is \
+             marked `(persistent)` and never dated. Any other level stamps every file of it. The \
+             session root carries a bonus. With `item`, the path is a scope instead: every piece \
+             under it whose own header says that text answers whole, every line numbered, in line \
+             order; a directory names each answer's file.",
     params: PARAMS,
     run,
     summary,
@@ -90,7 +98,10 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let mut images: Vec<ImagePart> = Vec::new();
     for (item, target) in items.iter().zip(targets) {
         let result = match target {
-            Ok(path) => block(env, &batch, item, &path, total > 1),
+            Ok(path) => match item.opt_str("item")? {
+                Some(wanted) => named(env, item, &path, &wanted, total > 1),
+                None => block(env, &batch, item, &path, total > 1),
+            },
             Err(e) => Err(e),
         };
         match result {
@@ -130,6 +141,23 @@ fn resolved(env: &Env, item: &Item) -> Result<PathBuf> {
     let raw = item.text("path")?;
     anyhow::ensure!(!raw.trim().is_empty(), "`{}` has no path", item.label());
     env.workspace.resolve_any(&raw, true)
+}
+
+fn named(
+    env: &mut Env,
+    item: &Item,
+    path: &Path,
+    wanted: &str,
+    headed: bool,
+) -> Result<(String, Vec<ImagePart>)> {
+    let raw = item.text("path")?;
+    let text = items::answer(env, path, wanted)?;
+    let answered = if headed {
+        format!("==> {raw}\n{text}")
+    } else {
+        text
+    };
+    Ok((answered, Vec::new()))
 }
 
 /// An image's answer, when the file is one and this session's model can see: a one-line card and
