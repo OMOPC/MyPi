@@ -2,6 +2,7 @@
 
 pub mod call;
 pub mod env;
+pub mod halt;
 pub mod job;
 pub mod output;
 pub mod view;

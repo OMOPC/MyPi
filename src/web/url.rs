@@ -93,7 +93,13 @@ pub(crate) fn site(address: &str) -> String {
     let host = host.strip_prefix("www.").unwrap_or(&host);
     let name: String = host
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     if name.is_empty() {
         "page".to_string()

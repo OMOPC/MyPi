@@ -5,7 +5,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash as _, Hasher as _};
 
 use super::edit::{self, Edit};
-use crate::server::agent::tools::bash::gate;
+use crate::server::agent::tools::fs::gate;
 use crate::server::platform::stop::Stop;
 
 /// The word a change's wrapper comment starts with. The comment carries a fingerprint of the

@@ -1,7 +1,7 @@
 //! Rust read by line: `mod` declarations, `pub` items, `pub use`, and the use trees under them.
 
 use super::text::{clip, strip_attrs, strip_vis};
-use crate::server::agent::tools::bash::change;
+use crate::server::agent::tools::fs::change;
 
 /// `pub mod x;` lines, in the order the hub writes them.
 pub(super) fn declarations(text: &str) -> Vec<(String, String)> {

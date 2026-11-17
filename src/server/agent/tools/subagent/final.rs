@@ -2,10 +2,10 @@
 
 use anyhow::Result;
 
-use crate::server::agent::tools::bash::{edit, splice};
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
+use crate::server::agent::tools::fs::{edit, splice};
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 
@@ -76,11 +76,11 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                     splice::mass_text(&draft.read()?, from, to, &block, env.full_item_budget)?
                 }
                 None => edit::exact_text(
-                        &draft.read()?,
-                        &args.str(OLD)?,
-                        &args.str(NEW)?,
-                        env.full_item_budget,
-                    )?,
+                    &draft.read()?,
+                    &args.str(OLD)?,
+                    &args.str(NEW)?,
+                    env.full_item_budget,
+                )?,
             };
             draft.write(&text)?;
             Ok(ToolOutput::text(message))

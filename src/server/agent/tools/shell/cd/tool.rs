@@ -11,11 +11,7 @@ use crate::server::agent::tools::workspace;
 
 const PATH: usize = 0;
 
-const PARAMS: &[Param] = &[Param::new(
-    "path",
-    Kind::Text,
-    "Target directory.",
-)];
+const PARAMS: &[Param] = &[Param::new("path", Kind::Text, "Target directory.")];
 
 pub(crate) const TOOL: Tool = Tool {
     name: "cd",

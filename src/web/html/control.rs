@@ -194,8 +194,7 @@ pub(crate) fn expression(regions: &[Part]) -> String {
     let scope = serde_json::to_string(&scope).expect("a rule's regions always serialize");
     let skip = serde_json::to_string(SKIP).expect("a selector list always serializes");
     let direct = serde_json::to_string(DIRECT).expect("a selector list always serializes");
-    SCAN
-        .replace("%SKIP%", &skip)
+    SCAN.replace("%SKIP%", &skip)
         .replace("%DIRECT%", &direct)
         .replace("%SCOPE%", &scope)
 }

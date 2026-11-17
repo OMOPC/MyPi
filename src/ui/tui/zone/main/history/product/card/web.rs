@@ -3,8 +3,9 @@
 use super::super::super::prefetch::color::code;
 use super::super::super::row::{Lead, Row, Run};
 use super::{
-    Section, State, ToolBlock, ToolOutcome, ToolRenderer, arg_bool, arg_scalar, arg_str, error_body,
-    error_under, head, non_empty_lines, one_line, output_lines, partial, short_url, truncate,
+    Section, State, ToolBlock, ToolOutcome, ToolRenderer, arg_bool, arg_scalar, arg_str,
+    error_body, error_under, head, non_empty_lines, one_line, output_lines, partial, short_url,
+    truncate,
 };
 use crate::ui::tui::text::glyphs as g;
 use crate::ui::tui::theme::fixed;
@@ -120,4 +121,3 @@ fn label_of(op: &str) -> String {
         None => "Web".to_string(),
     }
 }
-

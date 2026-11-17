@@ -29,12 +29,7 @@ impl Edit {
     /// One `edits[k]` of one call, read against a snapshot of `base` lines. A `@@COPY(a..b)@@` in
     /// `new` becomes the snapshot's own lines; a `@@CUT(a..b)@@` does the same and adds the change
     /// that takes those lines away.
-    pub(crate) fn read(
-        item: &Item,
-        call: usize,
-        index: usize,
-        base: &[&str],
-    ) -> Result<Vec<Self>> {
+    pub(crate) fn read(item: &Item, call: usize, index: usize, base: &[&str]) -> Result<Vec<Self>> {
         let total = base.len();
         let start = item.line("start")?;
         let end = usize::try_from(item.int("end")?)

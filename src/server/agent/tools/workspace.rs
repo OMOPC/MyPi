@@ -132,9 +132,7 @@ pub fn resolve_dir(cwd: &std::path::Path, raw: &str) -> Result<std::path::PathBu
     } else {
         cwd.join(target)
     };
-    let real = target
-        .canonicalize()
-        .with_context(|| "no such dir")?;
+    let real = target.canonicalize().with_context(|| "no such dir")?;
     anyhow::ensure!(real.is_dir(), "not a directory");
     Ok(real)
 }

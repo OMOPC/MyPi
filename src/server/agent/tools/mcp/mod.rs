@@ -172,13 +172,25 @@ fn call(bridge: &dyn McpBridge, args: &Args, stop: &Arc<Stop>) -> Result<ToolOut
     Ok(produced)
 }
 
-fn call_one(bridge: &dyn McpBridge, item: &Item, stop: &Arc<Stop>) -> Result<(String, String, String)> {
+fn call_one(
+    bridge: &dyn McpBridge,
+    item: &Item,
+    stop: &Arc<Stop>,
+) -> Result<(String, String, String)> {
     let server = item.text("server")?;
     let server = server.trim();
-    anyhow::ensure!(!server.is_empty(), "`{}.server` must not be empty", item.label());
+    anyhow::ensure!(
+        !server.is_empty(),
+        "`{}.server` must not be empty",
+        item.label()
+    );
     let tool = item.text("tool")?;
     let tool = tool.trim();
-    anyhow::ensure!(!tool.is_empty(), "`{}.tool` must not be empty", item.label());
+    anyhow::ensure!(
+        !tool.is_empty(),
+        "`{}.tool` must not be empty",
+        item.label()
+    );
     let arguments = match item.object("args")? {
         None => json!({}),
         Some(map) => Value::Object(map),
@@ -224,7 +236,10 @@ fn summary(call: &CallRecord) -> String {
     let first = items
         .first()
         .map(|item| {
-            let server = item.get("server").and_then(Value::as_str).unwrap_or_default();
+            let server = item
+                .get("server")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let tool = item.get("tool").and_then(Value::as_str).unwrap_or_default();
             format!("call {server}/{tool}")
         })

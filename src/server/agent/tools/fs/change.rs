@@ -202,7 +202,10 @@ pub(crate) fn context(text: &str, at: usize, span: usize, cap: usize) -> Value {
     let (from, to) = if holds {
         (first, last)
     } else {
-        (at.saturating_sub(WINDOW).max(1) - 1, (end + WINDOW).min(lines.len()) - 1)
+        (
+            at.saturating_sub(WINDOW).max(1) - 1,
+            (end + WINDOW).min(lines.len()) - 1,
+        )
     };
 
     // The breadcrumb: the blocks above the item, outermost first, the nearest three of them.
@@ -213,7 +216,10 @@ pub(crate) fn context(text: &str, at: usize, span: usize, cap: usize) -> Value {
         .map(|i| lines[*i].trim().trim_end_matches('{').trim().to_string())
         .collect();
     if !holds {
-        scope.insert(0, lines[first].trim().trim_end_matches('{').trim().to_string());
+        scope.insert(
+            0,
+            lines[first].trim().trim_end_matches('{').trim().to_string(),
+        );
     }
     let cut = scope.len() > 3;
     scope.truncate(3);
@@ -254,7 +260,3 @@ pub(crate) fn lines_of(text: &str) -> Vec<String> {
     }
     lines
 }
-
-
-
-

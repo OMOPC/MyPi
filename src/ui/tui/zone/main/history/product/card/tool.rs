@@ -85,10 +85,7 @@ impl ToolBlock<'_> {
             Run::fixed(format!(" {shown}"), fixed::TOOL_TITLE).bold(),
         ];
         if let Some(title) = self.renderer().title(self) {
-            runs.push(Run::fixed(
-                format!(": {title}"),
-                fixed::TOOL_TITLE,
-            ));
+            runs.push(Run::fixed(format!(": {title}"), fixed::TOOL_TITLE));
             return Row::of(Lead::None, runs);
         }
         if let Some(intent) = self.intent.filter(|intent| !intent.trim().is_empty()) {

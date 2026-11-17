@@ -2,12 +2,12 @@
 //! last write; this call only formats, writes, and hands the file's shell to the audit.
 use anyhow::Result;
 
-use crate::server::agent::tools::bash::fault;
-use crate::server::agent::tools::bash::gate;
-use crate::server::agent::tools::bash::halt::stopped;
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
+use crate::server::agent::tools::contract::halt::stopped;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
+use crate::server::agent::tools::fs::fault;
+use crate::server::agent::tools::fs::gate;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 

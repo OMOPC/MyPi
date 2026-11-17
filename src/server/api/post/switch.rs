@@ -22,15 +22,14 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
     emit::require_writer(api, viewer, session)?;
     api.ensure_booked(session)?;
     let address = format!("{provider}:{model}");
-    api.ledger()
-        .change(
-            session,
-            Change::Model {
-                provider,
-                model,
-                vision: resolved.entry.vision,
-            },
-        )?;
+    api.ledger().change(
+        session,
+        Change::Model {
+            provider,
+            model,
+            vision: resolved.entry.vision,
+        },
+    )?;
     emit::changed(api, viewer, session, json!({"model": address}));
     Ok(serde_json::json!({}))
 }

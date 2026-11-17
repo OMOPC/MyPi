@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
-use crate::server::agent::tools::bash::read::sparse;
 use crate::server::agent::tools::contract::env::{GrepLimits, Seen, Stamp};
+use crate::server::agent::tools::fs::read::sparse;
 use crate::server::agent::tools::summary;
 
 use super::rust::{self, Item};

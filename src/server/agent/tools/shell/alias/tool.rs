@@ -35,7 +35,11 @@ const PARAMS: &[Param] = &[
         Kind::Objects(ALIAS_FIELDS),
         "type=add: one item per alias. One item's failure never stops the ones after it.",
     ),
-    Param::new("names", Kind::TextList, "type=del: the alias names to delete."),
+    Param::new(
+        "names",
+        Kind::TextList,
+        "type=del: the alias names to delete.",
+    ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {

@@ -54,10 +54,7 @@ impl ToolRenderer for Call {
                 lines.extend(output_lines(&body.join("\n")));
             }
         }
-        vec![Section {
-            label: None,
-            lines,
-        }]
+        vec![Section { label: None, lines }]
     }
 }
 

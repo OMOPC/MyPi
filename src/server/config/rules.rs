@@ -208,8 +208,8 @@ const MANIFEST: &str = include_str!("web-rules.json");
 /// What a new machine starts from when its file cannot be read: the manifest and every set it
 /// names, both read from the binary. A name neither can answer is a build error, not a page.
 fn builtin() -> Rules {
-    let entries: Vec<Entry> = serde_json::from_str(MANIFEST)
-        .expect("the built-in manifest parses: it is compiled in");
+    let entries: Vec<Entry> =
+        serde_json::from_str(MANIFEST).expect("the built-in manifest parses: it is compiled in");
     let (rules, failed) = flatten(entries, compiled);
     if let Some((name, problem)) = failed.into_iter().next() {
         panic!("the built-in manifest names {name}, which the binary cannot answer: {problem}");

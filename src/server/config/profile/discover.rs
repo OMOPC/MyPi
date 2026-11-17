@@ -15,12 +15,7 @@ pub fn locate(paths: &ConfigPaths, name: &str, notices: &mut Vec<ConfigNotice>) 
 
 pub fn list(paths: &ConfigPaths, notices: &mut Vec<ConfigNotice>) -> Vec<String> {
     let (found, unusable) = collect(paths, notices);
-    available(
-        found
-            .keys()
-            .filter(|n| !unusable.contains(*n))
-            .cloned(),
-    )
+    available(found.keys().filter(|n| !unusable.contains(*n)).cloned())
 }
 
 /// Every name a session may open with: the directories that hold a prompt, then the built-in names

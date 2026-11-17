@@ -3,11 +3,12 @@
 
 use std::collections::BTreeSet;
 
-use super::bash::{alias, bash as bash_tool, cd, context, edit, grep, read, splice, write};
+use super::fs::{edit, grep, read, splice, write};
 use super::kairos::tool;
 use super::mcp;
-use super::memo::{memo as memo_tool, todo};
+use super::memo::{context, memo as memo_tool, todo};
 use super::search;
+use super::shell::{alias, bash as bash_tool, cd};
 use super::spec::Tool;
 use super::subagent;
 use crate::server::agent::request::message::ToolDef;
@@ -59,4 +60,3 @@ pub fn defaults() -> Vec<String> {
         .map(|tool| tool.name.to_string())
         .collect()
 }
-

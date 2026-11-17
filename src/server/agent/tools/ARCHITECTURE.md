@@ -7,10 +7,11 @@ What is here, what each file holds, who talks to whom. Current state only.
 | file | holds |
 |---|---|
 | `mod.rs` | module declarations and re-exports |
-| `contract/mod.rs` | declares the five contract groups |
+| `contract/mod.rs` | declares the six contract groups |
 | `contract/call.rs` | `Batch`, `Cwd` |
 | `contract/output.rs` | `ToolResult`, `ToolOutput`, `Effect`, `MemoOp`, `AliasOp` |
 | `contract/env.rs` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp`, the model table (`Models`, `ModelFacts`) and the child roster derived from it (`roster`) |
+| `contract/halt.rs` | the one sentence a stopped turn leaves: `INTERRUPTED`, and the answer a tool gives when nothing was written |
 | `contract/view.rs` | the `Source`, `Export`, `Child`, `Draft`, `MemoRead` ports, the history shapes, and `MemoScope`, `MemoReadOp`, `MemoVersion`, `MemoView` |
 | `contract/job.rs` | the job vocabulary a tool shares with the loop: `JobSpec`, `Schedule`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink`, and the `JobHost` port |
 | `engine.rs` | `Engine`: `Batch::run` — env, gates, decode, run, stamp, measure (every tool but `read`), events; a call whose arguments arrived answers, and a stop landing mid-call becomes the result's reason |
@@ -18,34 +19,33 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `summary.rs` | one recorded call's arguments, and the clip every tool's history summary reuses |
 | `registry.rs` | `TOOLS`, `spec`, `roster` |
 | `workspace.rs` | `Workspace`, the licensed zones, the per-path write lock, `write_atomic`, `canonicalize_lenient` |
-| `bash/mod.rs` | declares the bash family |
-| `bash/bash/mod.rs` | declares the command tool, the admission gate, the segment scanner, the guard and the runner |
-| `bash/bash/tool.rs` | the `bash` tool |
-| `bash/bash/admit.rs` | `admit`: aliases → `#ref` → guard, and the line it hands the runner |
-| `bash/bash/segment.rs` | the separator set and the segment heads; the guard and the alias expansion share both |
-| `bash/bash/guard.rs` | the command classifier: `normalize`, `classify`, `Verdict`, `RuleHit` |
-| `bash/bash/shell.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc` |
-| `bash/read/` | the `read` tool, directory listings and the module graph; see `bash/read/ARCHITECTURE.md` |
-| `bash/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its three parameters, its summary |
-| `bash/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the `.rs` files under them read in parallel, the matcher, each file's hits |
-| `bash/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
-| `bash/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
-| `bash/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
-| `bash/write/{mod,tool}.rs` | `write`: the content through the formatter, the write whatever the formatter said, then the compiler's report unless the text does not parse |
-| `bash/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
-| `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; `@@COPY(a..b)@@` and `@@CUT(a..b)@@` filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
-| `bash/splice/edit.rs` | one change: its range, its block, the macro ranges it fills and the changes it cuts, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
-| `bash/halt.rs` | the one sentence a stopped turn leaves: `INTERRUPTED`, and the answer a tool gives when nothing was written |
-| `bash/gate.rs` | the formatting gate: the formatter's four outcomes for one text (only a reached verdict is remembered), the edition and name of the crate a file belongs to, one deadline-free `cargo check` of a crate (`gate::check_crate`, errors and warnings), every child in a process group of its own |
-| `bash/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
-| `bash/fault.rs` | the batch's audit: one check per crate written into, every error and warning landing once — under the edit whose lines it hit, under the write that replaced the file whole, or in the crate's list on the last answer that can take it |
-| `bash/splice/fmt.rs` | rustfmt through the gate: the merged text with a marker comment around every block, the markers' lines as each change's landing, the text without them, and the per-block trials that only name what the parser blames |
-| `bash/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, and the segment memo a front end draws |
-| `bash/splice/items.rs` | items from text for the receipt's breadcrumb: a header's ends by bracket depth, each item's container, every item around one line |
-| `bash/change.rs` | `context` (the item around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
-| `bash/cd/{mod,tool}.rs` | `cd` |
-| `bash/alias/{mod,tool}.rs` | `alias` add/list/remove; the config layer is read-only here |
-| `bash/context/{mod,tool}.rs` | `context`: `query` through `Source::history`, `show` through `Source::block`, long listings to `Export::dir` |
+| `fs/mod.rs` | declares the fs family |
+| `fs/read/` | the `read` tool, directory listings and the module graph; see `fs/read/ARCHITECTURE.md` |
+| `fs/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its three parameters, its summary |
+| `fs/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the `.rs` files under them read in parallel, the matcher, each file's hits |
+| `fs/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
+| `fs/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
+| `fs/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
+| `fs/write/{mod,tool}.rs` | `write`: the content through the formatter, the write whatever the formatter said, then the compiler's report unless the text does not parse |
+| `fs/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
+| `fs/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the copy and cut macros filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
+| `fs/splice/edit.rs` | one change: its range, its block, the macro ranges it fills and the changes it cuts, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
+| `fs/gate.rs` | the formatting gate: the formatter's four outcomes for one text (only a reached verdict is remembered), the edition and name of the crate a file belongs to, one deadline-free `cargo check` of a crate (`gate::check_crate`, errors and warnings), every child in a process group of its own |
+| `fs/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
+| `fs/fault.rs` | the batch's audit: one check per crate written into, every error and warning landing once — under the edit whose lines it hit, under the write that replaced the file whole, or in the crate's list on the last answer that can take it |
+| `fs/splice/fmt.rs` | rustfmt through the gate: the merged text with a marker comment around every block, the markers' lines as each change's landing, the text without them, and the per-block trials that only name what the parser blames |
+| `fs/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, and the segment memo a front end draws |
+| `fs/splice/items.rs` | items from text for the receipt's breadcrumb: a header's ends by bracket depth, each item's container, every item around one line |
+| `fs/change.rs` | `context` (the item around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
+| `shell/mod.rs` | declares the shell family |
+| `shell/bash/mod.rs` | declares the command tool, the admission gate, the segment scanner, the guard and the runner |
+| `shell/bash/tool.rs` | the `bash` tool |
+| `shell/bash/admit.rs` | `admit`: aliases → `#ref` → guard, and the line it hands the runner |
+| `shell/bash/segment.rs` | the separator set and the segment heads; the guard and the alias expansion share both |
+| `shell/bash/guard.rs` | the command classifier: `normalize`, `classify`, `Verdict`, `RuleHit` |
+| `shell/bash/shell.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc` |
+| `shell/cd/{mod,tool}.rs` | `cd` |
+| `shell/alias/{mod,tool}.rs` | `alias` add/list/remove; the config layer is read-only here |
 | `kairos/mod.rs` | declares the kairos modules |
 | `kairos/tool.rs` | the `kairos` tool manual and parameters |
 | `kairos/service.rs` | `kairos` operation dispatch and rendering |
@@ -58,6 +58,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `mcp/sync.rs` | `SyncMcpBridge`: one lazy stdio server per name; a rescan re-reads the table and drops the pool when the table or the directory changed; a stop kills the group of the server a call waits on |
 | `mcp/stdio.rs` | one stdio server process in a process group of its own: spawn, JSON-RPC, pending map, stderr tail, shutdown |
 | `memo/mod.rs` | declares the memo family |
+| `memo/context/{mod,tool}.rs` | `context`: `query` through `Source::history`, `show` through `Source::block`, long listings to `Export::dir` |
 | `memo/memo/{mod,tool}.rs` | the `memo` tool: writes as effects, reads through `MemoRead` |
 | `memo/todo/{mod,tool}.rs` | the `todo` tool: reads the anchor, replays, applies, writes the memo |
 | `memo/todo/replay.rs` | the pure replay: a call sequence → the list, anchored on the newest reset |
@@ -95,14 +96,15 @@ Engine::run
   → registry::spec              and env.allows
   → Args::fill
   → Tool::run
-      bash/*          ── shell, file tools, alias, context
+      fs/*            ── file tools and the language rules they lean on
+      fs/grep         ── scan (the walk) ── rust (sparse's blanker and frames)
       grep            ── scan (the walk) ── rust (sparse's blanker and frames)
       kairos          ── Source::jobs (a JobHost) ── loop/job
       task            ── template, answer name ── Effect::Child
       final           ── Source::child (a Child) ── draft, answer file
       mcp             ── mcp::sync ── mcp::stdio
       web, search     ── crate::web
-      memo/todo       ── Source, and the pure todo replay
+      memo/*          ── memo, todo, context
   → effect stamping → spill → ToolOutput
 ```
 
@@ -149,7 +151,7 @@ Engine::run
 14. `ToolOutput.fail` and `engine`: any reason fails the call, and a call cut short states it in the
     one item it answered; the front door adds one for the stop it observed, and the tool reports its
     own deadline.
-15. `bash/fault.rs`'s audit and the crate's own manifest:
+15. `fs/fault.rs`'s audit and the crate's own manifest:
     above a written file that holds a `Cargo.toml`, so a file outside any crate is never checked,
     and one batch gives one check per crate.
 16. `splice` and `write` both read a file's edition and formatter outcome from `gate`; the answer's

@@ -12,14 +12,14 @@ opens the database, the config file, or the loop.
 
 | # | tool | file |
 |---|---|---|
-| 1 | `read` | `bash/read/tool.rs` |
-| 2 | `grep` | `bash/grep/tool.rs` |
-| 3 | `edit` | `bash/edit/tool.rs` |
-| 4 | `splice` | `bash/splice/tool.rs` |
-| 5 | `write` | `bash/write/tool.rs` |
-| 6 | `cd` | `bash/cd/tool.rs` |
-| 7 | `bash` | `bash/bash/tool.rs` |
-| 8 | `alias` | `bash/alias/tool.rs` |
+| 1 | `read` | `fs/read/tool.rs` |
+| 2 | `grep` | `fs/grep/tool.rs` |
+| 3 | `edit` | `fs/edit/tool.rs` |
+| 4 | `splice` | `fs/splice/tool.rs` |
+| 5 | `write` | `fs/write/tool.rs` |
+| 6 | `cd` | `shell/cd/tool.rs` |
+| 7 | `bash` | `shell/bash/tool.rs` |
+| 8 | `alias` | `shell/alias/tool.rs` |
 | 9 | `kairos` | `kairos/tool.rs` |
 | 10 | `task` | `subagent/task.rs` |
 | 11 | `final` | `subagent/final.rs` |
@@ -28,7 +28,7 @@ opens the database, the config file, or the loop.
 | 14 | `search` | `search/mod.rs` |
 | 15 | `memo` | `memo/memo/tool.rs` |
 | 16 | `todo` | `memo/todo/tool.rs` |
-| 17 | `context` | `bash/context/tool.rs` |
+| 17 | `context` | `memo/context/tool.rs` |
 
 **The session's list is the only gate.** `roster(names)` expands a list into manuals, keeping the
 rows whose names appear in it and nothing else. `engine` reads the same list through
@@ -65,7 +65,7 @@ a batch with the turn's stop signal
   → ToolResult
 ```
 
-After the batch's last call, every written call's shell reaches `bash/fault.rs`'s audit: one
+After the batch's last call, every written call's shell reaches `fs/fault.rs`'s audit: one
 `cargo check` per crate written into, to completion, no deadline — the turn's stop is its only
 end. Every error and every warning lands exactly once: under the edit whose lines it hit, under
 the `write` that replaced the whole file, or in the crate's own list, which rides on the last
@@ -256,28 +256,10 @@ Workspace { shared }
 - A todo result's memo carries the whole list, so a front end maintains it by replacement. A
   fully-ticked list stays until the next `set`; nothing clears itself.
 
-### Bash order
+### Shell order
 
-```text
-admit:  expand_alias  →  rewrite #<ref>  →  guard::classify     then  shell::run
-```
-
-`admit` is the only way raw text becomes a spawnable line; `bash` and `kairos` both call it. `guard`
-sees the final command. It returns `Allow`, `Warn(ids)` or `Block(ids)`; a blocked command never
-starts. `kairos` admits at tool-call time and freezes the admitted line, so a job exists only for a
-command that already passed. `alias add` runs the same classifier on the command it stores.
-
-One call may carry several lines; the shell runs them in order. A bare newline is a separator to the
-guard, a backslash before a newline is a continuation, and `expand_alias` rewrites the head word of
-every segment once.
-
-The command itself runs in the session's shell (`Env.bash.shell`): `bash` or `zsh` on unix, `pwsh`
-or `niu` on windows. `platform::shell` builds the command line and the quoted path a `#<ref>` becomes;
-`platform::proc` starts it as its own process group and stops it group-wide, TERM then KILL. A stop
-arrives through the `Stop` the runner registered after the spawn; the tool thread itself only
-receives, so nothing wakes it on a timer. Stdin is the null device: a command that prompts reads
-EOF, never the terminal the front end owns. The guard belongs to the unix shells only; `pwsh` and
-`niu` run the line as written.
+`admit` → `guard` → `shell::run`, and the shell a command finally runs in, are described in
+`shell/README.md`.
 
 ### context
 

@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 
-use crate::server::agent::tools::bash::bash::{admit, shell};
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::job::{Exit, JobCtx, JobOutcome, JobRunner, OutputSink};
+use crate::server::agent::tools::shell::bash::{admit, shell};
 use crate::server::platform::shell::Shell;
 
 #[derive(Debug, Clone)]

@@ -40,7 +40,8 @@ pub(super) fn lines(z: &mut ResumeZone) -> Vec<Line<'static>> {
     let width = size.cols as usize;
     // Frame: title + search + divider + list + divider + hint + bottom = 6 rows, plus whatever
     // the opening word and a refusal take from the list.
-    let extra = usize::from(z.failed()) + usize::from(z.opening().is_some())
+    let extra = usize::from(z.failed())
+        + usize::from(z.opening().is_some())
         + usize::from(z.error().is_some());
     let body_rows = (size.rows as usize).saturating_sub(6 + extra);
     let edge = Style::new().fg(fixed::DIM);
@@ -92,12 +93,7 @@ pub(super) fn lines(z: &mut ResumeZone) -> Vec<Line<'static>> {
 
     if count == 0 {
         if let Some(error) = z.error() {
-            out.push(card_row(
-                Line::from(fg(error, fixed::ERR)),
-                edge,
-                bg,
-                width,
-            ));
+            out.push(card_row(Line::from(fg(error, fixed::ERR)), edge, bg, width));
         } else {
             let msg = if !z.loaded() {
                 "正在读取…"

@@ -41,10 +41,7 @@ pub(crate) fn payload(cwd: &str, body: bool) -> Option<String> {
     if let Some((name, text)) = &picked {
         section(&mut out, name, text);
     }
-    if picked
-        .as_ref()
-        .is_some_and(|(name, _)| *name == AI)
-    {
+    if picked.as_ref().is_some_and(|(name, _)| *name == AI) {
         for (path, text) in related(cwd) {
             section(&mut out, &path, &text);
         }
@@ -112,9 +109,7 @@ fn declared(text: &str) -> Vec<String> {
             Some((prepare, width)) => {
                 let closes = ticks >= width && head[ticks..].trim().is_empty();
                 if closes {
-                    if prepare
-                        && let Ok(paths) = serde_yaml::from_str::<Vec<String>>(&block)
-                    {
+                    if prepare && let Ok(paths) = serde_yaml::from_str::<Vec<String>>(&block) {
                         out.extend(paths.into_iter().map(|path| path.trim().to_string()));
                     }
                     open = None;
@@ -165,4 +160,9 @@ fn canonical(path: &Path) -> PathBuf {
 
 const TERMS: [&str; 3] = ["AGENTS.md", "CLAUDE.md", "AI.md"];
 const AI: &str = "AI.md";
-const SECTIONS: [&str; 4] = ["[package]", "[workspace]", "[dependencies]", "[dev-dependencies]"];
+const SECTIONS: [&str; 4] = [
+    "[package]",
+    "[workspace]",
+    "[dependencies]",
+    "[dev-dependencies]",
+];

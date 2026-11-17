@@ -1,8 +1,8 @@
 //! Rust structure from text: which item a line sits in, and the header each item reads by.
 //! Braces are counted on comment- and literal-blanked code; a header runs until its own `{` or `;`.
 
-use crate::server::agent::tools::bash::change::head_of;
-use crate::server::agent::tools::bash::read::sparse;
+use crate::server::agent::tools::fs::change::head_of;
+use crate::server::agent::tools::fs::read::sparse;
 use crate::server::agent::tools::summary;
 
 /// One declaration: its header, its body's ends, and the header as one line.

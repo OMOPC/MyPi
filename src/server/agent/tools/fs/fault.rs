@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 
 use super::gate::{self, Check, Fault, Unparsed};
 use super::skeleton;
-use crate::server::agent::tools::bash::read::sparse;
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::output::ToolResult;
+use crate::server::agent::tools::fs::read::sparse;
 use crate::server::platform::stop::Stop;
 
 /// How many lines one error block may take.

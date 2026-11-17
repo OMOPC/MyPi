@@ -3,9 +3,7 @@
 use super::super::super::row::{Lead, Row, Run};
 use super::frame::wrap_rows;
 use super::tree;
-use super::{
-    Section, ToolBlock, ToolOutcome, ToolRenderer, arg_str, error_body, one_line,
-};
+use super::{Section, ToolBlock, ToolOutcome, ToolRenderer, arg_str, error_body, one_line};
 use crate::ui::tui::theme::fixed;
 
 pub(crate) struct Search;

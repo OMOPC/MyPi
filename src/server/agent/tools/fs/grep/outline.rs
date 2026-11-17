@@ -78,7 +78,11 @@ pub(crate) fn file(file: &scan::File, raw: &[&str], label: &str, caps: GrepLimit
         }
         let drawn = held + caps.items.saturating_sub(held);
         if children.len() > drawn {
-            out.push_str(&format!("{:CHILD$}[+{} more]\n", "", children.len() - drawn));
+            out.push_str(&format!(
+                "{:CHILD$}[+{} more]\n",
+                "",
+                children.len() - drawn
+            ));
         }
     }
     out

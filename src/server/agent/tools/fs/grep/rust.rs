@@ -3,8 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::server::agent::tools::bash::change::head_of;
-use crate::server::agent::tools::bash::read::sparse;
+use crate::server::agent::tools::fs::change::head_of;
+use crate::server::agent::tools::fs::read::sparse;
 use crate::server::agent::tools::summary;
 
 /// One declaration: its header, its body's ends, and the name it binds.

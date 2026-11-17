@@ -3,10 +3,10 @@
 use anyhow::{Context as _, Result, anyhow};
 use serde_json::Value;
 
-use crate::server::agent::tools::bash::change;
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
+use crate::server::agent::tools::fs::change;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 use crate::server::agent::tools::workspace::write_atomic;
@@ -46,8 +46,12 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
     env.workspace.with_write(&p, || {
         let text = std::fs::read_to_string(&p).context("failed to read file")?;
-        let (updated, memo, message) =
-            exact_text(&text, &args.str(OLD)?, &args.str(NEW)?, env.full_item_budget)?;
+        let (updated, memo, message) = exact_text(
+            &text,
+            &args.str(OLD)?,
+            &args.str(NEW)?,
+            env.full_item_budget,
+        )?;
         write_atomic(&p, &updated)?;
         Ok(ToolOutput::with_memo(
             format!("{message}: {}", p.display()),
@@ -90,4 +94,3 @@ pub(crate) fn exact_text(
 fn summary(call: &CallRecord) -> String {
     summary::clip(&summary::field(call, "path").unwrap_or_default(), 96)
 }
-

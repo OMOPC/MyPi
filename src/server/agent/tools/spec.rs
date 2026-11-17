@@ -187,7 +187,10 @@ impl Args {
             if key == "intent" || params.iter().any(|p| p.name == key) {
                 continue;
             }
-            bail!("this tool has no argument `{key}`; it takes {}", taken(params));
+            bail!(
+                "this tool has no argument `{key}`; it takes {}",
+                taken(params)
+            );
         }
         let mut values = Vec::with_capacity(params.len());
         for p in params {
@@ -344,7 +347,6 @@ impl Args {
                 .ok_or_else(|| self.wrong(i, "a string")),
         }
     }
-
 }
 
 // ---- one item of an object array ----
@@ -443,7 +445,11 @@ impl Item {
         let text = self.text(name)?;
         match self.param(name)?.kind {
             Kind::Choice(list) if !list.contains(&text.as_str()) => {
-                bail!("`{}` must be one of {}", self.field_path(name), list.join(" / "))
+                bail!(
+                    "`{}` must be one of {}",
+                    self.field_path(name),
+                    list.join(" / ")
+                )
             }
             _ => Ok(text),
         }
@@ -505,4 +511,3 @@ impl Tool {
         )
     }
 }
-

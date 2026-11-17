@@ -30,9 +30,7 @@ fn exits(zone: &mut MainZone) -> (Outcome, Vec<Request>) {
     let mut outcome = Outcome::Stay;
     for exit in zone.input.take_exits() {
         match exit {
-            ExitRequest::Submit { prefix, text } => {
-                requests.push(Request::Submit { prefix, text })
-            }
+            ExitRequest::Submit { prefix, text } => requests.push(Request::Submit { prefix, text }),
             ExitRequest::Interrupt => requests.push(Request::Interrupt),
             ExitRequest::OpenTree => {
                 outcome = Outcome::Show {

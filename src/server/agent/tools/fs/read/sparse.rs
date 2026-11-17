@@ -1,7 +1,7 @@
 //! Sparse line numbers: the lines a `splice` may start or end on.
 //! Comments and literals are blanked before any brace is counted.
 
-use crate::server::agent::tools::bash::change;
+use crate::server::agent::tools::fs::change;
 
 /// One boolean per line: does this line carry a number?
 pub(crate) fn anchors(text: &str) -> Vec<bool> {

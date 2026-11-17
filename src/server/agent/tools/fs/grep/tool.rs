@@ -19,12 +19,7 @@ const PARAMS: &[Param] = &[
         Kind::Text,
         "Exact literal string (or regex if `regex: true`). Supports `A::b` to locate `b` inside type/module `A`.",
     ),
-    Param::df(
-        "regex",
-        Kind::Flag,
-        "Parse `query` as regex", 
-        "false"
-    ),
+    Param::df("regex", Kind::Flag, "Parse `query` as regex", "false"),
     Param::new(
         "scope",
         Kind::TextList,

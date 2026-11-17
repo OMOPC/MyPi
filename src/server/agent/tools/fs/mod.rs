@@ -1,15 +1,10 @@
-//! The bash family: tools that work with the session cwd and the shell.
+// The fs family: files read and written by line number, and the language rules they lean on.
 
-pub(crate) mod alias;
-pub(crate) mod bash;
-pub(crate) mod cd;
 pub(crate) mod change;
-pub(crate) mod context;
 pub(crate) mod edit;
 pub(crate) mod fault;
 pub(crate) mod gate;
 pub(crate) mod grep;
-pub(crate) mod halt;
 pub(crate) mod read;
 pub(crate) mod skeleton;
 pub(crate) mod splice;

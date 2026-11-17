@@ -49,10 +49,7 @@ fn breadcrumb(b: &ToolBlock<'_>) -> Vec<Row> {
         return Vec::new();
     }
     let text = scope.join(&format!(" {} ", g::SEP));
-    vec![Row::of(
-        Lead::None,
-        vec![Run::fixed(text, fixed::DIM)],
-    )]
+    vec![Row::of(Lead::None, vec![Run::fixed(text, fixed::DIM)])]
 }
 
 /// The call as it arrives: the text going, then the text coming. A `splice` call names its ranges
@@ -202,7 +199,10 @@ fn diff_row(
 
 /// One unchanged line of the item: its old number, and the text painted by its language.
 fn context_row(painter: &mut code::Painter, at: usize, text: &str, width: usize) -> Row {
-    let mut runs = vec![Run::fixed(gutter(' ', Some(at), width), fixed::DIFF_CONTEXT)];
+    let mut runs = vec![Run::fixed(
+        gutter(' ', Some(at), width),
+        fixed::DIFF_CONTEXT,
+    )];
     for mut run in painter.runs(text) {
         run.attrs |= Modifier::DIM;
         runs.push(run);
@@ -254,10 +254,7 @@ fn edit_result(b: &ToolBlock<'_>, o: ToolOutcome<'_>) -> Vec<Row> {
     }
     match ToolView::from_details(o.details, o.text) {
         ToolView::Diff {
-            at,
-            old,
-            excerpt,
-            ..
+            at, old, excerpt, ..
         } => {
             let at = at.or_else(|| range_start(b.args));
             let old = old.or_else(|| partial::text(b.args, "old"));
@@ -326,14 +323,26 @@ fn item_rows(
             .then(|| changed_spans(&indentation(line).1, &indentation(added[i]).1))
             .flatten()
             .map(|(gone, _)| gone);
-        rows.push(diff_row('-', Some(excerpt.from + pre + i), line, span, width));
+        rows.push(diff_row(
+            '-',
+            Some(excerpt.from + pre + i),
+            line,
+            span,
+            width,
+        ));
     }
     for (i, line) in added.iter().enumerate() {
         let span = paired
             .then(|| changed_spans(&indentation(&removed[i]).1, &indentation(line).1))
             .flatten()
             .map(|(_, came)| came);
-        rows.push(diff_row('+', Some(excerpt.from + pre + i), line, span, width));
+        rows.push(diff_row(
+            '+',
+            Some(excerpt.from + pre + i),
+            line,
+            span,
+            width,
+        ));
     }
 
     let delta = new_lines.len() as isize - old_lines.len() as isize;

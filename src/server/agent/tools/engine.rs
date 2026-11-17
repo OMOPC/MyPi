@@ -7,15 +7,15 @@ use anyhow::Result;
 
 use super::contract::call::Batch;
 use super::contract::env::{Env, Limits};
+use super::contract::halt::INTERRUPTED;
 use super::contract::output::{ToolOutput, ToolResult};
 use super::contract::view::Child;
+use super::fs::{fault, grep, read};
 use super::registry;
 use super::spec::{Args, ToolProgress};
 use super::subagent::FINAL;
 use crate::server::agent::request::contract::{ItemOk, Spill, ToolCall};
 use crate::server::agent::request::live::{Element, Event, ToolEvent, Truncation};
-use crate::server::agent::tools::bash::halt::INTERRUPTED;
-use crate::server::agent::tools::bash::{fault, grep, read};
 use crate::server::platform::time::now_stamp;
 
 /// The one implementation of [`Batch`]. Everything a run needs arrives in its [`Env`].

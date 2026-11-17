@@ -1,7 +1,7 @@
 //! The file's skeleton: one row per item at its span, and the seams a change or an error sits in.
 
-use crate::server::agent::tools::bash::change;
-use crate::server::agent::tools::bash::read::sparse;
+use crate::server::agent::tools::fs::change;
+use crate::server::agent::tools::fs::read::sparse;
 use crate::server::agent::tools::summary;
 
 /// One item: the lines it covers and the head it reads by.
