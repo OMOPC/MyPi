@@ -39,9 +39,9 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; `@@COPY(a..b)@@` and `@@CUT(a..b)@@` filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
 | `bash/splice/edit.rs` | one change: its range, its block, the macro ranges it fills and the changes it cuts, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
 | `bash/halt.rs` | the one sentence a stopped turn leaves: `INTERRUPTED`, and the answer a tool gives when nothing was written |
-| `bash/gate.rs` | the formatting gate: the formatter's four outcomes for one text (only a reached verdict is remembered), the edition of the crate a file belongs to, one `cargo check` of that crate with a deadline, every child in a process group of its own |
+| `bash/gate.rs` | the formatting gate: the formatter's four outcomes for one text (only a reached verdict is remembered), the edition and name of the crate a file belongs to, one deadline-free `cargo check` of a crate (`gate::check_crate`, errors and warnings), every child in a process group of its own |
 | `bash/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
-| `bash/fault.rs` | the compiler's report, drawn: one block per error — the item it sits in, the lines around it, what the compiler said and suggested |
+| `bash/fault.rs` | the batch's audit: one check per crate written into, faults that land on a written edit hang under it, the crate's report rides on the last written answer |
 | `bash/splice/fmt.rs` | rustfmt through the gate: the merged text with a marker comment around every block, the markers' lines as each change's landing, the text without them, and the per-block trials that only name what the parser blames |
 | `bash/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, and the segment memo a front end draws |
 | `bash/splice/items.rs` | items from text for the receipt's breadcrumb: a header's ends by bracket depth, each item's container, every item around one line |
@@ -152,8 +152,9 @@ Engine::run
     own deadline.
 15. `read`'s caps and `engine`: the front door skips `measure` for `read` because the tool cuts its
     own files; remove either half and a single-line file reaches the context whole.
-16. `gate::check` and the crate's own manifest: the check runs in the nearest directory above the
-    file that holds a `Cargo.toml`, so a file outside any crate is never checked.
+16. `bash/fault.rs`'s audit and the crate's own manifest: the check runs in the nearest directory
+    above a written file that holds a `Cargo.toml`, so a file outside any crate is never checked,
+    and one batch gives one check per crate.
 17. `splice` and `write` both read a file's edition and formatter outcome from `gate`; the answer's
     own `Outcome` and `Check` are borrowed there, never rebuilt here.
 18. `skeleton` and `fault`: the compiler's seam walks the same item tree the outline does, so a

@@ -1,11 +1,11 @@
-//! The `write` tool: overwrite a whole file.
-
+//! The `write` tool: overwrite a whole file. The batch's audit type-checks it after the batch's
+//! last write; this call only formats, writes, and hands the file's shell to the audit.
 use anyhow::Result;
 
 use crate::server::agent::tools::bash::fault;
 use crate::server::agent::tools::bash::gate;
 use crate::server::agent::tools::bash::halt::stopped;
-use crate::server::agent::tools::contract::env::Env;
+use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
@@ -13,6 +13,7 @@ use crate::server::agent::tools::summary;
 
 const PATH: usize = 0;
 const CONTENT: usize = 1;
+const UNFOLD: usize = 2;
 
 const PARAMS: &[Param] = &[
     Param::new("path", Kind::Text, "File path."),
@@ -21,13 +22,21 @@ const PARAMS: &[Param] = &[
         Kind::Text,
         "The file's full content, written verbatim.",
     ),
+    Param::df(
+        "unfold",
+        Kind::Flag,
+        "List every fault of the batch's shared check instead of folding it.",
+        "false",
+    ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
     name: "write",
-    about: "Write the whole file, **overwriting** any existing one. A small change → `edit`.",
+    about: "Write the whole file, **overwriting** any existing one. A small change → `edit`. \
+            Type-checked with the batch, reported on the last write.",
     fields: "both fields are always needed: the path, and the whole content. The parent folder \
-             must already exist.",
+             must already exist.\n\
+             `unfold` lifts the shared check's fold for every written file of the batch.",
     params: PARAMS,
     run,
     summary,
@@ -38,6 +47,7 @@ pub(crate) const TOOL: Tool = Tool {
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
     let path = args.str(PATH)?;
     let content = args.str(CONTENT)?;
+    let unfold = args.flag(UNFOLD).unwrap_or(false);
 
     let p = env.workspace.resolve(&path, false)?;
     if let Some(parent) = p.parent() {
@@ -63,7 +73,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                 content.clone()
             }
             // The formatter decided nothing about the text: it is written as it stands, and the
-            // compiler is left to say what it makes of it.
+            // batch's check is left to say what it makes of it.
             gate::Outcome::Undecided(why) => {
                 undecided = Some(why);
                 content.clone()
@@ -78,19 +88,13 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     env.workspace.with_write(&p, || {
         crate::server::agent::tools::workspace::write_atomic(&p, &written)
     })?;
+    env.wrote.push(p.clone());
     let bytes = written.len();
     let mut text = format!(
         "{} {} ({bytes} bytes)",
         if existed { "overwrote" } else { "created" },
         p.display()
     );
-
-    // The compiler answers for the file as it now stands, outside the file's lock. A file that does
-    // not parse has its verdict already; the compiler would only repeat it.
-    let check = match (rust, &unparsed) {
-        (true, None) => gate::check(&p, stop),
-        _ => gate::Check::Skipped,
-    };
     if let Some(why) = &unparsed {
         text.push('\n');
         text.push_str(&fault::unparsed(why));
@@ -99,14 +103,26 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         text.push('\n');
         text.push_str(&format!("[i] not formatted, written as it stands: {why}"));
     }
-    if let Some(report) = fault::receipt(&p, &written, &check) {
-        text.push('\n');
-        text.push_str(&report);
+
+    // The compiler answers for the file as it now stands, after the batch's last write; the seam
+    // stands under this answer at its end. A file that does not parse has the formatter's verdict
+    // already. Only a Rust file joins the batch's check.
+    if rust && let Some(root) = gate::crate_root(&p) {
+        env.shells.push(Shell {
+            call_id: env.current.clone(),
+            mine: gate::shown(&root, &p),
+            root,
+            parse_failed: unparsed.is_some(),
+            unfold,
+            seam: true,
+            slots: vec![Slot {
+                landing: None,
+                insert_at: text.lines().count(),
+            }],
+        });
     }
     Ok(ToolOutput::text(text))
 }
-
-/// One line for a history listing: which file.
 fn summary(call: &CallRecord) -> String {
     summary::clip(&summary::field(call, "path").unwrap_or_default(), 96)
 }

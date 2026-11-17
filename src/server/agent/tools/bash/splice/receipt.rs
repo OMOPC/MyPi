@@ -1,6 +1,7 @@
 //! What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits —
 //! `path:line`, the item it sits in, and numbered source. A block that stands there carries `+`;
-//! a deletion shows the lines it removed with `-`. Everything else is a note at the end.
+//! a deletion shows the lines it removed with `-`. The batch's audit hangs its lines where each
+//! edit's block ended.
 
 use serde_json::{Value, json};
 
@@ -30,7 +31,6 @@ pub(crate) enum State {
         new: Vec<String>,
         /// The item holding it, innermost two, outermost first: `impl X for Y > fn z`.
         item: Option<String>,
-        faults: Vec<String>,
         /// The parser's words, when its block does not parse on its own.
         blame: Option<String>,
     },
@@ -43,7 +43,6 @@ pub(crate) enum State {
         block: Vec<String>,
         item: Option<String>,
         why: &'static str,
-        faults: Vec<String>,
     },
 }
 
@@ -56,14 +55,8 @@ pub(crate) struct Sheet<'a> {
     pub shifted: bool,
 }
 
-/// The answer's text and the memo a front end draws from.
-pub(crate) fn build(
-    sheet: Sheet<'_>,
-    rows: &[Row],
-    word: &Word,
-    elsewhere: &[String],
-    note: Option<&str>,
-) -> (String, Value) {
+/// The answer's text, the memo a front end draws from, and where each edit's audit lines hang.
+pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Value, Vec<usize>) {
     let Sheet {
         path,
         after,
@@ -75,7 +68,8 @@ pub(crate) fn build(
         .filter(|row| matches!(row.state, State::Applied { .. }))
         .count();
 
-    let mut out = vec![head(word, landed, rows.len(), after, shifted), String::new()];
+    let mut out = vec![head(word, landed, rows.len(), after, shifted)];
+    let mut marks: Vec<usize> = Vec::new();
     let width = after.to_string().len().max(3);
     for row in rows {
         out.push(heading(path, row));
@@ -84,11 +78,7 @@ pub(crate) fn build(
         }
         match &row.state {
             State::Applied {
-                old,
-                new,
-                faults,
-                blame,
-                ..
+                old, new, blame, ..
             } => {
                 // What stands there now; a deletion has nothing to show and says what it removed.
                 if new.is_empty() {
@@ -98,16 +88,12 @@ pub(crate) fn build(
                 if let Some(blame) = blame {
                     out.push(format!("  ! {blame}"));
                 }
-                for fault in faults {
-                    out.push(format!("  ! {fault}"));
-                }
             }
             State::Refused {
                 at,
                 taken,
                 block,
                 why,
-                faults,
                 ..
             } => {
                 // Its lines are still in the file: they are numbered where it now finds them.
@@ -119,24 +105,17 @@ pub(crate) fn build(
                 ));
                 out.extend(block_side(block, width));
                 out.push(format!("  ! {why}"));
-                for fault in faults {
-                    out.push(format!("  ! {fault}"));
-                }
             }
         }
+        marks.push(out.len());
     }
     if let Some(line) = verdict_note(word, rows) {
         out.push(line);
     }
-    if let Some(note) = note {
-        out.push(format!("[i] {note}"));
-    }
-    if !elsewhere.is_empty() {
-        out.extend(elsewhere_note(elsewhere));
-    }
-    (out.join("\n"), memo(rows))
+    (out.join("\n"), memo(rows), marks)
 }
 
+/// The verdict, then the file's length: the whole point of the first line.
 /// The verdict, then the file's length: the whole point of the first line.
 fn head(word: &Word, landed: usize, total: usize, after: usize, shifted: bool) -> String {
     let verdict = if landed == 0 {
@@ -202,7 +181,12 @@ fn item(row: &Row) -> Option<&str> {
 
 /// The lines an edit takes, unnumbered when they are gone and by their current numbers when they
 /// are still in the file, where `read` would number them.
-fn taken_side(first: Option<usize>, taken: &[String], anchors: &[bool], width: usize) -> Vec<String> {
+fn taken_side(
+    first: Option<usize>,
+    taken: &[String],
+    anchors: &[bool],
+    width: usize,
+) -> Vec<String> {
     if taken.is_empty() {
         return vec![format!("- {:>width$}|(nothing)", "", width = width)];
     }
@@ -277,21 +261,6 @@ fn shown(line: &str) -> String {
     }
 }
 
-/// The compiler's own words about files this call did not touch.
-fn elsewhere_note(elsewhere: &[String]) -> Vec<String> {
-    let mut out = vec![format!(
-        "[i] check · {} error(s) elsewhere, none of them in these edits",
-        elsewhere.len()
-    )];
-    for line in elsewhere.iter().take(3) {
-        out.push(format!("  {line}"));
-    }
-    if elsewhere.len() > 3 {
-        out.push(format!("  (+{} more)", elsewhere.len() - 3));
-    }
-    out
-}
-
 /// The memo a front end draws from: one segment per edit, in the call's order.
 fn memo(rows: &[Row]) -> Value {
     let mut segments = Vec::new();
@@ -308,7 +277,11 @@ fn memo(rows: &[Row]) -> Value {
                 }));
             }
             State::Refused {
-                at, taken, block, why, ..
+                at,
+                taken,
+                block,
+                why,
+                ..
             } => {
                 // The segment's own lines are the ones it takes now, not the ones it named before.
                 let now = at.map(|(first, _)| first).unwrap_or(row.from);

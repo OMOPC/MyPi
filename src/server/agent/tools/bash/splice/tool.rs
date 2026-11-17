@@ -16,7 +16,7 @@ use crate::server::agent::tools::bash::change;
 use crate::server::agent::tools::bash::gate;
 use crate::server::agent::tools::bash::halt::stopped;
 use crate::server::agent::tools::bash::read::sparse;
-use crate::server::agent::tools::contract::env::{Answer, Env, Stamp};
+use crate::server::agent::tools::contract::env::{Answer, Env, Shell, Slot, Stamp};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
@@ -26,6 +26,7 @@ use crate::server::platform::stop::Stop;
 
 const PATH: usize = 0;
 const EDITS: usize = 1;
+const UNFOLD: usize = 2;
 
 const EDIT_FIELDS: &[Param] = &[
     Param::new("start", Kind::Line, "First line of the range, 1-based."),
@@ -51,18 +52,26 @@ const PARAMS: &[Param] = &[
         "The ranges to replace, one item each; they may not overlap. Every call on one file in \
          one message runs as one write.",
     ),
+    Param::df(
+        "unfold",
+        Kind::Flag,
+        "List every fault of the batch's shared check instead of folding it.",
+        "false",
+    ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
     name: "splice",
     about: "Batch 1-based inclusive line edits in one file. Supports `@@COPY(a..b)@@` / \
             `@@CUT(a..b)@@` line macros. Auto-formats Rust via rustfmt \
-            (writes and warns on syntax error). By matched text → `edit`.",
+            (writes and warns on syntax error). By matched text → `edit`. One `cargo check` \
+            per batch, reported on the last write.",
     fields: "Requires `path` and non-overlapping `edits` (`{start, end, new}`). \
              Delete: `new: \"\"`. Insert before `start`: `end = start - 1`. \
              Same-file calls in one turn merge into one write against pre-turn line numbers.\n\
              Macros in `new` (1-based inclusive, pre-turn snapshot, single-pass): \
-             `@@COPY(a..b)@@` copies lines `a..b`; `@@CUT(a..b)@@` moves them (auto-deletes `a..b`).",
+             `@@COPY(a..b)@@` copies lines `a..b`; `@@CUT(a..b)@@` moves them (auto-deletes `a..b`).\n\
+             `unfold` lifts the shared check's fold for every written file of the batch.",
     params: PARAMS,
     run,
     summary,
@@ -89,19 +98,8 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         // thing about the same untouched file: it is said here, never kept for `env.handed`.
         return Ok(stopped(&path));
     };
-
-    // The compiler runs after the file's lock is released: it reads the whole crate, not this file.
-    // A file that does not parse would only repeat the formatter's verdict.
-    let check = if built.written.is_none() {
-        gate::Check::Skipped
-    } else if stop.is_stopped() {
-        gate::Check::Unchecked
-    } else if matches!(built.word, Word::Unparsed(_)) {
-        gate::Check::Skipped
-    } else {
-        gate::check(&path, &stop)
-    };
-    let answers = built.answers(&plans, &path, &check);
+    // The compiler waits for the batch's last write: the audit finishes every written answer then.
+    let answers = built.answers(&plans, &path);
 
     if let Some(written) = &built.written {
         env.seen.files.insert(
@@ -112,8 +110,34 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
             },
         );
     }
+    // Every written Rust call hands its shell to the audit: its faults hang under its edits when
+    // the batch's check has run, and the crate's report rides on the last written answer.
+    let audit = (built.written.is_some() && !matches!(built.word, Word::Plain))
+        .then(|| gate::crate_root(&path))
+        .flatten()
+        .map(|root| {
+            let shown = gate::shown(&root, &path);
+            (root, shown, matches!(built.word, Word::Unparsed(_)))
+        });
     let mut mine = None;
-    for (plan, answer) in plans.iter().zip(answers) {
+    for (plan, (answer, slots)) in plans.iter().zip(answers) {
+        if let Some((root, shown, parse_failed)) = &audit {
+            let unfold = plan
+                .args
+                .as_ref()
+                .ok()
+                .and_then(|args| args.flag(UNFOLD).ok())
+                .unwrap_or(false);
+            env.shells.push(Shell {
+                call_id: plan.call_id.clone(),
+                mine: shown.clone(),
+                root: root.clone(),
+                parse_failed: *parse_failed,
+                unfold,
+                seam: false,
+                slots,
+            });
+        }
         if plan.call_id == current {
             mine = Some(answer);
         } else {
@@ -203,30 +227,44 @@ struct Built {
 }
 
 impl Built {
-    /// One answer per call of the batch: its own edits, its own verdicts.
-    fn answers(&self, plans: &[Plan], path: &Path, check: &gate::Check) -> Vec<Answer> {
+    /// One answer per call of the batch: its own edits, its own verdicts, and where the audit's
+    /// check lines will hang.
+    fn answers(&self, plans: &[Plan], path: &Path) -> Vec<(Answer, Vec<Slot>)> {
         let lines: Vec<&str> = self.shown.lines().collect();
         let base: Vec<String> = self.base.lines().map(str::to_string).collect();
         let anchors = sparse::anchors(&self.shown);
         let layout = items::Layout::analyse(&self.shown);
-        let (faults, elsewhere, note) = self.split_check(path, check);
         let shown = path.display().to_string();
         let shifted = self.moved();
 
         (0..plans.len())
             .map(|at| {
                 if let Some(why) = &self.unreadable[at] {
-                    return Answer {
-                        text: why.clone(),
-                        memo: None,
-                        refusal: Some("the call's ranges could not be read".to_string()),
-                    };
+                    return (
+                        Answer {
+                            text: why.clone(),
+                            memo: None,
+                            refusal: Some("the call's ranges could not be read".to_string()),
+                        },
+                        Vec::new(),
+                    );
                 }
                 let (from, to) = self.spans[at];
-                let rows: Vec<Row> = (from..to)
-                    .map(|index| self.row(index, &lines, &base, &layout, &faults))
-                    .collect();
-                let (text, memo) = receipt::build(
+                let mut rows: Vec<Row> = Vec::with_capacity(to - from);
+                let mut slots: Vec<Slot> = Vec::with_capacity(to - from);
+                for index in from..to {
+                    let landing = self
+                        .held
+                        .iter()
+                        .position(|held| *held == index)
+                        .and_then(|position| self.landings.get(position).copied().flatten());
+                    rows.push(self.row(index, &lines, &base, &layout));
+                    slots.push(Slot {
+                        landing,
+                        insert_at: 0,
+                    });
+                }
+                let (text, memo, marks) = receipt::build(
                     receipt::Sheet {
                         path: &shown,
                         after: self.after,
@@ -235,14 +273,18 @@ impl Built {
                     },
                     &rows,
                     &self.word,
-                    &elsewhere,
-                    note.as_deref(),
                 );
-                Answer {
-                    text,
-                    memo: Some(memo),
-                    refusal: None,
+                for (slot, mark) in slots.iter_mut().zip(marks) {
+                    slot.insert_at = mark;
                 }
+                (
+                    Answer {
+                        text,
+                        memo: Some(memo),
+                        refusal: None,
+                    },
+                    slots,
+                )
             })
             .collect()
     }
@@ -257,14 +299,7 @@ impl Built {
     }
 
     /// One edit, as its own call's answer shows it.
-    fn row(
-        &self,
-        at: usize,
-        lines: &[&str],
-        base: &[String],
-        layout: &items::Layout,
-        faults: &[Vec<String>],
-    ) -> Row {
+    fn row(&self, at: usize, lines: &[&str], base: &[String], layout: &items::Layout) -> Row {
         let edit = &self.edits[at];
         let blame = self
             .blamed
@@ -290,7 +325,6 @@ impl Built {
                     old,
                     new,
                     item,
-                    faults: faults[at].clone(),
                     blame,
                 },
             };
@@ -322,7 +356,6 @@ impl Built {
                 block: edit.block.clone(),
                 item: place.and_then(|(first, _)| item_of(layout, first)),
                 why: "overlaps an earlier splice call on this file",
-                faults: faults[at].clone(),
             },
         }
     }
@@ -339,59 +372,6 @@ impl Built {
             shift += other.block.len() as isize - (other.end - other.start) as isize;
         }
         (edit.start as isize + shift).max(0) as usize
-    }
-
-    /// What the compiler said, split three ways: per edit, elsewhere, and a note about the run.
-    fn split_check(
-        &self,
-        path: &Path,
-        check: &gate::Check,
-    ) -> (Vec<Vec<String>>, Vec<String>, Option<String>) {
-        let mut per = vec![Vec::new(); self.edits.len()];
-        let faults = match check {
-            gate::Check::Faults { faults, .. } => faults,
-            gate::Check::TimedOut => {
-                return (
-                    per,
-                    Vec::new(),
-                    Some(format!(
-                        "check did not finish in {} ms",
-                        gate::CHECK_LIMIT.as_millis()
-                    )),
-                );
-            }
-            gate::Check::Unchecked => {
-                return (
-                    per,
-                    Vec::new(),
-                    Some("not type-checked: the turn was stopped".to_string()),
-                );
-            }
-            gate::Check::Skipped | gate::Check::Clean => return (per, Vec::new(), None),
-        };
-        let mine = gate::crate_root(path)
-            .map(|root| gate::shown(&root, path))
-            .unwrap_or_default();
-        let mut elsewhere = Vec::new();
-        for fault in faults {
-            let mut placed = false;
-            if fault.file == mine {
-                for (position, held) in self.held.iter().enumerate() {
-                    let Some((first, last)) = self.landings.get(position).copied().flatten() else {
-                        continue;
-                    };
-                    if first <= fault.line && fault.line <= last {
-                        per[*held].push(format!("line {}: {}", fault.line, fault.message));
-                        placed = true;
-                        break;
-                    }
-                }
-            }
-            if !placed {
-                elsewhere.push(format!("{}:{}  {}", fault.file, fault.line, fault.message));
-            }
-        }
-        (per, elsewhere, None)
     }
 }
 

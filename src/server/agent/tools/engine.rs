@@ -15,7 +15,7 @@ use super::subagent::FINAL;
 use crate::server::agent::request::contract::{ItemOk, Spill, ToolCall};
 use crate::server::agent::request::live::{Element, Event, ToolEvent, Truncation};
 use crate::server::agent::tools::bash::halt::INTERRUPTED;
-use crate::server::agent::tools::bash::{grep, read};
+use crate::server::agent::tools::bash::{fault, grep, read};
 use crate::server::platform::time::now_stamp;
 
 /// The one implementation of [`Batch`]. Everything a run needs arrives in its [`Env`].
@@ -31,6 +31,7 @@ impl Batch for Engine {
         env.batch_len = calls.len();
         env.batch = calls.to_vec();
         env.handed.clear();
+        env.shells.clear();
         let child = env.source.child(env.session);
         let mut halted = false;
         let mut results = Vec::with_capacity(calls.len());
@@ -55,6 +56,10 @@ impl Batch for Engine {
             );
             results.push(result);
         }
+
+        // The batch's one check: every written answer is finished here, and the crate's report
+        // rides on the last written answer.
+        fault::settle(env, &mut results);
         Ok(results)
     }
 }
@@ -258,7 +263,6 @@ fn failed(
     started: Instant,
     reason: Option<String>,
 ) -> ToolResult {
-
     ToolResult {
         call_id: call.call_id.clone(),
         items,

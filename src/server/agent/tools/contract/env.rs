@@ -44,6 +44,38 @@ pub struct Env {
     pub current: String,
     /// What a merged run has already produced for the siblings after it, by call id.
     pub handed: BTreeMap<String, Answer>,
+    /// Files this batch has written, in write order.
+    pub wrote: Vec<PathBuf>,
+    /// One written call per shell: the audit hangs the batch's check lines there.
+    pub shells: Vec<Shell>,
+}
+
+/// Where the batch's audit hangs one written call's check lines.
+#[derive(Clone)]
+pub struct Slot {
+    /// The lines the edit now occupies in the written file.
+    pub landing: Option<(usize, usize)>,
+    /// The line of the answer's text the audit's lines hang after.
+    pub insert_at: usize,
+}
+
+/// One written call, as the batch's audit sees it.
+#[derive(Clone)]
+pub struct Shell {
+    /// The call whose answer the audit finishes.
+    pub call_id: String,
+    /// The written file, as the compiler names it against its crate root.
+    pub mine: String,
+    /// The crate the written file belongs to.
+    pub root: PathBuf,
+    /// The file does not parse, so the report says who is speaking.
+    pub parse_failed: bool,
+    /// Whether this call lifts the audit's fold.
+    pub unfold: bool,
+    /// The whole file was written: the fault's own seam stands under the answer.
+    pub seam: bool,
+    /// Where the audit's lines hang.
+    pub slots: Vec<Slot>,
 }
 
 /// One finished call's answer, kept for its own turn in the batch.
@@ -217,6 +249,8 @@ impl Defaults {
             batch: Vec::new(),
             current: String::new(),
             handed: BTreeMap::new(),
+            wrote: Vec::new(),
+            shells: Vec::new(),
         })
     }
 }

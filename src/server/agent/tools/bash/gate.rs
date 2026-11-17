@@ -1,6 +1,6 @@
-//! The compiler gate: rustfmt formats, `cargo check` types, and neither outlives its deadline.
-//! Every child leads its own process group, so a stuck formatter dies with its whole tree instead
-//! of holding the call it belongs to.
+//! The compiler gate: rustfmt formats under a deadline, `cargo check` types a batch's crate to
+//! completion. Every child leads its own process group, so a stuck child dies with its whole tree
+//! instead of holding the call it belongs to.
 
 use std::collections::HashMap;
 use std::io::Write as _;
@@ -15,9 +15,6 @@ use crate::server::platform::stop::Stop;
 /// How long one formatter round trip may take before its tree is killed.
 const FORMAT_LIMIT: Duration = Duration::from_secs(5);
 
-/// How long `cargo check` gets; past this the call goes ahead without it.
-pub(crate) const CHECK_LIMIT: Duration = Duration::from_millis(1500);
-
 /// How often a waiting caller looks at its child.
 const TICK: Duration = Duration::from_millis(5);
 const CACHE: usize = 32;
@@ -25,7 +22,7 @@ const CACHE: usize = 32;
 /// How many bytes of one stream a child may hand back.
 const CAP: usize = 8 << 20;
 
-/// How many faults one answer lists.
+/// How many diagnostics one folded report lists.
 pub(crate) const FAULTS: usize = 12;
 
 /// What rustfmt said about a text it could not parse.
@@ -51,22 +48,17 @@ pub(crate) enum Outcome {
     Stopped,
 }
 
-/// What `cargo check` had to say about one file after a change.
+/// What `cargo check` had to say about one crate after a batch wrote into it.
 #[derive(Debug)]
 pub(crate) enum Check {
-    /// Not this call's business: outside the workspace, or not a crate's own file.
-    Skipped,
-    /// No errors.
+    /// Nothing was verified: cargo did not run, or the turn was stopped.
+    Unchecked(String),
+    /// No errors and no warnings.
     Clean,
-    /// The compiler was still working when the deadline came.
-    TimedOut,
-    /// The turn was stopped: the file is written and unchecked, whether the compiler ran or not.
-    Unchecked,
-    /// Errors, the changed file's first; the counts describe all of them, listed or not.
+    /// Every error first, then every warning, in the compiler's own order.
     Faults {
         faults: Vec<Fault>,
-        here: usize,
-        other: usize,
+        warns: Vec<Fault>,
     },
 }
 
@@ -154,44 +146,64 @@ fn edition_of(manifest: &str) -> Option<String> {
     None
 }
 
-/// Type-check the crate this file belongs to. Errors in the file itself come first; every other
-/// file's follow. A crate still compiling when the deadline comes is dropped; one the user stopped
-/// is killed and answers nothing.
-pub(crate) fn check(path: &Path, stop: &Stop) -> Check {
-    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-        return Check::Skipped;
+/// The crate's own name, from the manifest's `[package] name`; the folder when unnamed.
+pub(crate) fn crate_name(root: &Path) -> String {
+    let named = std::fs::read_to_string(root.join("Cargo.toml"))
+        .ok()
+        .and_then(|text| package_name(&text));
+    named.unwrap_or_else(|| {
+        root.file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default()
+    })
+}
+
+/// The first `name = "…"` under `[package]`.
+fn package_name(manifest: &str) -> Option<String> {
+    let mut inside = false;
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            inside = line == "[package]";
+            continue;
+        }
+        if !inside || line.starts_with('#') {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("name") else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let value = rest.trim().trim_matches('"').trim_matches('\'');
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
     }
-    let Some(root) = crate_root(path) else {
-        return Check::Skipped;
-    };
+    None
+}
+
+/// Type-check one crate to completion, in the compiler's own order. No deadline: a batch checks
+/// once, and only the turn's stop ends it.
+pub(crate) fn check_crate(root: &Path, stop: &Stop) -> Check {
     let mut cmd = Command::new(cargo());
     cmd.args(["check", "--message-format=json", "--quiet"])
-        .current_dir(&root);
-    let ran = match run(cmd, None, CHECK_LIMIT, stop) {
+        .current_dir(root);
+    let ran = match run(cmd, None, None, stop) {
         Ok(ran) => ran,
-        Err(_) => return Check::Skipped,
+        Err(_) => return Check::Unchecked("cargo did not run".to_string()),
     };
     if ran.stopped {
-        return Check::Unchecked;
+        return Check::Unchecked("the turn was stopped".to_string());
     }
-    if ran.timed_out {
-        return Check::TimedOut;
-    }
-    let mut faults = faults(&root, &ran.out);
-    if faults.is_empty() {
+    let (mut faults, mut warns) = diagnostics(root, &ran.out);
+    faults.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.message == b.message);
+    warns.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.message == b.message);
+    if faults.is_empty() && warns.is_empty() {
         return Check::Clean;
     }
-    let mine = shown(&root, path);
-    faults.sort_by_key(|fault| (fault.file != mine, fault.line));
-    faults.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.message == b.message);
-    let here = faults.iter().filter(|fault| fault.file == mine).count();
-    let other = faults.len() - here;
-    faults.truncate(FAULTS);
-    Check::Faults {
-        faults,
-        here,
-        other,
-    }
+    Check::Faults { faults, warns }
 }
 
 /// The crate this file belongs to: the nearest directory above it that holds a manifest.
@@ -209,9 +221,10 @@ pub(crate) fn shown(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
-/// The errors one `cargo check` reported, whatever file they sit in.
-fn faults(root: &Path, out: &str) -> Vec<Fault> {
-    let mut list: Vec<Fault> = Vec::new();
+/// The errors and the warnings one `cargo check` reported, whatever file they sit in.
+fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
+    let mut errors: Vec<Fault> = Vec::new();
+    let mut warns: Vec<Fault> = Vec::new();
     for line in out.lines() {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
             continue;
@@ -222,9 +235,11 @@ fn faults(root: &Path, out: &str) -> Vec<Fault> {
         let Some(message) = value.get("message") else {
             continue;
         };
-        if message.get("level").and_then(|l| l.as_str()) != Some("error") {
-            continue;
-        }
+        let list = match message.get("level").and_then(|l| l.as_str()) {
+            Some("error") => &mut errors,
+            Some("warning") => &mut warns,
+            _ => continue,
+        };
         let Some(spans) = message.get("spans").and_then(|s| s.as_array()) else {
             continue;
         };
@@ -288,7 +303,7 @@ fn faults(root: &Path, out: &str) -> Vec<Fault> {
             helps,
         });
     }
-    list
+    (errors, warns)
 }
 
 /// One formatter round trip.
@@ -296,7 +311,7 @@ fn formatter(text: &str, edition: &str, stop: &Stop) -> Outcome {
     let bin = rustfmt();
     let mut cmd = Command::new(&bin);
     cmd.args(["--edition", edition, "--emit", "stdout", "--quiet"]);
-    match run(cmd, Some(text.as_bytes()), FORMAT_LIMIT, stop) {
+    match run(cmd, Some(text.as_bytes()), Some(FORMAT_LIMIT), stop) {
         Ok(ran) if ran.stopped => Outcome::Stopped,
         Ok(ran) if ran.timed_out => Outcome::Undecided(format!(
             "rustfmt did not finish in {} s, so it was killed",
@@ -328,7 +343,7 @@ struct Ran {
 fn run(
     mut cmd: Command,
     input: Option<&[u8]>,
-    limit: Duration,
+    limit: Option<Duration>,
     stop: &Stop,
 ) -> std::io::Result<Ran> {
     cmd.stdin(if input.is_some() {
@@ -353,7 +368,7 @@ fn run(
     let out = drain(child.stdout.take().expect("stdout is piped"));
     let err = drain(child.stderr.take().expect("stderr is piped"));
 
-    let deadline = Instant::now() + limit;
+    let deadline = limit.map(|limit| Instant::now() + limit);
     let mut timed_out = false;
     let mut stopped = false;
     let status = loop {
@@ -370,7 +385,7 @@ fn run(
                 let _ = child.wait();
                 break None;
             }
-            Ok(None) if Instant::now() >= deadline => {
+            Ok(None) if deadline.is_some_and(|at| Instant::now() >= at) => {
                 timed_out = true;
                 proc::signal_group(child.id(), Signal::Kill);
                 let _ = child.wait();

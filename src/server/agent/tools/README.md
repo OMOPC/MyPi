@@ -65,6 +65,11 @@ a batch with the turn's stop signal
   → ToolResult
 ```
 
+After the batch's last call, every written call's shell reaches `bash/fault.rs`'s audit: one
+`cargo check` per crate written into, to completion, no deadline — the turn's stop is its only
+end. Faults landing on a written edit hang under it; the crate's report rides on the last
+written answer. `unfold: true` on any written call lifts the report's fold.
+
 Unknown names error.
 
 ### Schema
@@ -439,14 +444,15 @@ A profile that names no list gets every tool but `edit` and `final`.
 
 `write` overwrites a file whole, and refuses nothing: it is the counterpart of `edit`, which refuses
 an ambiguous match. A `.rs` file goes through the formatter first, and the formatted text is what
-lands. A text the parser refuses still lands as it came, and the answer says the file does not parse
-and skips the type check. A formatter that did not finish or could not run says nothing about the
+lands. A text the parser refuses still lands as it came, the answer says the file does not parse, and
+the batch's check still runs — the report names the file again. A formatter that did not finish or could not run says nothing about the
 text, so the content lands as it came, the answer says it was not formatted, and the type check
 still runs: `cargo check` does not need rustfmt.
 
-A written file is type-checked the same way a spliced one is, and the same report follows the answer.
-A stop before the write leaves the file untouched and the answer says so; one after it skips the check.
-Nothing is said when there is nothing wrong, so a clean write answers in one line:
+A written file joins the batch's audit (see the One call section): its faults stand under the
+answer as a source seam, and the crate's report rides on the batch's last written answer. A stop
+before the write leaves the file untouched and the answer says so; nothing is said about the
+compiler when there is nothing wrong:
 
 ```text
 overwrote /p/src/foo.rs (2311 bytes)
@@ -574,13 +580,16 @@ src/demo.rs:2
 
 A stop lands in one of two places, and the answer says which. Before the write, the formatter is
 killed and nothing reaches the file, so the call answers that the file is unchanged. After the write,
-the change stands and the type check is skipped, so the answer says the file was written and not
-checked.
+the change stands and waits for the batch's audit: the answer is finished once the batch's last
+write has landed and the crate has been checked.
 
-The compiler gets a line, not a block. Once the write is on disk and the file's lock is released,
-the crate the file belongs to is type-checked. A fault on a written edit's own lines hangs under that
-edit; every other fault is counted in one line saying none of them belong to these changes. The check
-is bounded: a crate still compiling when the deadline comes says so, rather than holding the call.
+The compiler answers once per batch, not per call. Faults whose line lands on a written edit's own
+lines hang under that edit, with the compiler's own help after them; every other fault goes to the
+batch's report — one line per fault, `file:line: message | help: …`, capped at twelve unless a call
+set `unfold: true`, ending in a reminder to reach for `Grep`. The report's head names the crate:
+`[i] check · mypi clean`, `[i] check · mypi 2 warns`, or `[i] check · mypi 2 warns, Broken:`.
+A file the parser refused says so again in the report, and its check still runs: the compiler's
+faults are the reader's to weigh.
 
 ### edit's and splice's memo
 
