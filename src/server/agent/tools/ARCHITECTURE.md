@@ -41,7 +41,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/halt.rs` | the one sentence a stopped turn leaves: `INTERRUPTED`, and the answer a tool gives when nothing was written |
 | `bash/gate.rs` | the formatting gate: the formatter's four outcomes for one text (only a reached verdict is remembered), the edition and name of the crate a file belongs to, one deadline-free `cargo check` of a crate (`gate::check_crate`, errors and warnings), every child in a process group of its own |
 | `bash/skeleton.rs` | the file's skeleton from text: the items at each indent, each one's span, the innermost item holding a line, the seam drawn around a range |
-| `bash/fault.rs` | the batch's audit: one check per crate written into, faults that land on a written edit hang under it, the crate's report rides on the last written answer |
+| `bash/fault.rs` | the batch's audit: one check per crate written into, every error and warning landing once — under the edit whose lines it hit, under the write that replaced the file whole, or in the crate's list on the last answer that can take it |
 | `bash/splice/fmt.rs` | rustfmt through the gate: the merged text with a marker comment around every block, the markers' lines as each change's landing, the text without them, and the per-block trials that only name what the parser blames |
 | `bash/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, and the segment memo a front end draws |
 | `bash/splice/items.rs` | items from text for the receipt's breadcrumb: a header's ends by bracket depth, each item's container, every item around one line |

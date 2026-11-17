@@ -116,7 +116,6 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
 }
 
 /// The verdict, then the file's length: the whole point of the first line.
-/// The verdict, then the file's length: the whole point of the first line.
 fn head(word: &Word, landed: usize, total: usize, after: usize, shifted: bool) -> String {
     let verdict = if landed == 0 {
         "FAILED, NOTHING WRITTEN"

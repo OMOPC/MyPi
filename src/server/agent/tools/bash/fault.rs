@@ -45,7 +45,7 @@ pub(crate) fn settle(env: &mut Env, results: &mut [ToolResult]) {
 }
 
 /// One check per crate, in the order the writes named them.
-pub(crate) fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check)> {
+fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check)> {
     let mut roots: Vec<PathBuf> = Vec::new();
     for shell in shells {
         if !roots.contains(&shell.root) {
@@ -61,36 +61,12 @@ pub(crate) fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check)> {
         .collect()
 }
 
-/// The audit's pure half: hang the faults under their edits, and the crate's report on the last
-/// written answer.
+/// The audit's pure half: every diagnostic lands once — under the edit whose lines it hit, under
+/// the write that replaced the whole file, or in the crate's own list.
 pub(crate) fn finish(shells: &[Shell], checks: &[(PathBuf, Check)], results: &mut [ToolResult]) {
     let unfold = shells.iter().any(|shell| shell.unfold);
-
-    // The faults that land on an edit hang under that edit.
-    for (root, check) in checks {
-        let Check::Faults { faults, .. } = check else {
-            continue;
-        };
-        for shell in shells.iter().filter(|shell| shell.root == *root) {
-            let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
-            for fault in faults.iter().filter(|fault| fault.file == shell.mine) {
-                if shell.seam || !shell.slots.iter().any(|slot| covers(slot, fault.line)) {
-                    let at = shell.slots.first().map(|slot| slot.insert_at).unwrap_or(0);
-                    group(&mut groups, at, seam_block(root, fault));
-                } else if let Some(slot) = shell.slots.iter().find(|slot| covers(slot, fault.line))
-                {
-                    group(&mut groups, slot.insert_at, vec![hanging(fault)]);
-                }
-            }
-            groups.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
-            for (at, lines) in &groups {
-                insert(results, &shell.call_id, *at, lines);
-            }
-        }
-    }
-
-    // The crate's report rides on the last written answer.
     let mut report: Vec<String> = Vec::new();
+
     for (root, check) in checks {
         let name = gate::crate_name(root);
         for shell in shells.iter().filter(|s| s.root == *root && s.parse_failed) {
@@ -99,34 +75,101 @@ pub(crate) fn finish(shells: &[Shell], checks: &[(PathBuf, Check)], results: &mu
                 shell.mine
             ));
         }
-        match check {
-            Check::Clean => report.push(format!("[i] check · {name} clean")),
+        let (faults, warns) = match check {
+            Check::Clean => {
+                report.push(format!("[i] check · {name} clean"));
+                continue;
+            }
             Check::Unchecked(why) => {
                 report.push(format!("[i] check · {name} not type-checked: {why}"));
+                continue;
             }
-            Check::Faults { faults, warns } => {
-                report.push(head(&name, faults.len(), warns.len()));
-                report.extend(listing(faults, warns, unfold));
-            }
+            Check::Faults { faults, warns } => (faults, warns),
+        };
+
+        let mut groups: Vec<(String, usize, Vec<String>)> = Vec::new();
+        let mut lones: (Vec<Fault>, Vec<Fault>) = (Vec::new(), Vec::new());
+        for fault in faults {
+            place(root, shells, fault, &mut groups, &mut lones.0);
+        }
+        for fault in warns {
+            place(root, shells, fault, &mut groups, &mut lones.1);
+        }
+
+        // A later insert point first: the earlier ones keep their line numbers.
+        groups.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+        for (call_id, at, lines) in &groups {
+            insert(results, call_id, *at, lines);
+        }
+
+        if !lones.0.is_empty() || !lones.1.is_empty() {
+            report.push(head(&name, lones.0.len(), lones.1.len()));
+            report.extend(listing(&lones.0, &lones.1, unfold));
         }
     }
-    if let Some(last) = shells.last() {
-        append(results, &last.call_id, &report);
+
+    // What the batch still owes the reader rides on the last written answer.
+    if let Some(holder) = shells
+        .iter()
+        .rev()
+        .find(|shell| holds(results, &shell.call_id))
+    {
+        append(results, &holder.call_id, &report);
     }
 }
 
-/// The report's head: clean, the warning count, or the warning count and `Broken`.
-fn head(name: &str, faults: usize, warns: usize) -> String {
-    if faults == 0 && warns == 0 {
-        return format!("[i] check · {name} clean");
-    }
-    let warns = if warns > 0 {
-        format!(" {warns} warns")
-    } else {
-        String::new()
+/// Whether one call's answer can still take lines.
+fn holds(results: &[ToolResult], call_id: &str) -> bool {
+    results
+        .iter()
+        .any(|result| result.call_id == call_id && result.reason.is_none())
+}
+
+/// Where one diagnostic belongs: under the edit whose lines it landed on, under the write that
+/// replaced the whole file, or nowhere a shell can hold it.
+fn place(
+    root: &Path,
+    shells: &[Shell],
+    fault: &Fault,
+    groups: &mut Vec<(String, usize, Vec<String>)>,
+    lone: &mut Vec<Fault>,
+) {
+    let mine = || {
+        shells
+            .iter()
+            .filter(move |shell| shell.root == *root && shell.mine == fault.file)
     };
-    let broken = if faults > 0 { ", Broken:" } else { "" };
-    format!("[i] check · {name}{warns}{broken}")
+    if let Some((call_id, at)) = mine().find_map(|shell| {
+        let slot = shell.slots.iter().find(|slot| covers(slot, fault.line))?;
+        Some((shell.call_id.clone(), slot.insert_at))
+    }) {
+        group(groups, &call_id, at, vec![hanging(fault)]);
+        return;
+    }
+    if let Some(shell) = mine().rev().find(|shell| shell.seam) {
+        let at = shell.slots.first().map(|slot| slot.insert_at).unwrap_or(0);
+        group(groups, &shell.call_id, at, seam_block(root, fault));
+        return;
+    }
+    lone.push(fault.clone());
+}
+
+/// The report's head: how many of each the crate still owes the reader.
+fn head(name: &str, faults: usize, warns: usize) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if faults > 0 {
+        parts.push(match faults {
+            1 => "1 error".to_string(),
+            n => format!("{n} errors"),
+        });
+    }
+    if warns > 0 {
+        parts.push(match warns {
+            1 => "1 warn".to_string(),
+            n => format!("{n} warns"),
+        });
+    }
+    format!("[i] check · {name} {}", parts.join(", "))
 }
 
 /// The report's lines: every error, then every warning; folded past the cap unless unfolded.
@@ -179,11 +222,19 @@ fn covers(slot: &Slot, line: usize) -> bool {
     matches!(slot.landing, Some((first, last)) if first <= line && line <= last)
 }
 
-/// Collect one insert point's lines.
-fn group(groups: &mut Vec<(usize, Vec<String>)>, at: usize, lines: Vec<String>) {
-    match groups.iter_mut().find(|(held, _)| *held == at) {
-        Some((_, held)) => held.extend(lines),
-        None => groups.push((at, lines)),
+/// Collect one insert point's lines, in the order the compiler named them.
+fn group(
+    groups: &mut Vec<(String, usize, Vec<String>)>,
+    call_id: &str,
+    at: usize,
+    lines: Vec<String>,
+) {
+    match groups
+        .iter_mut()
+        .find(|(call, held, _)| call.as_str() == call_id && *held == at)
+    {
+        Some((_, _, held)) => held.extend(lines),
+        None => groups.push((call_id.to_string(), at, lines)),
     }
 }
 

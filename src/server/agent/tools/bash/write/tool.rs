@@ -88,7 +88,6 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     env.workspace.with_write(&p, || {
         crate::server::agent::tools::workspace::write_atomic(&p, &written)
     })?;
-    env.wrote.push(p.clone());
     let bytes = written.len();
     let mut text = format!(
         "{} {} ({bytes} bytes)",
@@ -123,6 +122,8 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     }
     Ok(ToolOutput::text(text))
 }
+
+/// One line for a history listing: which file.
 fn summary(call: &CallRecord) -> String {
     summary::clip(&summary::field(call, "path").unwrap_or_default(), 96)
 }

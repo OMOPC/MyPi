@@ -44,8 +44,6 @@ pub struct Env {
     pub current: String,
     /// What a merged run has already produced for the siblings after it, by call id.
     pub handed: BTreeMap<String, Answer>,
-    /// Files this batch has written, in write order.
-    pub wrote: Vec<PathBuf>,
     /// One written call per shell: the audit hangs the batch's check lines there.
     pub shells: Vec<Shell>,
 }
@@ -249,7 +247,6 @@ impl Defaults {
             batch: Vec::new(),
             current: String::new(),
             handed: BTreeMap::new(),
-            wrote: Vec::new(),
             shells: Vec::new(),
         })
     }

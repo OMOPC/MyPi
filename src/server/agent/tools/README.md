@@ -67,8 +67,10 @@ a batch with the turn's stop signal
 
 After the batch's last call, every written call's shell reaches `bash/fault.rs`'s audit: one
 `cargo check` per crate written into, to completion, no deadline — the turn's stop is its only
-end. Faults landing on a written edit hang under it; the crate's report rides on the last
-written answer. `unfold: true` on any written call lifts the report's fold.
+end. Every error and every warning lands exactly once: under the edit whose lines it hit, under
+the `write` that replaced the whole file, or in the crate's own list, which rides on the last
+written answer that can still take lines. `unfold: true` on any written call lifts that list's
+fold.
 
 Unknown names error.
 
@@ -449,10 +451,10 @@ the batch's check still runs — the report names the file again. A formatter th
 text, so the content lands as it came, the answer says it was not formatted, and the type check
 still runs: `cargo check` does not need rustfmt.
 
-A written file joins the batch's audit (see the One call section): its faults stand under the
-answer as a source seam, and the crate's report rides on the batch's last written answer. A stop
-before the write leaves the file untouched and the answer says so; nothing is said about the
-compiler when there is nothing wrong:
+A written file joins the batch's audit (see the One call section): each of its errors and warnings
+stands under the answer as a source seam, once, and the crate's list carries only what no written
+call could hold. A stop before the write leaves the file untouched and the answer says so; nothing
+is said about the compiler when there is nothing wrong:
 
 ```text
 overwrote /p/src/foo.rs (2311 bytes)
@@ -583,12 +585,15 @@ killed and nothing reaches the file, so the call answers that the file is unchan
 the change stands and waits for the batch's audit: the answer is finished once the batch's last
 write has landed and the crate has been checked.
 
-The compiler answers once per batch, not per call. Faults whose line lands on a written edit's own
-lines hang under that edit, with the compiler's own help after them; every other fault goes to the
-batch's report — one line per fault, `file:line: message | help: …`, capped at twelve unless a call
-set `unfold: true`, ending in a reminder to reach for `Grep`. The report's head names the crate:
-`[i] check · mypi clean`, `[i] check · mypi 2 warns`, or `[i] check · mypi 2 warns, Broken:`.
-A file the parser refused says so again in the report, and its check still runs: the compiler's
+The compiler answers once per batch, not per call, and every diagnostic lands once. One whose line
+falls on a written edit's own lines hangs under that edit; one in a file this batch wrote whole
+stands under that write as a seam; anything no written call can hold goes to the crate's list on
+the batch's last written answer that can still take lines — one line per diagnostic,
+`file:line: message | help: …`, capped at twelve unless a call set `unfold: true`, ending in a
+reminder to reach for `Grep`. The list's head counts what it holds:
+`[i] check · mypi 2 errors, 1 warn`. A crate with nothing to say is named once,
+`[i] check · mypi clean`; a crate whose faults all found a home gets no list at all.
+A file the parser refused says so before the list, and its check still runs: the compiler's
 faults are the reader's to weigh.
 
 ### edit's and splice's memo
