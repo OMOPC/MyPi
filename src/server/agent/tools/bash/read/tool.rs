@@ -58,8 +58,10 @@ pub(crate) const TOOL: Tool = Tool {
              (default: 800 for a `.rs` file, 200 otherwise, never above that file's own cap). A \
              file answers its lines. A directory answers its immediate children, files with \
              their line counts and directories by name, then opens each child one level further, \
-             folding a directory of ten files or more into counts. The session root carries a \
-             bonus.",
+             folding a directory of ten files or more into counts. A level whose upper-case `.md` \
+             documents are newer than every file beside it drops the stamps and marks them \
+             `(latest)`; a document the user keeps current is marked `(persistent)` and never \
+             dated. Any other level stamps every file of it. The session root carries a bonus.",
     params: PARAMS,
     run,
     summary,
@@ -184,7 +186,7 @@ fn block(
     let offset = item.line("offset")?;
 
     if path.is_dir() {
-        let text = dir::listing(path, &env.workspace.cwd(), !headed)?;
+        let text = dir::listing(path, &env.workspace.cwd(), !headed, &env.persistent_docs)?;
         let listed = if headed {
             format!("==> {raw}\n{text}")
         } else {

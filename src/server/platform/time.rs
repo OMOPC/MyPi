@@ -197,6 +197,14 @@ pub fn now_stamp() -> String {
     stamp_from_unix(now + local_zone().offset_at(now) as i64)
 }
 
+/// `YYYY-MM-DD HH:MM:SS` for one moment, in the process's zone.
+pub fn stamp_at(at: std::time::SystemTime) -> String {
+    let unix = at
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs() as i64)
+        .unwrap_or(0);
+    stamp_from_unix(unix + local_zone().offset_at(unix) as i64)
+}
 /// `YYYY-MM-DD HH:MM:SS` for a Unix timestamp **already shifted into local time**: the civil-date
 /// arithmetic never touches the clock.
 fn stamp_from_unix(local: i64) -> String {

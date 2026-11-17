@@ -25,10 +25,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `bash/bash/segment.rs` | the separator set and the segment heads; the guard and the alias expansion share both |
 | `bash/bash/guard.rs` | the command classifier: `normalize`, `classify`, `Verdict`, `RuleHit` |
 | `bash/bash/shell.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc` |
-| `bash/read/{mod,tool}.rs` | `read`: the path array, directories, the per-kind budgets and the per-file `limit` under them, the module view |
-| `bash/read/sparse.rs` | the sparse anchor scan: comments and literals blanked, block edges numbered |
-| `bash/read/hub.rs` | the module graph: entry files, exports, the edges inside one directory, the `pub use` index, the upward importer scan |
-| `bash/read/dir.rs` | directory listings: one level, `src/` a section of its own, entry counts, junk named but never opened |
+| `bash/read/` | the `read` tool, directory listings and the module graph; see `bash/read/ARCHITECTURE.md` |
 | `bash/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its three parameters, its summary |
 | `bash/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the `.rs` files under them read in parallel, the matcher, each file's hits |
 | `bash/grep/rust.rs` | items from text: a header's ends by bracket depth, what a header binds, each item's container, a body's variants and fields |
@@ -152,16 +149,14 @@ Engine::run
 14. `ToolOutput.fail` and `engine`: any reason fails the call, and a call cut short states it in the
     one item it answered; the front door adds one for the stop it observed, and the tool reports its
     own deadline.
-15. `read`'s caps and `engine`: the front door skips `measure` for `read` because the tool cuts its
-    own files; remove either half and a single-line file reaches the context whole.
-16. `bash/fault.rs`'s audit and the crate's own manifest: the check runs in the nearest directory
+15. `bash/fault.rs`'s audit and the crate's own manifest:
     above a written file that holds a `Cargo.toml`, so a file outside any crate is never checked,
     and one batch gives one check per crate.
-17. `splice` and `write` both read a file's edition and formatter outcome from `gate`; the answer's
+16. `splice` and `write` both read a file's edition and formatter outcome from `gate`; the answer's
     own `Outcome` and `Check` are borrowed there, never rebuilt here.
-18. `skeleton` and `fault`: the compiler's seam walks the same item tree the outline does, so a
+17. `skeleton` and `fault`: the compiler's seam walks the same item tree the outline does, so a
     change to what counts as an item reaches both.
-19. `splice::items` copies that tree rather than sharing it: the receipt needs the item a landing
+18. `splice::items` copies that tree rather than sharing it: the receipt needs the item a landing
     sits in and nothing else, and the two readerships move apart.
 
 ## Not wired yet

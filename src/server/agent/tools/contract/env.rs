@@ -29,6 +29,8 @@ pub struct Env {
     pub default_budget: u32,
     /// Lines an edited item may take and still be handed over whole.
     pub full_item_budget: usize,
+    /// Documents the user keeps current: `.md` stems, upper-cased; a listing never dates them.
+    pub persistent_docs: Arc<[String]>,
     /// Whether the session's model takes image parts on the wire.
     pub vision: bool,
     pub export: Arc<dyn Export>,
@@ -234,6 +236,7 @@ pub struct Defaults {
     pub models: Models,
     pub default_budget: u32,
     pub full_item_budget: usize,
+    pub persistent_docs: Arc<[String]>,
     pub export: Arc<dyn Export>,
     pub paths: Paths,
     pub source: Arc<dyn Source>,
@@ -264,6 +267,7 @@ impl Defaults {
             aliases: Aliases::new(self.aliases.clone(), self.source.aliases(session)?),
             default_budget: self.default_budget,
             full_item_budget: self.full_item_budget,
+            persistent_docs: Arc::clone(&self.persistent_docs),
             vision,
             export: self.export.clone(),
             paths: self.paths.clone(),
