@@ -119,7 +119,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     for (_, path, is_dir) in hub::entries(dir) {
         if is_dir {
             walk(&path, out);
-        } else if lang::source(&path) {
+        } else if lang::owner(&path).is_some() {
             out.push(path);
         }
     }
