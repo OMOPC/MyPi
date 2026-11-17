@@ -1,7 +1,8 @@
 // The Rust sorter: which lines are key, what each piece is, and where it ends.
 
-use super::blank::{self, Blank};
-use super::table::{Line, Table};
+use super::LANGUAGE;
+use super::scan::{self, Blank};
+use crate::server::agent::tools::fs::lang::{Line, Table};
 
 /// The suffix this sorter answers to.
 pub(crate) const SUFFIXES: &[&str] = &["rs"];
@@ -35,9 +36,9 @@ const LONG: usize = 15;
 /// One file's line table.
 pub(crate) fn table(text: &str) -> Table {
     let raw: Vec<&str> = text.lines().collect();
-    let code = blank::strip(text, token);
-    let ends = blank::ends(&code, '{', '}');
-    let mut table = Table::new(raw.len());
+    let code = scan::strip(text, token);
+    let ends = scan::ends(&code, '{', '}');
+    let mut table = Table::new(raw.len(), &LANGUAGE);
     pieces(&raw, &code, &ends, &mut table);
     hats(&raw, &code, &mut table);
     control(&code, &ends, &mut table);
@@ -97,7 +98,7 @@ fn hats(raw: &[&str], code: &[String], table: &mut Table) {
 
 /// A long function's own control-flow blocks: `if`, `match`, `loop`, and the closures after a `=`.
 fn control(code: &[String], ends: &[Option<usize>], table: &mut Table) {
-    for (open, close) in blank::frames(code, '{', '}') {
+    for (open, close) in scan::frames(code, '{', '}') {
         if head_of(code[open].trim_start()) != Some("fn") || close <= open + LONG {
             continue;
         }

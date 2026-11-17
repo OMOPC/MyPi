@@ -1,0 +1,189 @@
+// The Rust format: rustfmt under a deadline, with the edition the nearest manifest names.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
+
+use crate::server::agent::tools::fs::gate;
+use crate::server::agent::tools::fs::lang::verdict::{Outcome, Unparsed};
+use crate::server::platform::stop::Stop;
+
+/// How long one formatter round trip may take before its tree is killed.
+const LIMIT: Duration = Duration::from_secs(5);
+
+/// How many bytes of formatted text this process remembers.
+const CACHE: usize = 32;
+
+/// The edition an older manifest still accepts.
+const DEFAULT_EDITION: &str = "2021";
+
+/// Format one text, or say what stopped it. Only a verdict rustfmt reached is remembered: a
+/// timeout or a missing binary says nothing about the text and must not outlive the moment.
+pub(crate) fn format(text: &str, path: &Path, stop: &Stop) -> Outcome {
+    let edition = edition(path);
+    let key = (edition.clone(), hash(text));
+    if let Some(hit) = remembered(&key) {
+        return hit;
+    }
+    let outcome = formatter(text, &edition, stop);
+    if matches!(outcome, Outcome::Formatted(_) | Outcome::Unparsed(_)) {
+        remember(key, &outcome);
+    }
+    outcome
+}
+
+/// The crate's edition, from the nearest `Cargo.toml` above the file. Read once per directory.
+fn edition(path: &Path) -> String {
+    let Some(dir) = path.parent() else {
+        return DEFAULT_EDITION.to_string();
+    };
+    static EDITIONS: LazyLock<Mutex<HashMap<PathBuf, String>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    if let Some(held) = lock(&EDITIONS).get(dir) {
+        return held.clone();
+    }
+    let found = edition_at(dir);
+    lock(&EDITIONS).insert(dir.to_path_buf(), found.clone());
+    found
+}
+
+/// The edition of the crate rooted at `dir`, one entry per ancestor until a manifest appears.
+fn edition_at(dir: &Path) -> String {
+    for at in dir.ancestors() {
+        let manifest = at.join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        return std::fs::read_to_string(&manifest)
+            .ok()
+            .and_then(|text| edition_of(&text))
+            .unwrap_or_else(|| DEFAULT_EDITION.to_string());
+    }
+    DEFAULT_EDITION.to_string()
+}
+
+/// The first `edition = "…"` in a manifest.
+fn edition_of(manifest: &str) -> Option<String> {
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("edition") else {
+            continue;
+        };
+        let Some(value) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"').trim_matches('\'');
+        if matches!(value, "2015" | "2018" | "2021" | "2024") {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+/// One formatter round trip.
+fn formatter(text: &str, edition: &str, stop: &Stop) -> Outcome {
+    let bin = rustfmt();
+    let mut cmd = Command::new(&bin);
+    cmd.args(["--edition", edition, "--emit", "stdout", "--quiet"]);
+    match gate::run(cmd, Some(text.as_bytes()), Some(LIMIT), stop) {
+        Ok(ran) if ran.stopped => Outcome::Stopped,
+        Ok(ran) if ran.timed_out => Outcome::Undecided(format!(
+            "rustfmt did not finish in {} s, so it was killed",
+            LIMIT.as_secs()
+        )),
+        Ok(ran) if ran.code == Some(0) => Outcome::Formatted(ran.out),
+        Ok(ran) => Outcome::Unparsed(parse(&ran.err)),
+        Err(e) => Outcome::Undecided(format!(
+            "failed to run `{}`: {e}; put rustfmt beside this executable or on PATH",
+            bin.display()
+        )),
+    }
+}
+
+/// The `rustfmt` to run: the one beside this executable first, then whatever PATH holds.
+fn rustfmt() -> PathBuf {
+    static FOUND: LazyLock<PathBuf> = LazyLock::new(|| gate::beside("rustfmt"));
+    FOUND.clone()
+}
+
+/// rustfmt's stderr, cut to the one line and the line number a model can act on.
+fn parse(stderr: &str) -> Unparsed {
+    let mut message: Option<String> = None;
+    let mut line = None;
+    for raw in stderr.lines() {
+        let trimmed = raw.trim();
+        if let Some(rest) = trimmed.strip_prefix("--> ") {
+            line = rest.split(':').nth(1).and_then(|spot| spot.parse().ok());
+            continue;
+        }
+        if message.is_some() {
+            continue;
+        }
+        let cleaned = trimmed.strip_prefix("error: ").or_else(|| {
+            trimmed
+                .strip_prefix("error[")
+                .and_then(|rest| rest.split_once("]: ").map(|(_, tail)| tail))
+        });
+        if let Some(cleaned) = cleaned {
+            message = Some(cleaned.trim_end_matches(':').to_string());
+        }
+    }
+    Unparsed {
+        line,
+        message: message.unwrap_or_else(|| "rustfmt refused the text".to_string()),
+    }
+}
+
+type Key = (String, u64);
+
+/// The formatted texts this process has already produced, oldest first.
+static MEMO: LazyLock<Mutex<Vec<(Key, Outcome)>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+fn remembered(key: &Key) -> Option<Outcome> {
+    lock(&MEMO)
+        .iter()
+        .find(|(held, _)| held == key)
+        .map(|(_, outcome)| outcome.clone())
+}
+
+fn remember(key: Key, outcome: &Outcome) {
+    // A text too large to cache is simply not cached: the retries that follow pay one process.
+    let size = match outcome {
+        Outcome::Formatted(text) => text.len(),
+        Outcome::Unparsed(_) | Outcome::Undecided(_) | Outcome::Stopped => 0,
+    };
+    if size > CACHE {
+        return;
+    }
+    let mut held = lock(&MEMO);
+    while held.iter().map(|(_, held)| weigh(held)).sum::<usize>() + size > CACHE {
+        held.remove(0);
+    }
+    held.push((key, outcome.clone()));
+}
+
+/// How many bytes one cached outcome holds.
+fn weigh(outcome: &Outcome) -> usize {
+    match outcome {
+        Outcome::Formatted(text) => text.len(),
+        Outcome::Unparsed(_) | Outcome::Undecided(_) | Outcome::Stopped => 0,
+    }
+}
+
+/// A lock that survives a panicking holder: the state behind it is a cache, never a promise.
+fn lock<T>(held: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    held.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A text's content hash.
+fn hash(text: &str) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
+}

@@ -66,9 +66,9 @@ a batch with the turn's stop signal
 ```
 
 After the batch's last call, every written call's shell reaches `fs/fault.rs`'s audit: one
-`cargo check` per crate written into, to completion, no deadline — the turn's stop is its only
-end. Every error and every warning lands exactly once: under the edit whose lines it hit, under
-the `write` that replaced the whole file, or in the crate's own list, which rides on the last
+check per unit written into, run by the language that owns it, to completion, no deadline — the
+turn's stop is its only end. Every error and every warning lands exactly once: under the edit whose lines it hit, under
+the `write` that replaced the whole file, or in the unit's own list, which rides on the last
 written answer that can still take lines. `unfold: true` on any written call lifts that list's
 fold.
 
@@ -104,7 +104,7 @@ that tool needs (the tool checks them, not the schema).
 
 | tool | parameters, in index order |
 |---|---|
-| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` file; omitted, the whole `src/`) |
+| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`) |
 | `read` | `files` always: one item per path, with its own `offset` (1-based, default 1) and `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap); a Rust file gets 800 lines and 256 KiB, anything else 200 lines and 64 KiB |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
@@ -292,7 +292,7 @@ A tool name the table no longer holds shows its clipped arguments.
 ### grep
 
 `grep` answers one query over the crate's own `src/`. The crate is the nearest `Cargo.toml` above
-the session's directory, and only `.rs` files under its `src/` are read: no ignore rules and no
+the session's directory, and only `.rs` and `.md` files under its `src/` are read: no ignore rules and no
 external binary, so the answer is the same on every platform. `target/` is out of reach by
 construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the root documents — is one
 `read` away and never searched. `scope` narrows the walk to named directories under `src/`, and the
@@ -306,6 +306,12 @@ and literals blanked, braces paired, head words recognized. A header runs to its
 stay inside one header, and `->` contributes no closing angle. Each line carries a stamp, the shape
 it reads by, and the line it names: `impl Display for Env` reads `impl a for b` and binds both
 `Display` and `Env`; `pub async fn send` reads `pub async fn` and binds `send`.
+
+A Markdown document is read by its own grammar: every heading is a piece whose section runs to the next
+heading of the same depth or shallower, the two lines of a fence are a piece, and a list, a quote, an
+HTML block and the front matter each carry the two lines that bound them. Nothing inside a document
+binds a name, so `A::b` and the three sections say nothing about it; its hits are drawn as a
+skeleton of headings.
 
 Three sections precede the hits:
 
@@ -382,6 +388,9 @@ replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.
 ```
 
 ### splice
+
+The formatter and the checker are the file's language's own: a language names them, and one that
+names no formatter writes the text as it stands.
 
 A Rust file goes through rustfmt in one pass over the merged text. The formatter reports; it never
 withholds a change. When it agrees, its own layout is what lands. When it says the text does not
@@ -497,6 +506,9 @@ A stop lands in one of two places, and the answer says which. Before the write, 
 killed and nothing reaches the file, so the call answers that the file is unchanged. After the write,
 the change stands and waits for the batch's audit: the answer is finished once the batch's last
 write has landed and the crate has been checked.
+
+A language that names a checker is checked in its own unit, whatever that unit is; a language that
+names none takes no part.
 
 The compiler answers once per batch, not per call, and every diagnostic lands once. One whose line
 falls on a written edit's own lines hangs under that edit; one in a file this batch wrote whole

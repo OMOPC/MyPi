@@ -1,5 +1,7 @@
 // One file's line table: each line's stamp, the line it pairs with, and what it names.
 
+use super::Language;
+
 /// What one line does to the structure.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Stamp {
@@ -43,23 +45,34 @@ impl Line {
 /// One file's lines, and who holds whom.
 pub(crate) struct Table {
     lines: Vec<Line>,
+    /// The language that wrote it; `None` for a text no sorter takes.
+    language: Option<&'static Language>,
 }
 
 impl Table {
-    /// `n` lines, none of them a piece.
-    pub(crate) fn new(n: usize) -> Self {
+    /// `n` lines of one language, none of them a piece yet.
+    pub(crate) fn new(n: usize, language: &'static Language) -> Self {
         Self {
             lines: (0..n).map(|_| Line::bare()).collect(),
+            language: Some(language),
         }
     }
 
     /// A text no sorter takes: every line stands alone, so every line is a key line.
     pub(crate) fn plain(text: &str) -> Self {
-        let mut table = Self::new(text.lines().count());
+        let mut table = Self {
+            lines: (0..text.lines().count()).map(|_| Line::bare()).collect(),
+            language: None,
+        };
         for line in &mut table.lines {
             line.stamp = Stamp::Single;
         }
         table
+    }
+
+    /// The language that wrote this table.
+    pub(crate) fn language(&self) -> Option<&'static Language> {
+        self.language
     }
 
     pub(crate) fn stamp(&self, at: usize) -> Stamp {
@@ -101,6 +114,22 @@ impl Table {
             line.stamp = Stamp::Close;
             line.mate = Some(at);
         }
+    }
+
+    /// One piece that reaches to `end` without keying that line: a heading's section ends on
+    /// ordinary prose, and prose carries no number of its own.
+    pub(crate) fn reach(
+        &mut self,
+        at: usize,
+        end: usize,
+        label: Option<String>,
+        exact: Option<String>,
+    ) {
+        if end <= at {
+            self.set(at, Stamp::Single, label, exact, Some(at));
+            return;
+        }
+        self.set(at, Stamp::Open, label, exact, Some(end));
     }
 
     fn set(

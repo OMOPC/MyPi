@@ -15,7 +15,7 @@ A file's budget comes from its kind; `limit` narrows the line count and never wi
 
 | kind | lines | bytes |
 |---|---|---|
-| a `.rs` file | 800 | 256 KiB |
+| a source file | 800 | 256 KiB |
 | anything else | 200 | 64 KiB |
 
 ### A file's body
@@ -32,6 +32,10 @@ macro call or a closure whose `{` ends the line. No head needs its `{` on that l
 condition puts it three lines down. Every other line stays unnumbered, so every numbered block has a
 `(start, end)` a call can name without counting. A file no sorter takes is one whole piece per line:
 every line carries a number.
+A Markdown file numbers what its grammar makes structural: every heading line, the two lines of a
+fenced block, a list's first and last line (and, when items nest, each outer item's own line), a
+quote's first and last line, an HTML block's two tag lines, and the front matter's pair of `---`.
+
 
 `edit` locates a change by text, so a session with `edit` and without `splice` gets no numbers at
 all: the body is the file, ready to be copied into `old`.

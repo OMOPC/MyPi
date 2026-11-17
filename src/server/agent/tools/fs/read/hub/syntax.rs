@@ -76,7 +76,11 @@ pub(super) fn export_items(path: &Path, text: &str) -> Vec<String> {
 /// Whether this line opens a piece a child may export: not `use`, not `impl`, not `mod`.
 fn exportable(table: &Table, at: usize) -> bool {
     table.line(at).is_some_and(|line| {
-        line.head() && !matches!(lang::shape(line), None | Some("use" | "impl" | "mod"))
+        line.head()
+            && !matches!(
+                lang::shape(table, line),
+                None | Some("use" | "impl" | "mod")
+            )
     })
 }
 

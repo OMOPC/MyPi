@@ -1,11 +1,14 @@
-//! rustfmt as one pass over the merged text, with a comment around every block so the answer can
+//! The language's formatter as one pass over the merged text, with a comment around every block so the answer can
 //! name the lines each one became. Nothing here withholds an edit.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash as _, Hasher as _};
 
 use super::edit::{self, Edit};
-use crate::server::agent::tools::fs::gate;
+use std::path::Path;
+
+use crate::server::agent::tools::fs::lang::Format;
+use crate::server::agent::tools::fs::lang::verdict::Outcome;
 use crate::server::platform::stop::Stop;
 
 /// The word a change's wrapper comment starts with. The comment carries a fingerprint of the
@@ -30,16 +33,16 @@ pub(crate) struct Settled {
 
 /// The formatter's verdict, as the answer speaks it.
 pub(crate) enum Word {
-    /// Not a Rust file: no formatter was involved.
+    /// No formatter was involved.
     Plain,
 
-    /// rustfmt laid the merged text out.
+    /// The formatter laid the merged text out.
     Formatted,
 
-    /// rustfmt ran and said the merged text does not parse.
+    /// The formatter ran and said the merged text does not parse.
     Unparsed(String),
 
-    /// rustfmt did not finish or could not run: the text was written as it stands.
+    /// The formatter did not finish or could not run: the text was written as it stands.
     Undecided(String),
 }
 
@@ -48,7 +51,13 @@ pub(crate) enum Word {
 /// the text that is written is that output without them. A text the formatter cannot parse is
 /// written as it stands; each block is then tried on its own only to say which one it blames.
 /// `None` = the turn was stopped, so nothing is written.
-pub(crate) fn settle(base: &str, edits: &[Edit], edition: &str, stop: &Stop) -> Option<Settled> {
+pub(crate) fn settle(
+    base: &str,
+    edits: &[Edit],
+    format: Format,
+    path: &Path,
+    stop: &Stop,
+) -> Option<Settled> {
     let tag = tag(base);
     let marked: Vec<Edit> = edits
         .iter()
@@ -56,8 +65,8 @@ pub(crate) fn settle(base: &str, edits: &[Edit], edition: &str, stop: &Stop) -> 
         .map(|(at, change)| change.marked(&tag, at))
         .collect();
     let picked: Vec<&Edit> = marked.iter().collect();
-    match gate::format(&edit::spliced(base, &picked), edition, stop) {
-        gate::Outcome::Formatted(text) => {
+    match format(&edit::spliced(base, &picked), path, stop) {
+        Outcome::Formatted(text) => {
             let landings = marks(&text, &tag);
             let (text, dropped) = unmarked(&text, &tag, &landings);
             let landings = landings
@@ -71,18 +80,18 @@ pub(crate) fn settle(base: &str, edits: &[Edit], edition: &str, stop: &Stop) -> 
                 blamed: Vec::new(),
             })
         }
-        gate::Outcome::Stopped => None,
-        gate::Outcome::Undecided(why) => Some(Settled {
+        Outcome::Stopped => None,
+        Outcome::Undecided(why) => Some(Settled {
             text: raw(base, edits),
             word: Word::Undecided(why),
             landings: edit::shifted(edits),
             blamed: Vec::new(),
         }),
-        gate::Outcome::Unparsed(why) => {
+        Outcome::Unparsed(why) => {
             let blamed = match edits.len() {
                 // One edit is the whole text: the parser has already named it.
                 1 => vec![(0, why.message.clone())],
-                _ => blame(base, edits, edition, stop)?,
+                _ => blame(base, edits, format, path, stop)?,
             };
             Some(Settled {
                 text: raw(base, edits),
@@ -103,14 +112,20 @@ fn raw(base: &str, edits: &[Edit]) -> String {
 
 /// Which blocks do not parse on their own, one trial each: the report a refusal of the whole text
 /// cannot give by itself. A trial that is not a verdict has nothing to say about its block.
-fn blame(base: &str, edits: &[Edit], edition: &str, stop: &Stop) -> Option<Vec<(usize, String)>> {
+fn blame(
+    base: &str,
+    edits: &[Edit],
+    format: Format,
+    path: &Path,
+    stop: &Stop,
+) -> Option<Vec<(usize, String)>> {
     let mut out = Vec::new();
     for (at, edit) in edits.iter().enumerate() {
         let picked = [edit];
-        match gate::format(&edit::spliced(base, &picked), edition, stop) {
-            gate::Outcome::Unparsed(why) => out.push((at, why.message)),
-            gate::Outcome::Stopped => return None,
-            gate::Outcome::Formatted(_) | gate::Outcome::Undecided(_) => {}
+        match format(&edit::spliced(base, &picked), path, stop) {
+            Outcome::Unparsed(why) => out.push((at, why.message)),
+            Outcome::Stopped => return None,
+            Outcome::Formatted(_) | Outcome::Undecided(_) => {}
         }
     }
     Some(out)
@@ -147,7 +162,7 @@ fn marks(text: &str, tag: &str) -> Vec<edit::Place> {
 
 /// The formatted text without its marker lines, and how many lines before each one it lost.
 ///
-/// A marker is a comment, and a comment keeps rustfmt from folding the blank lines around it; with
+/// A marker is a comment, and a comment keeps a formatter from folding the blank lines around it; with
 /// the markers gone, a run of blank lines is folded to one, as the formatter would have done. A line
 /// a landing holds is never folded, so no block loses its own edges. The count says how many lines
 /// were dropped above each line of the marked text, so a landing found there can be read in the text

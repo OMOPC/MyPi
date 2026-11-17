@@ -100,11 +100,10 @@ fn runs(table: &Table, shown: &[usize]) -> Vec<(usize, usize)> {
 }
 
 /// Whether this piece is a `use` statement.
-/// Whether this piece is a `use` statement.
 fn is_use(table: &Table, at: usize) -> bool {
     table
         .line(at)
-        .is_some_and(|line| lang::shape(line) == Some("use"))
+        .is_some_and(|line| lang::shape(table, line) == Some("use"))
 }
 
 /// Does this piece's own lines hold any of the hits?

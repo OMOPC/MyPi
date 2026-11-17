@@ -16,7 +16,6 @@ use crate::server::agent::tools::contract::halt::stopped;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::change;
-use crate::server::agent::tools::fs::gate;
 use crate::server::agent::tools::fs::lang::{self, Table};
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
@@ -62,9 +61,9 @@ const PARAMS: &[Param] = &[
 pub(crate) const TOOL: Tool = Tool {
     name: "splice",
     about: "Batch 1-based inclusive line edits in one file. Supports `@@COPY(a..b)@@` / \
-            `@@CUT(a..b)@@` line macros. Auto-formats Rust via rustfmt \
-            (writes and warns on syntax error). By matched text → `edit`. One `cargo check` \
-            per batch, reported on the last write.",
+            `@@CUT(a..b)@@` line macros. Auto-formats through the file's own language \
+            (writes and warns on syntax error). By matched text → `edit`. One check per batch, \
+            reported on the last write.",
     fields: "Requires `path` and non-overlapping `edits` (`{start, end, new}`). \
              Delete: `new: \"\"`. Insert before `start`: `end = start - 1`. \
              Same-file calls in one turn merge into one write against pre-turn line numbers.\n\
@@ -112,11 +111,12 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     // Every written Rust call hands its shell to the audit: its faults hang under its edits when
     // the batch's check has run, and the crate's report rides on the last written answer.
     let audit = (built.written.is_some() && !matches!(built.word, Word::Plain))
-        .then(|| gate::crate_root(&path))
+        .then(|| lang::checker(&path))
         .flatten()
-        .map(|root| {
-            let shown = gate::shown(&root, &path);
-            (root, shown, matches!(built.word, Word::Unparsed(_)))
+        .and_then(|checker| {
+            let root = (checker.unit)(&path)?;
+            let shown = (checker.shown)(&root, &path);
+            Some((root, shown, matches!(built.word, Word::Unparsed(_))))
         });
     let mut mine = None;
     for (plan, (answer, slots)) in plans.iter().zip(answers) {
@@ -131,6 +131,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                 call_id: plan.call_id.clone(),
                 mine: shown.clone(),
                 root: root.clone(),
+                file: path.clone(),
                 parse_failed: *parse_failed,
                 unfold,
                 seam: false,
@@ -397,7 +398,7 @@ fn compute(
 
     let (edits, spans, unreadable) = flatten(plans, &base);
     let (kept, dropped) = settle_overlaps(&edits)?;
-    let rust = path.extension().and_then(|e| e.to_str()) == Some("rs");
+    let formatter = lang::format(path);
 
     let mut held: Vec<usize> = Vec::new();
     let mut landings: Vec<Place> = Vec::new();
@@ -407,9 +408,8 @@ fn compute(
 
     if !kept.is_empty() {
         let picked: Vec<Edit> = kept.iter().map(|at| edits[*at].clone()).collect();
-        let now = if rust {
-            let edition = gate::edition(path);
-            let Some(settled) = fmt::settle(&text, &picked, &edition, stop) else {
+        let now = if let Some(format) = formatter {
+            let Some(settled) = fmt::settle(&text, &picked, format, path, stop) else {
                 return Ok(None);
             };
             blamed = settled

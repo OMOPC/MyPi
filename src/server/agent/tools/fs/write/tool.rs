@@ -7,7 +7,8 @@ use crate::server::agent::tools::contract::halt::stopped;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::fault;
-use crate::server::agent::tools::fs::gate;
+use crate::server::agent::tools::fs::lang;
+use crate::server::agent::tools::fs::lang::verdict::Outcome;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 
@@ -59,27 +60,27 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     }
     let existed = p.exists();
 
-    // Rust is formatted first: the caller's content is what it meant, not what it lays out.
-    let rust = p.extension().and_then(|e| e.to_str()) == Some("rs");
+    // The formatter runs first: the caller's content is what it meant, not what it lays out.
+    let formatter = lang::format(&p);
     let mut unparsed = None;
     let mut undecided = None;
     let stop = &env.stop;
-    let written = if rust {
-        match gate::format(&content, &gate::edition(&p), stop) {
-            gate::Outcome::Formatted(text) => text,
+    let written = if let Some(format) = formatter {
+        match format(&content, &p, stop) {
+            Outcome::Formatted(text) => text,
             // A text the formatter cannot parse is written as it stands, and said so.
-            gate::Outcome::Unparsed(why) => {
+            Outcome::Unparsed(why) => {
                 unparsed = Some(why);
                 content.clone()
             }
             // The formatter decided nothing about the text: it is written as it stands, and the
             // batch's check is left to say what it makes of it.
-            gate::Outcome::Undecided(why) => {
+            Outcome::Undecided(why) => {
                 undecided = Some(why);
                 content.clone()
             }
             // The formatter was killed: the file is untouched, and the answer says why.
-            gate::Outcome::Stopped => return Ok(stopped(&p)),
+            Outcome::Stopped => return Ok(stopped(&p)),
         }
     } else {
         content.clone()
@@ -106,11 +107,14 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     // The compiler answers for the file as it now stands, after the batch's last write; the seam
     // stands under this answer at its end. A file that does not parse has the formatter's verdict
     // already. Only a Rust file joins the batch's check.
-    if rust && let Some(root) = gate::crate_root(&p) {
+    if let Some(checker) = lang::checker(&p)
+        && let Some(root) = (checker.unit)(&p)
+    {
         env.shells.push(Shell {
             call_id: env.current.clone(),
-            mine: gate::shown(&root, &p),
+            mine: (checker.shown)(&root, &p),
             root,
+            file: p.clone(),
             parse_failed: unparsed.is_some(),
             unfold,
             seam: true,

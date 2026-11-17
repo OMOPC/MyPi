@@ -22,9 +22,9 @@ use base64::Engine as _;
 
 const FILES: usize = 0;
 
-/// A Rust source file's own budget: 800 lines, 256 KiB.
-const MAX_LINES_RS: usize = 800;
-const MAX_BYTES_RS: usize = 256 * 1024;
+/// A source file's own budget: 800 lines, 256 KiB.
+const MAX_LINES_SOURCE: usize = 800;
+const MAX_BYTES_SOURCE: usize = 256 * 1024;
 
 /// Every other file's budget: 200 lines, 64 KiB.
 const MAX_LINES: usize = 200;
@@ -39,8 +39,8 @@ const FILE_FIELDS: &[Param] = &[
     Param::new(
         "limit",
         Kind::Number,
-        "Max lines this file may take; a `.rs` file answers 800 when this is left out, anything \
-         else 200, and neither cap moves.",
+        "Max lines this file may take; a source file answers 800 when this is left out, anything else \
+         200, and neither cap moves.",
     ),
 ];
 
@@ -53,9 +53,10 @@ const PARAMS: &[Param] = &[Param::new(
 pub(crate) const TOOL: Tool = Tool {
     name: "read",
     about: "Read files or directories; a sorted language answers with key line numbers under \
-            splice, an 800-line budget, and a module view on an `.rs` entry file.",
+            splice, a source file with an 800-line budget and a module view when it has one, \
+            anything else 200.",
     fields: "`files` takes one item per path, with `offset` (1-based, default 1) and `limit` \
-             (default: 800 for a `.rs` file, 200 otherwise, never above that file's own cap). A \
+             (default: 800 for a source file, 200 otherwise, never above that file's own cap). A \
              file answers its lines. A directory answers its immediate children, files with \
              their line counts and directories by name, then opens each child one level further, \
              folding a directory of ten files or more into counts. A level whose upper-case `.md` \
@@ -205,9 +206,11 @@ fn block(
     }
 
     let splice = env.allows(SPLICE.name);
-    let rust = path.extension().and_then(|e| e.to_str()) == Some("rs");
-    let limit = window(item, if rust { MAX_LINES_RS } else { MAX_LINES })?;
-    let whole = if rust {
+    let language = lang::owner(path).is_some();
+    let source = lang::source(path);
+    // A sorted language is read whole so its key lines can be numbered.
+    let limit = window(item, if source { MAX_LINES_SOURCE } else { MAX_LINES })?;
+    let whole = if language {
         std::fs::read_to_string(path).ok()
     } else {
         None
@@ -227,7 +230,7 @@ fn block(
                 limit,
                 lines.into_iter().skip(offset.saturating_sub(1)),
                 &numbers,
-                MAX_BYTES_RS,
+                if source { MAX_BYTES_SOURCE } else { MAX_BYTES },
             )
         }
         None => {
@@ -264,7 +267,7 @@ fn block(
     }
     text.push_str(&body.text);
 
-    if rust && let Some(module) = hub::locate(path) {
+    if let Some(module) = hub::locate(path) {
         let is_hub = module.hub.as_deref() == Some(path)
             || whole.as_deref().is_some_and(hub::declares_modules);
         if is_hub {

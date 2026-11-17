@@ -37,13 +37,15 @@ pub(crate) fn answer(
     );
 
     let mut shown: BTreeSet<usize> = BTreeSet::new();
-    if let Some((a, b)) = two_segments(query) {
+    // The three sections ask what a piece binds; a language whose pieces name nothing skips them.
+    let named = files.iter().any(|file| lang::named(&file.table));
+    if named && let Some((a, b)) = two_segments(query) {
         out.push('\n');
         out.push_str(&type_section(files, zone, &a, &b, caps, &mut shown));
         out.push('\n');
         out.push_str(&module_section(files, zone, &a, &b, caps, &mut shown));
     }
-    if let Some(name) = single_name(query) {
+    if named && let Some(name) = single_name(query) {
         let rays = x_ray(files, zone, name, caps, &mut shown);
         if !rays.is_empty() {
             out.push('\n');
@@ -76,18 +78,18 @@ fn type_section(
         let raw: Vec<&str> = file.text.lines().collect();
         let label = rel(zone, &file.path);
         for (index, piece) in file.table.pieces() {
-            if !bears(piece) || !names(piece, a) {
+            if !bears(&file.table, piece) || !names(&file.table, piece, a) {
                 continue;
             }
             let mut mine: Vec<String> = Vec::new();
-            if is_impl(piece) || lang::shape(piece) == Some("trait") {
+            if is_impl(&file.table, piece) || lang::shape(&file.table, piece) == Some("trait") {
                 for (member_at, member) in file.table.inner(index) {
-                    if names(member, b) && declared(member) {
+                    if names(&file.table, member, b) && declared(&file.table, member) {
                         mine.push(member_row(&file.table, member_at));
                     }
                 }
             }
-            if matches!(lang::shape(piece), Some("enum" | "struct")) {
+            if matches!(lang::shape(&file.table, piece), Some("enum" | "struct")) {
                 let end = file.table.end(index).unwrap_or(index);
                 for line in members(&raw, index + 1, end, b) {
                     mine.push(format!("{}  {}", line + 1, summary::clip(raw[line], 120)));
@@ -141,7 +143,9 @@ fn module_section(
             continue;
         };
         for (index, declaration) in file.table.pieces() {
-            if lang::shape(declaration) != Some("mod") || !names(declaration, a) {
+            if lang::shape(&file.table, declaration) != Some("mod")
+                || !names(&file.table, declaration, a)
+            {
                 continue;
             }
             // `mod a { … }` lives in this file; `mod a;` names a sibling file or directory.
@@ -171,7 +175,9 @@ fn module_section(
                 }
                 let label = rel(zone, &target.path);
                 for (item_at, item) in target.table.pieces() {
-                    if !names(item, b) || lang::shape(item) == Some("use") {
+                    if !names(&target.table, item, b)
+                        || lang::shape(&target.table, item) == Some("use")
+                    {
                         continue;
                     }
                     if other == at && inline && !(item_at > index && item_at <= end) {
@@ -218,23 +224,25 @@ fn x_ray(
     caps: GrepLimits,
     shown: &mut BTreeSet<usize>,
 ) -> String {
-    let declares = |line: &Line| {
+    let declares = |table: &Table, line: &Line| {
         matches!(
-            lang::shape(line),
+            lang::shape(table, line),
             Some("struct" | "enum" | "trait" | "union")
-        ) && names(line, name)
+        ) && names(table, line, name)
     };
-    if !files
-        .iter()
-        .any(|file| file.table.pieces().iter().any(|(_, line)| declares(line)))
-    {
+    if !files.iter().any(|file| {
+        file.table
+            .pieces()
+            .iter()
+            .any(|(_, line)| declares(&file.table, line))
+    }) {
         return String::new();
     }
     let mut out = format!("[x-ray] {name}\n");
     for (at, file) in files.iter().enumerate() {
         let label = rel(zone, &file.path);
         for (index, line) in file.table.pieces() {
-            if !declares(line) {
+            if !declares(&file.table, line) {
                 continue;
             }
             shown.insert(at);
@@ -252,7 +260,7 @@ fn x_ray(
     for (at, file) in files.iter().enumerate() {
         let label = rel(zone, &file.path);
         for (index, line) in file.table.pieces() {
-            if !is_impl(line) || !names(line, name) {
+            if !is_impl(&file.table, line) || !names(&file.table, line, name) {
                 continue;
             }
             blocks += 1;
@@ -285,26 +293,29 @@ fn x_ray(
 }
 
 /// Whether this piece is an impl block, of either shape.
-fn is_impl(line: &Line) -> bool {
-    matches!(lang::shape(line), Some("impl"))
+fn is_impl(table: &Table, line: &Line) -> bool {
+    matches!(lang::shape(table, line), Some("impl"))
 }
 
 /// Whether this piece is one of the kinds `A::b` asks about.
-fn bears(line: &Line) -> bool {
+fn bears(table: &Table, line: &Line) -> bool {
     matches!(
-        lang::shape(line),
+        lang::shape(table, line),
         Some("impl" | "trait" | "struct" | "enum" | "union")
     )
 }
 
 /// Whether this piece's body declares functions, consts, types or statics by name.
-fn declared(line: &Line) -> bool {
-    matches!(lang::shape(line), Some("fn" | "const" | "type" | "static"))
+fn declared(table: &Table, line: &Line) -> bool {
+    matches!(
+        lang::shape(table, line),
+        Some("fn" | "const" | "type" | "static")
+    )
 }
 
 /// Whether this piece binds `word`: its own name, or the trait and target of an `impl`.
-fn names(line: &Line, word: &str) -> bool {
-    lang::binds(line, word)
+fn names(table: &Table, line: &Line, word: &str) -> bool {
+    lang::binds(table, line, word)
 }
 
 /// The line a row shows: the piece's own header, never the shape.

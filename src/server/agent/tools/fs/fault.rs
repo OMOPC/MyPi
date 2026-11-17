@@ -1,18 +1,22 @@
-//! The batch's shared audit: after a batch's last write, one `cargo check` per crate written into.
-//! Faults that land on a written edit hang under it; the crate's report rides on the last written
+//! The batch's shared audit: after a batch's last write, one check per unit written into, run by
+//! the language that owns it. Faults that land on a written edit hang under it; the unit's report rides on the last written
 //! answer.
 
 use std::path::{Path, PathBuf};
 
-use super::gate::{self, Check, Fault, Unparsed};
+use super::lang::verdict::{Check, Fault, Unparsed};
 use super::skeleton;
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::output::ToolResult;
 use crate::server::agent::tools::fs::lang;
+use crate::server::agent::tools::fs::lang::Checker;
 use crate::server::platform::stop::Stop;
 
 /// How many lines one error block may take.
 const ROOM: usize = 16;
+
+/// How many diagnostics one folded report lists.
+const FAULTS: usize = 12;
 
 /// A file that did not parse: the formatter's verdict is the whole report.
 pub(crate) fn unparsed(why: &Unparsed) -> String {
@@ -44,31 +48,40 @@ pub(crate) fn settle(env: &mut Env, results: &mut [ToolResult]) {
     finish(&shells, &checks, results);
 }
 
-/// One check per crate, in the order the writes named them.
-fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check)> {
-    let mut roots: Vec<PathBuf> = Vec::new();
+/// One check per unit, in the order the writes named them: each unit's own checker, and the files
+/// this batch wrote into it.
+fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check, &'static Checker)> {
+    let mut units: Vec<(PathBuf, &'static Checker, Vec<PathBuf>)> = Vec::new();
     for shell in shells {
-        if !roots.contains(&shell.root) {
-            roots.push(shell.root.clone());
+        let Some(checker) = lang::checker(&shell.file) else {
+            continue;
+        };
+        match units.iter_mut().find(|(root, ..)| *root == shell.root) {
+            Some((_, _, files)) => files.push(shell.file.clone()),
+            None => units.push((shell.root.clone(), checker, vec![shell.file.clone()])),
         }
     }
-    roots
+    units
         .into_iter()
-        .map(|root| {
-            let check = gate::check_crate(&root, stop);
-            (root, check)
+        .map(|(root, checker, files)| {
+            let check = (checker.run)(&root, &files, stop);
+            (root, check, checker)
         })
         .collect()
 }
 
 /// The audit's pure half: every diagnostic lands once — under the edit whose lines it hit, under
 /// the write that replaced the whole file, or in the crate's own list.
-pub(crate) fn finish(shells: &[Shell], checks: &[(PathBuf, Check)], results: &mut [ToolResult]) {
+pub(crate) fn finish(
+    shells: &[Shell],
+    checks: &[(PathBuf, Check, &'static Checker)],
+    results: &mut [ToolResult],
+) {
     let unfold = shells.iter().any(|shell| shell.unfold);
     let mut report: Vec<String> = Vec::new();
 
-    for (root, check) in checks {
-        let name = gate::crate_name(root);
+    for (root, check, checker) in checks {
+        let name = (checker.title)(root);
         for shell in shells.iter().filter(|s| s.root == *root && s.parse_failed) {
             report.push(format!(
                 "[i] fmt · {} does not parse, written as it stands",
@@ -175,13 +188,13 @@ fn head(name: &str, faults: usize, warns: usize) -> String {
 /// The report's lines: every error, then every warning; folded past the cap unless unfolded.
 fn listing(faults: &[Fault], warns: &[Fault], unfold: bool) -> Vec<String> {
     let lines: Vec<String> = faults.iter().chain(warns.iter()).map(one).collect();
-    if unfold || lines.len() <= gate::FAULTS {
+    if unfold || lines.len() <= FAULTS {
         return lines;
     }
-    let mut out: Vec<String> = lines[..gate::FAULTS].to_vec();
+    let mut out: Vec<String> = lines[..FAULTS].to_vec();
     out.push(format!(
         "(+{} more) — use the Grep tool to catch them",
-        lines.len() - gate::FAULTS
+        lines.len() - FAULTS
     ));
     out
 }

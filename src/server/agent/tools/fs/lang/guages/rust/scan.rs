@@ -1,4 +1,4 @@
-// The blanker every sorter shares: a cursor and a line buffer, driven by one language's delimiters.
+// The Rust scan: a cursor and a line buffer, driven by Rust's own delimiters.
 
 /// One text being blanked: comments and literals cut out, code kept, line count unchanged.
 pub(crate) struct Blank {
@@ -119,7 +119,7 @@ impl Blank {
     }
 }
 
-/// Blank one text; `token` consumes whatever this language calls a comment or a literal.
+/// Blank one text; `token` consumes whatever Rust calls a comment or a literal.
 pub(crate) fn strip(text: &str, token: fn(&mut Blank, char) -> bool) -> Vec<String> {
     let mut blank = Blank {
         chars: text.chars().collect(),

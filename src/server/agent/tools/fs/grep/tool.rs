@@ -1,6 +1,4 @@
-//! The `grep` tool: hits inside the crate's own source, each with the Rust item around it.
-
-use anyhow::Result;
+//! The `grep` tool: hits inside the crate's own source, each with the piece around it.
 
 use super::{render, scan};
 use crate::server::agent::tools::contract::env::Env;
@@ -8,6 +6,7 @@ use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
+use anyhow::Result;
 
 const QUERY: usize = 0;
 const REGEX: usize = 1;
@@ -23,14 +22,16 @@ const PARAMS: &[Param] = &[
     Param::new(
         "scope",
         Kind::TextList,
-        "`src/...` files or dirs (`.rs` only; defaults to whole `src/`; invalid entries skipped).",
+        "`src/...` files or dirs, whatever suffix a sorter claims (defaults to whole `src/`; invalid \
+         entries skipped).",
     ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
     name: "grep",
-    about: "Structural search across `src/**/*.rs`. Returns hits with enclosing Rust item \
-            hierarchy and line numbers. Supports `A::b` member lookup.",
+    about: "Structural search across the crate's `src/`, Rust source and Markdown. Returns \
+            hits with the enclosing piece's hierarchy and line numbers. Supports `A::b` member \
+            lookup.",
     fields: "Requires `query`; `regex` and `scope` are optional.\n\
              - `A::b` syntax: besides literal matches, also locates where type/trait/module `A` declares `b`.\n\
              - Output: 1-based line numbers + surrounding item scopes.",

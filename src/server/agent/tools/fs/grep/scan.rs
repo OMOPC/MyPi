@@ -14,6 +14,11 @@ const LARGE: u64 = 4 * 1024 * 1024;
 /// Directories inside `src/` that are never source.
 const SKIP: &[&str] = &["target", "node_modules"];
 
+/// Whether a sorter claims this file: `grep` reads what the languages read.
+fn readable(path: &Path) -> bool {
+    lang::owner(path).is_some()
+}
+
 /// Threads one answer may read its files on.
 const THREADS: usize = 8;
 
@@ -75,12 +80,12 @@ pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf
             if !dirs.contains(&real) {
                 dirs.push(real);
             }
-        } else if real.extension().is_some_and(|e| e == "rs") {
+        } else if readable(&real) {
             if !files.contains(&real) {
                 files.push(real);
             }
         } else {
-            misses.push(format!("[scope] {raw}: only .rs files are read"));
+            misses.push(format!("[scope] {raw}: no sorter reads this file"));
         }
     }
     (dirs, files, misses)
@@ -121,7 +126,7 @@ pub(crate) struct File {
     pub table: Table,
 }
 
-/// Every named file, and every `.rs` file under these directories; read in parallel.
+/// Every named file, and every readable file under these directories; read in parallel.
 pub(crate) fn collect(dirs: &[PathBuf], files: &[PathBuf], matcher: &Matcher) -> Vec<File> {
     let mut named: BTreeSet<PathBuf> = files.iter().cloned().collect();
     for dir in dirs {
@@ -178,7 +183,7 @@ fn read(path: &Path, matcher: &Matcher) -> Option<File> {
     })
 }
 
-/// One directory's `.rs` files, recursively; dot entries and build trees stay out.
+/// One directory's readable files, recursively; dot entries and build trees stay out.
 fn sources(dir: &Path, out: &mut BTreeSet<PathBuf>) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
@@ -195,7 +200,7 @@ fn sources(dir: &Path, out: &mut BTreeSet<PathBuf>) {
                 continue;
             }
             sources(&entry.path(), out);
-        } else if kind.is_file() && entry.path().extension().is_some_and(|e| e == "rs") {
+        } else if kind.is_file() && readable(&entry.path()) {
             out.insert(entry.path());
         }
     }

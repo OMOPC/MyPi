@@ -68,6 +68,8 @@ pub struct Shell {
     pub mine: String,
     /// The crate the written file belongs to.
     pub root: PathBuf,
+    /// The written file itself.
+    pub file: PathBuf,
     /// The file does not parse, so the report says who is speaking.
     pub parse_failed: bool,
     /// Whether this call lifts the audit's fold.
