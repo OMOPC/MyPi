@@ -10,7 +10,7 @@ pub(crate) static LANGUAGE: Language = Language {
     suffixes: SUFFIXES,
     table,
     shape,
-    binds: None,
+    relations: None,
     source: false,
     format: None,
     check: None,

@@ -313,7 +313,9 @@ HTML block and the front matter each carry the two lines that bound them. Nothin
 binds a name, so `A::b` and the three sections say nothing about it; its hits are drawn as a
 skeleton of headings.
 
-Three sections precede the hits:
+The three sections are a language's own relation index, not a fixed grammar: a language that
+indexes names answers them, one that names nothing takes no part. For Rust this index reads `::`
+as a module or type member, and a lone name as its declarations and impl blocks:
 
 - `[type]` — `A::b` where `A` is declared here: the `b` inside `impl A`, `impl Tr for A`, `trait
   A`, `impl Tr for A` on a trait's behalf, and the variants or fields of `enum A` and `struct A`.

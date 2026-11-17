@@ -14,7 +14,8 @@ text. An opening line and its closing line pair into "this piece runs from line 
 **The declarations.** A language says what a tool may ask it:
 
 - the suffixes it answers to;
-- whether its pieces can say what they bind, and how;
+- whether its pieces can index relations, and how: `A::b`, a lone name, and the symbol it reads;
+- whether its files are source, which decides how much of one a read shows;
 - whether its files are source, which decides how much of one a read shows;
 - whether it has a formatter, and how to run it on a text;
 - whether it has a checker, and how to find and run the unit a file belongs to.

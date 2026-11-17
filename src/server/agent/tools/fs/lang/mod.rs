@@ -8,7 +8,7 @@ mod guages;
 mod table;
 pub(crate) mod verdict;
 
-pub(crate) use table::{Line, Table};
+pub(crate) use table::{Line, Stamp, Table};
 use verdict::{Check, Outcome};
 
 /// One text's turn through the formatter a language names.
@@ -20,12 +20,39 @@ pub(crate) struct Language {
     pub(crate) suffixes: &'static [&'static str],
     pub(crate) table: fn(&str) -> Table,
     pub(crate) shape: fn(&Line) -> Option<&str>,
-    /// Whether a piece can say what it binds; `None` when the language names nothing.
-    pub(crate) binds: Option<fn(&Line, &str) -> bool>,
+    /// The relations it can index: `A::b` members and a name's own declarations; `None` when it
+    /// names nothing.
+    pub(crate) relations: Option<&'static Relations>,
     /// Whether its files are source: they take the source budget and are read whole.
     pub(crate) source: bool,
     pub(crate) format: Option<Format>,
     pub(crate) check: Option<Checker>,
+}
+
+/// How one language indexes relations: given the whole crate's sources, it reads a query and
+/// answers the rows that declare what it names. A language's own affair, never the tool's.
+pub(crate) struct Relations {
+    /// The rows a query answers, and the source indices they drew from.
+    pub(crate) scan: fn(&[Source], &Path, &str, usize, usize) -> Relation,
+}
+
+/// One source a relation reads: its path, text and line table.
+pub(crate) struct Source<'a> {
+    pub(crate) path: &'a Path,
+    pub(crate) text: &'a str,
+    pub(crate) table: &'a Table,
+}
+
+/// What a relation answered: the rows it read, and the source indices they drew from.
+pub(crate) struct Relation {
+    pub(crate) rows: Vec<Row>,
+    pub(crate) used: Vec<usize>,
+}
+
+/// One line of a relation's answer. A heading stands alone; every other row is a text line.
+pub(crate) struct Row {
+    pub(crate) heading: Option<String>,
+    pub(crate) text: String,
 }
 
 /// How one language's checker finds a build unit and asks it for its diagnostics.
@@ -80,15 +107,7 @@ pub(crate) fn shape<'a>(table: &Table, line: &'a Line) -> Option<&'a str> {
     (table.language()?.shape)(line)
 }
 
-/// Whether this piece binds `word`; a language whose pieces name nothing answers no.
-pub(crate) fn binds(table: &Table, line: &Line, word: &str) -> bool {
-    table
-        .language()
-        .and_then(|one| one.binds)
-        .is_some_and(|binds| binds(line, word))
-}
-
-/// Whether any piece of this file can be asked what it binds: only then is a name worth searching.
-pub(crate) fn named(table: &Table) -> bool {
-    table.language().is_some_and(|one| one.binds.is_some())
+/// The relations this table's language indexes, if it names any.
+pub(crate) fn relations(table: &Table) -> Option<&'static Relations> {
+    table.language()?.relations
 }

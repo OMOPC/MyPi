@@ -6,15 +6,16 @@ What is here, what each file holds, who talks to whom. Current state only.
 
 | file | holds |
 |---|---|
-| `mod.rs` | the registry: the `Language` contract, the language list, the suffix lookup, and the questions a tool asks — the table, the piece's kind, the name it binds, the source flag, the formatter, the checker |
+| `mod.rs` | the registry: the `Language` contract, the language list, the suffix lookup, and the questions a tool asks — the table, the piece's kind, the relations it indexes, the source flag, the formatter, the checker |
 | `table.rs` | `Stamp`, `Line`, `Table`: one file's lines, each line's stamp, the line it names, its other end, the language that wrote it, and the queries over them |
 | `verdict.rs` | what a formatter and a checker answer: the formatted text, the text that did not parse, one unit's check, one diagnostic |
 | `guages/mod.rs` | declares the languages |
 | `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, names, source flag, formatter and checker |
 | `guages/rust/table.rs` | the Rust sorter: head words, three key-line passes, head templates, what a piece binds |
 | `guages/rust/scan.rs` | Rust's own scan: a cursor and a line buffer Rust's delimiters drive, then the brace pairs and their closing lines |
-| `guages/rust/format.rs` | the Rust formatter: rustfmt under a deadline, the edition its manifest names, and the verdicts it remembers |
-| `guages/rust/check.rs` | the Rust checker: the crate a file belongs to, its name, how it names its files, and `cargo check` with its JSON decoded into diagnostics |
+| `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, relations, source flag, formatter and checker |
+| `guages/rust/table.rs` | the Rust sorter: head words, three key-line passes, head templates, what a piece is |
+| `guages/rust/relations.rs` | Rust's relation index: `A::b` as a module or type member, a lone name's declarations and impl blocks, and how it reads `::` and names |
 | `guages/markdown.rs` | the Markdown sorter: headings, fences, lists, quotes, HTML blocks, front matter, and how far each heading's section reaches |
 
 ## What it talks to
@@ -42,10 +43,11 @@ lang::table(path, text)
   → Table::plain             a suffix no language names: every line its own piece
 
 lang::format(path)
-  → owner(path)?.format      a language with no formatter answers nothing, and the text is kept
-  → rust::format             rustfmt under a deadline → verdict::Outcome
+  |lang::relations(path)
+  |  → owner(path)?.relations   a language that indexes none takes no part
+  |  → rust::relations::scan    read the query: `A::b` a member, a lone name its declarations
 
-lang::checker(path)
+  |lang::format(path)
   → owner(path)?.check       a language with no checker takes no part
   → fault::gather            one run per unit, with the files this batch wrote into it
   → rust::check::run         cargo check → its JSON → verdict::Check
@@ -58,10 +60,12 @@ lang::checker(path)
    line, `reach` leaves it as it was.
 2. `Line::label` and `Line::exact`: a label is the head's template with the names cut out
    (`impl a for b`), an exact is the head's own text (`impl Display for Env`). A tool that judges
-   what a piece is reads `lang::shape`; a tool that asks whether it binds a word reads
-   `lang::binds`. Neither cuts a label itself.
+   what a piece is reads `lang::shape`; a tool that asks where a name is declared reads the
+   language's own relation index (`lang::relations`). Neither cuts a label itself.
+
 3. `Language`'s fields and `LANGUAGES`: a new language is one file under `guages/` and one entry in
-   that list, and nothing else in this crate learns its name or its suffixes.
+   that list, and nothing else in this crate learns its name or its suffixes. `relations` is the
+   language's own affair: `None` for one that names nothing, and every `::`/`.` it reads stays here.
 4. A `Checker`'s `shown` and `fault`'s placement: a diagnostic reaches the write it belongs to by
    the name `shown` gives that file, and by the line the checker reports, so the two must agree.
 5. `Table::plain` and `read`: a file with no sorter numbers every line, so a new sorter narrows

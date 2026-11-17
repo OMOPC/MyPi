@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use super::scan;
 use crate::server::agent::tools::contract::env::GrepLimits;
-use crate::server::agent::tools::fs::lang::{self, Table};
+use crate::server::agent::tools::fs::lang::{self, Stamp, Table};
 use crate::server::agent::tools::summary;
 
 /// Columns a line number takes beside its neighbour.
@@ -33,7 +33,8 @@ pub(crate) fn file(file: &scan::File, raw: &[&str], label: &str, caps: GrepLimit
         let head = if first == last {
             head_of(&file.table, first)
         } else {
-            "use …".to_string()
+            // A run of bodiless pieces shares one label: `use …`, `const …`, `type …`.
+            folded(&file.table, first)
         };
         out.push_str(&row(width, from, to, &head, 0));
         if first != last {
@@ -86,24 +87,31 @@ pub(crate) fn file(file: &scan::File, raw: &[&str], label: &str, caps: GrepLimit
     out
 }
 
-/// The blocks to draw, with a run of `use` statements folded into one.
+/// The blocks to draw, with a run of bodiless pieces of one label folded into one.
 fn runs(table: &Table, shown: &[usize]) -> Vec<(usize, usize)> {
     let mut out: Vec<(usize, usize)> = Vec::new();
     for &at in shown {
-        let import = is_use(table, at);
+        let single = folding(table, at);
         match out.last_mut() {
-            Some((_, last)) if import && is_use(table, *last) => *last = at,
+            Some((_, last)) if single.is_some() && single == folding(table, *last) => *last = at,
             _ => out.push((at, at)),
         }
     }
     out
 }
 
-/// Whether this piece is a `use` statement.
-fn is_use(table: &Table, at: usize) -> bool {
-    table
-        .line(at)
-        .is_some_and(|line| lang::shape(table, line) == Some("use"))
+/// The label a piece folds under, when it has no body to open: `use`, `const`; `None` otherwise.
+fn folding(table: &Table, at: usize) -> Option<&str> {
+    table.line(at).and_then(|line| {
+        matches!(line.stamp, Stamp::Single)
+            .then(|| lang::shape(table, line))
+            .flatten()
+    })
+}
+
+/// A folded run's head, read from its first piece's label: `use …`.
+fn folded(table: &Table, first: usize) -> String {
+    folding(table, first).map_or_else(String::new, |label| format!("{label} …"))
 }
 
 /// Does this piece's own lines hold any of the hits?

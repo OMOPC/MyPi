@@ -5,8 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use crate::server::agent::tools::contract::env::{GrepLimits, Seen, Stamp};
-use crate::server::agent::tools::fs::lang::{self, Line, Table};
-use crate::server::agent::tools::summary;
+use crate::server::agent::tools::fs::lang::{self, Relation, Source};
 
 use super::{outline, scan};
 
@@ -37,19 +36,25 @@ pub(crate) fn answer(
     );
 
     let mut shown: BTreeSet<usize> = BTreeSet::new();
-    // The three sections ask what a piece binds; a language whose pieces name nothing skips them.
-    let named = files.iter().any(|file| lang::named(&file.table));
-    if named && let Some((a, b)) = two_segments(query) {
-        out.push('\n');
-        out.push_str(&type_section(files, zone, &a, &b, caps, &mut shown));
-        out.push('\n');
-        out.push_str(&module_section(files, zone, &a, &b, caps, &mut shown));
-    }
-    if named && let Some(name) = single_name(query) {
-        let rays = x_ray(files, zone, name, caps, &mut shown);
-        if !rays.is_empty() {
+    // The three sections ask a language's own relation index; a language that names none skips them.
+    let relations = files.iter().find_map(|file| lang::relations(&file.table));
+    if let Some(relations) = relations {
+        let sources: Vec<Source> = files
+            .iter()
+            .map(|file| Source {
+                path: &file.path,
+                text: &file.text,
+                table: &file.table,
+            })
+            .collect();
+        let relation = (relations.scan)(&sources, &zone.root, query, caps.items, caps.impls);
+        for &index in &relation.used {
+            shown.insert(index);
+        }
+        let block = paint(&relation);
+        if !block.is_empty() {
             out.push('\n');
-            out.push_str(&rays);
+            out.push_str(&block);
         }
     }
     out.push('\n');
@@ -62,293 +67,17 @@ pub(crate) fn answer(
     (out, shown)
 }
 
-// ---- the three sections ----
+// ---- the relation block ----
 
-/// `A::b` where `b` is declared on the type `A`: its `impl`, `trait`, `enum` or `struct` bodies.
-fn type_section(
-    files: &[scan::File],
-    zone: &scan::Zone,
-    a: &str,
-    b: &str,
-    caps: GrepLimits,
-    shown: &mut BTreeSet<usize>,
-) -> String {
-    let mut rows: Vec<String> = Vec::new();
-    for (at, file) in files.iter().enumerate() {
-        let raw: Vec<&str> = file.text.lines().collect();
-        let label = rel(zone, &file.path);
-        for (index, piece) in file.table.pieces() {
-            if !bears(&file.table, piece) || !names(&file.table, piece, a) {
-                continue;
-            }
-            let mut mine: Vec<String> = Vec::new();
-            if is_impl(&file.table, piece) || lang::shape(&file.table, piece) == Some("trait") {
-                for (member_at, member) in file.table.inner(index) {
-                    if names(&file.table, member, b) && declared(&file.table, member) {
-                        mine.push(member_row(&file.table, member_at));
-                    }
-                }
-            }
-            if matches!(lang::shape(&file.table, piece), Some("enum" | "struct")) {
-                let end = file.table.end(index).unwrap_or(index);
-                for line in members(&raw, index + 1, end, b) {
-                    mine.push(format!("{}  {}", line + 1, summary::clip(raw[line], 120)));
-                }
-            }
-            if mine.is_empty() {
-                continue;
-            }
-            shown.insert(at);
-            rows.push(format!(
-                "  {label}:{}  {}",
-                index + 1,
-                summary::clip(exact(piece), 200)
-            ));
-            for row in mine.iter().take(caps.items) {
-                rows.push(format!("    {row}"));
-            }
-            if mine.len() > caps.items {
-                rows.push(format!("    [+{} more]", mine.len() - caps.items));
-            }
+/// A relation's rows as one block: each heading, then its lines, in the language's own order.
+fn paint(relation: &Relation) -> String {
+    let mut out = String::new();
+    for row in &relation.rows {
+        match &row.heading {
+            Some(heading) => out.push_str(heading),
+            None => out.push_str(&row.text),
         }
-    }
-    if rows.is_empty() {
-        return format!(
-            "[type] {a}::{b}: no `{a}` in this crate declares `{b}`; this is not a \
-             crate-defined type member\n"
-        );
-    }
-    let mut out = format!("[type] {a}::{b}\n");
-    for row in rows {
-        out.push_str(&row);
         out.push('\n');
-    }
-    out
-}
-
-/// `A::b` where `A` is a module: the item `b` that module declares.
-fn module_section(
-    files: &[scan::File],
-    zone: &scan::Zone,
-    a: &str,
-    b: &str,
-    caps: GrepLimits,
-    shown: &mut BTreeSet<usize>,
-) -> String {
-    let mut rows: Vec<String> = Vec::new();
-    let mut known = false;
-    let mut seen: BTreeSet<(String, usize)> = BTreeSet::new();
-    for (at, file) in files.iter().enumerate() {
-        let Some(base) = file.path.parent() else {
-            continue;
-        };
-        for (index, declaration) in file.table.pieces() {
-            if lang::shape(&file.table, declaration) != Some("mod")
-                || !names(&file.table, declaration, a)
-            {
-                continue;
-            }
-            // `mod a { … }` lives in this file; `mod a;` names a sibling file or directory.
-            let end = file.table.end(index).unwrap_or(index);
-            let inline = end > index;
-            let mut roots: Vec<std::path::PathBuf> = Vec::new();
-            if !inline {
-                let dir = base.join(a);
-                let single = base.join(format!("{a}.rs"));
-                if dir.is_dir() {
-                    roots.push(dir);
-                }
-                if single.is_file() {
-                    roots.push(single);
-                }
-                if roots.is_empty() {
-                    continue;
-                }
-            }
-            known = true;
-            for (other, target) in files.iter().enumerate() {
-                let inside = roots
-                    .iter()
-                    .any(|root| target.path == *root || target.path.starts_with(root));
-                if !inside && !(inline && other == at) {
-                    continue;
-                }
-                let label = rel(zone, &target.path);
-                for (item_at, item) in target.table.pieces() {
-                    if !names(&target.table, item, b)
-                        || lang::shape(&target.table, item) == Some("use")
-                    {
-                        continue;
-                    }
-                    if other == at && inline && !(item_at > index && item_at <= end) {
-                        continue;
-                    }
-                    if !seen.insert((label.clone(), item_at)) {
-                        continue;
-                    }
-                    shown.insert(other);
-                    rows.push(format!(
-                        "  {label}:{}  {}  ({}..{})",
-                        item_at + 1,
-                        summary::clip(exact(item), 200),
-                        item_at + 1,
-                        target.table.end(item_at).unwrap_or(item_at) + 1
-                    ));
-                }
-            }
-        }
-    }
-    if rows.is_empty() {
-        return if known {
-            format!("[module] {a}::{b}: module `{a}` declares no `{b}`\n")
-        } else {
-            format!("[module] {a}::{b}: no module `{a}` in this crate\n")
-        };
-    }
-    let mut out = format!("[module] {a}::{b}\n");
-    for row in rows.iter().take(caps.items) {
-        out.push_str(row);
-        out.push('\n');
-    }
-    if rows.len() > caps.items {
-        out.push_str(&format!("  [+{} more]\n", rows.len() - caps.items));
-    }
-    out
-}
-
-/// The type's own declaration, and every `impl` block for it, with their items' spans.
-fn x_ray(
-    files: &[scan::File],
-    zone: &scan::Zone,
-    name: &str,
-    caps: GrepLimits,
-    shown: &mut BTreeSet<usize>,
-) -> String {
-    let declares = |table: &Table, line: &Line| {
-        matches!(
-            lang::shape(table, line),
-            Some("struct" | "enum" | "trait" | "union")
-        ) && names(table, line, name)
-    };
-    if !files.iter().any(|file| {
-        file.table
-            .pieces()
-            .iter()
-            .any(|(_, line)| declares(&file.table, line))
-    }) {
-        return String::new();
-    }
-    let mut out = format!("[x-ray] {name}\n");
-    for (at, file) in files.iter().enumerate() {
-        let label = rel(zone, &file.path);
-        for (index, line) in file.table.pieces() {
-            if !declares(&file.table, line) {
-                continue;
-            }
-            shown.insert(at);
-            out.push_str(&format!(
-                "  {label}:{}  {}  ({}..{})\n",
-                index + 1,
-                summary::clip(exact(line), 200),
-                index + 1,
-                file.table.end(index).unwrap_or(index) + 1
-            ));
-        }
-    }
-    let mut blocks = 0usize;
-    let mut listed = 0usize;
-    for (at, file) in files.iter().enumerate() {
-        let label = rel(zone, &file.path);
-        for (index, line) in file.table.pieces() {
-            if !is_impl(&file.table, line) || !names(&file.table, line, name) {
-                continue;
-            }
-            blocks += 1;
-            if listed >= caps.impls {
-                continue;
-            }
-            listed += 1;
-            shown.insert(at);
-            out.push_str(&format!(
-                "  {label}:{}..{}  {}\n",
-                index + 1,
-                file.table.end(index).unwrap_or(index) + 1,
-                summary::clip(exact(line), 200)
-            ));
-            let members = file.table.inner(index);
-            for (member_at, _) in members.iter().take(caps.items) {
-                out.push_str(&format!("    {}\n", member_row(&file.table, *member_at)));
-            }
-            if members.len() > caps.items {
-                out.push_str(&format!("    [+{} more]\n", members.len() - caps.items));
-            }
-        }
-    }
-    if blocks == 0 {
-        out.push_str("  [no impl blocks in this crate]\n");
-    } else if blocks > listed {
-        out.push_str(&format!("  [+{} more impl blocks]\n", blocks - listed));
-    }
-    out
-}
-
-/// Whether this piece is an impl block, of either shape.
-fn is_impl(table: &Table, line: &Line) -> bool {
-    matches!(lang::shape(table, line), Some("impl"))
-}
-
-/// Whether this piece is one of the kinds `A::b` asks about.
-fn bears(table: &Table, line: &Line) -> bool {
-    matches!(
-        lang::shape(table, line),
-        Some("impl" | "trait" | "struct" | "enum" | "union")
-    )
-}
-
-/// Whether this piece's body declares functions, consts, types or statics by name.
-fn declared(table: &Table, line: &Line) -> bool {
-    matches!(
-        lang::shape(table, line),
-        Some("fn" | "const" | "type" | "static")
-    )
-}
-
-/// Whether this piece binds `word`: its own name, or the trait and target of an `impl`.
-fn names(table: &Table, line: &Line, word: &str) -> bool {
-    lang::binds(table, line, word)
-}
-
-/// The line a row shows: the piece's own header, never the shape.
-fn exact(line: &Line) -> &str {
-    line.exact.as_deref().unwrap_or("")
-}
-
-/// One member as a row: its span, and its own name.
-fn member_row(table: &Table, at: usize) -> String {
-    let end = table.end(at).unwrap_or(at);
-    format!(
-        "{}..{}  {}",
-        at + 1,
-        end + 1,
-        table.line(at).map_or("", exact)
-    )
-}
-
-/// Lines inside one piece's body whose own line binds `name`: a variant, a field, a const.
-fn members(raw: &[&str], from: usize, to: usize, name: &str) -> Vec<usize> {
-    let mut out = Vec::new();
-    for at in from..to.min(raw.len()) {
-        let line = raw[at].trim();
-        let Some(rest) = line.strip_prefix(name) else {
-            continue;
-        };
-        let next = rest.chars().next();
-        if matches!(
-            next,
-            None | Some(' ' | ',' | '{' | '(' | '=' | ':' | ';' | '<')
-        ) {
-            out.push(at);
-        }
     }
     out
 }
@@ -535,31 +264,6 @@ pub(crate) fn stamp(seen: &mut Seen, files: &[scan::File], shown: &BTreeSet<usiz
 }
 
 // ---- shapes and paths ----
-
-/// `A::b`, exactly two identifiers.
-fn two_segments(query: &str) -> Option<(String, String)> {
-    let query = query.trim();
-    let (a, b) = query.split_once("::")?;
-    if b.contains("::") {
-        return None;
-    }
-    (ident(a) && ident(b)).then(|| (a.to_string(), b.to_string()))
-}
-
-/// A lone identifier.
-fn single_name(query: &str) -> Option<&str> {
-    let query = query.trim();
-    ident(query).then_some(query)
-}
-
-fn ident(text: &str) -> bool {
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(first) if first.is_alphabetic() || first == '_' => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_alphanumeric() || c == '_')
-}
 
 /// A path as the crate reads it: `src/server/...`.
 fn rel(zone: &scan::Zone, path: &Path) -> String {

@@ -24,7 +24,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `fs/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its three parameters, its summary |
 | `fs/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the files a sorter claims, read in parallel, the matcher, each file's hits, its line table |
 | `fs/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
-| `fs/grep/render.rs` | the answer: the type, module and x-ray sections, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
+| `fs/grep/render.rs` | the answer: the language's relation block painted row by row, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
 | `fs/write/{mod,tool}.rs` | `write`: the content through the formatter, the write whatever the formatter said, then the compiler's report unless the text does not parse |
 | `fs/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
 | `fs/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the copy and cut macros filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
@@ -40,7 +40,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `fs/lang/verdict.rs` | what a formatter and a checker answer: the formatted text, the text that did not parse, one unit's check, one diagnostic |
 | `fs/lang/guages/mod.rs` | declares the languages |
 | `fs/lang/guages/rust/mod.rs` | declares the Rust sorter and its scan |
-| `fs/lang/guages/rust/table.rs` | the Rust sorter: its suffix, head words, key-line passes, head templates, what a piece binds, and what kind of piece a line opens |
+| `fs/lang/guages/rust/table.rs` | the Rust sorter: its suffix, head words, key-line passes, head templates, and what kind of piece a line opens |
+| `fs/lang/guages/rust/relations.rs` | Rust's relation index: `A::b` as a module or type member, a lone name's declarations and impl blocks, and how it reads `::` |
 | `fs/lang/guages/rust/scan.rs` | Rust's own scan: a cursor and a line buffer Rust's delimiters drive, and the brace pairs counted on the result |
 | `fs/lang/guages/markdown.rs` | the Markdown sorter: headings, fences, lists, quotes, HTML blocks, front matter, and how far every heading's section reaches |
 | `shell/mod.rs` | declares the shell family |
@@ -159,13 +160,14 @@ Engine::run
 15. `fs/fault.rs`'s audit and the crate's own manifest:
     above a written file that holds a `Cargo.toml`, so a file outside any crate is never checked,
     and one batch gives one check per crate.
-16. `splice` and `write` both read a file's edition and formatter outcome from `gate`; the answer's
-    own `Outcome` and `Check` are borrowed there, never rebuilt here.
+16. `splice` and `write` both read a file's formatter outcome and the language's own `Outcome`
+    and `Check`; the answer borrows them there, never rebuilds them here.
 17. `lang::table` is the one place a file's structure is read: `change`, `skeleton`, `fault`,
     `read`, `splice`, `grep` and `read::hub` all ask it, so a change to what counts as a piece
     reaches every one of them.
-18. `lang::shape` and `lang::binds` are the decisions a consumer reads: a tool judges
-    what a piece is and whether it binds a word through those two, never by cutting a label itself.
+18. `lang::shape` and a language's own relation index (`lang::relations`) are the decisions a
+    consumer reads: a tool judges what a piece is through `shape`, and where a name is declared
+    through the language's relations, never by cutting a label or a `::`/`.` itself.
 19. A sorter answers a table and nothing else: display caps, sorting, folding and prose stay in the
     tool that shows them.
 
