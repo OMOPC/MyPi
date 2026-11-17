@@ -89,6 +89,10 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     env.workspace.with_write(&p, || {
         crate::server::agent::tools::workspace::write_atomic(&p, &written)
     })?;
+    env.seen.files.insert(
+        p.clone(),
+        crate::server::agent::tools::contract::env::License::of(&written),
+    );
     let bytes = written.len();
     let mut text = format!(
         "{} {} ({bytes} bytes)",

@@ -1,7 +1,5 @@
 //! The `splice` tool: replace whole lines by number, many ranges in one file.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use anyhow::{Context as _, Result, anyhow, bail};
@@ -11,7 +9,7 @@ use super::edit::{self, Edit, Place};
 use super::fmt::{self, Word};
 use super::receipt::{self, Row, State};
 use crate::server::agent::request::contract::ToolCall;
-use crate::server::agent::tools::contract::env::{Answer, Env, Shell, Slot, Stamp};
+use crate::server::agent::tools::contract::env::{Answer, Env, License, Shell, Slot};
 use crate::server::agent::tools::contract::halt::stopped;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -27,10 +25,14 @@ const EDITS: usize = 1;
 const UNFOLD: usize = 2;
 
 const EDIT_FIELDS: &[Param] = &[
-    Param::new("start", Kind::Line, "First line of the range, 1-based."),
+    Param::new(
+        "start",
+        Kind::Axis,
+        "First line of the range, 1-based. Optionally a string \"N the words the line opens with\": the line must open with those words, or nothing is written for this range.",
+    ),
     Param::new(
         "end",
-        Kind::Line,
+        Kind::Axis,
         "Last line of the range, inclusive. `start - 1` inserts instead of replacing.",
     ),
     Param::new(
@@ -66,6 +68,8 @@ pub(crate) const TOOL: Tool = Tool {
             reported on the last write.",
     fields: "Requires `path` and non-overlapping `edits` (`{start, end, new}`). \
              Delete: `new: \"\"`. Insert before `start`: `end = start - 1`. \
+             Each of `start`/`end` is a line number, or \"N the words that line opens with\" to \
+             confirm it has not drifted; a bare number is the plain range. \
              Same-file calls in one turn merge into one write against pre-turn line numbers.\n\
              Macros in `new` (1-based inclusive, pre-turn snapshot, single-pass): \
              `@@COPY(a..b)@@` copies lines `a..b`; `@@CUT(a..b)@@` moves them (auto-deletes `a..b`).\n\
@@ -84,13 +88,13 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let path = env.workspace.resolve(&raw, true)?;
     let plans = plans(env, &path);
     anyhow::ensure!(!plans.is_empty(), "this call is not in its own batch");
-    let stamp = env.seen.files.get(&path).copied();
+    let license = env.seen.files.get(&path).cloned();
     let current = env.current.clone();
 
     let stop = env.stop.clone();
     let Some(built) = env
         .workspace
-        .with_write(&path, || compute(&path, stamp, &plans, &stop))?
+        .with_write(&path, || compute(&path, license, &plans, &stop))?
     else {
         // A sibling of this batch reaches its own turn, finds the stop still set, and says the same
         // thing about the same untouched file: it is said here, never kept for `env.handed`.
@@ -99,14 +103,13 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     // The compiler waits for the batch's last write: the audit finishes every written answer then.
     let answers = built.answers(&plans, &path);
 
-    if let Some(written) = &built.written {
-        env.seen.files.insert(
-            path.clone(),
-            Stamp {
-                lines: written.lines().count(),
-                hash: hash(written),
-            },
-        );
+    let revoked = !built.dropped.is_empty() || built.unreadable.iter().any(|why| why.is_some());
+    if revoked {
+        env.seen.files.remove(&path);
+    } else {
+        env.seen
+            .files
+            .insert(path.clone(), License::of(&built.shown));
     }
     // Every written Rust call hands its shell to the audit: its faults hang under its edits when
     // the batch's check has run, and the crate's report rides on the last written answer.
@@ -329,48 +332,36 @@ impl Built {
             };
         }
 
-        let needle: Vec<&str> = edit.taken(base).iter().map(String::as_str).collect();
-        let near = self.near(at);
-        let (place, taken) = match edit::locate(lines, &needle, near) {
-            Some(first) if needle.is_empty() => (Some((first + 1, first)), Vec::new()),
-            Some(first) => {
-                let last = first + needle.len();
-                let mut kept = Vec::with_capacity(needle.len());
-                for line in &lines[first..last] {
-                    kept.push((*line).to_string());
-                }
-                (Some((first + 1, last)), kept)
-            }
-            None => (
-                None,
-                needle.iter().map(|line| (*line).to_string()).collect(),
-            ),
-        };
+        if let Some(reason) = drift(edit, base) {
+            let line = edit.start + 1;
+            return Row {
+                index: edit.index,
+                from: line,
+                state: State::Refused {
+                    at: Some((line, line)),
+                    taken: if edit.end > edit.start {
+                        edit.taken(base).to_vec()
+                    } else {
+                        Vec::new()
+                    },
+                    block: edit.block.clone(),
+                    item: item_of(table, line),
+                    why: reason,
+                },
+            };
+        }
+
         Row {
             index: edit.index,
             from: edit.start + 1,
             state: State::Refused {
-                at: place,
-                taken,
+                at: Some((edit.start + 1, edit.end)),
+                taken: edit.taken(base).to_vec(),
                 block: edit.block.clone(),
-                item: place.and_then(|(first, _)| item_of(table, first)),
-                why: "overlaps an earlier splice call on this file",
+                item: item_of(table, edit.start + 1),
+                why: "OVERLAPPED".to_string(),
             },
         }
-    }
-
-    /// Where a dropped edit's own lines start now, by the written edits above it.
-    fn near(&self, at: usize) -> usize {
-        let edit = &self.edits[at];
-        let mut shift: isize = 0;
-        for held in &self.held {
-            let other = &self.edits[*held];
-            if other.start >= edit.start {
-                continue;
-            }
-            shift += other.block.len() as isize - (other.end - other.start) as isize;
-        }
-        (edit.start as isize + shift).max(0) as usize
     }
 }
 
@@ -378,26 +369,36 @@ impl Built {
 /// before the write, so the file is exactly as it was and no call has an answer.
 fn compute(
     path: &Path,
-    stamp: Option<Stamp>,
+    license: Option<License>,
     plans: &[Plan],
     stop: &Stop,
 ) -> Result<Option<Built>> {
     let text = std::fs::read_to_string(path).context("failed to read file")?;
     let base: Vec<&str> = text.lines().collect();
     let total = base.len();
-    if let Some(stamp) = stamp
-        && (stamp.lines != total || stamp.hash != hash(&text))
-    {
+    let Some(license) = license else {
         bail!(
-            "`{}` changed on disk after it was read; it had {} lines then and has {total} now. \
-             Read it again and resend",
-            path.display(),
-            stamp.lines
+            "`{}` has not been read in this conversation, so `splice` may not write it. Read it first \
+             with `read` or `grep` and resend.",
+            path.display()
+        );
+    };
+    if !license.approval {
+        bail!(
+            "`{}`'s last write was refused, so it was left unwritten and its licence revoked. Read it \
+             again with `read` or `grep` and resend.",
+            path.display()
+        );
+    }
+    if license.hash != License::of(&text).hash {
+        bail!(
+            "`{}` changed on disk after it was licensed (now {total} lines). Read it again and resend.",
+            path.display()
         );
     }
 
     let (edits, spans, unreadable) = flatten(plans, &base);
-    let (kept, dropped) = settle_overlaps(&edits)?;
+    let (kept, dropped) = settle_overlaps(&edits, &base)?;
     let formatter = lang::format(path);
 
     let mut held: Vec<usize> = Vec::new();
@@ -477,13 +478,17 @@ fn flatten(plans: &[Plan], base: &[&str]) -> Flattened {
     (edits, spans, unreadable)
 }
 
-/// Which edits may run, and which lost to an earlier call: the kept positions, then the refused
-/// ones. Two of one call's own ranges may not overlap at all — that is the model contradicting
-/// itself, and the file is left alone.
-fn settle_overlaps(edits: &[Edit]) -> Result<(Vec<usize>, Vec<usize>)> {
+/// Which edits may run and which are refused: the kept positions, then the refused ones. A block
+/// whose named lines drifted is refused first; two of one call's own ranges may not overlap at all —
+/// that is the model contradicting itself, and the whole call is left alone.
+fn settle_overlaps(edits: &[Edit], base: &[&str]) -> Result<(Vec<usize>, Vec<usize>)> {
     let mut kept: Vec<usize> = Vec::new();
     let mut dropped: Vec<usize> = Vec::new();
     for at in 0..edits.len() {
+        if drift(&edits[at], base).is_some() {
+            dropped.push(at);
+            continue;
+        }
         let mut clash = false;
         for held in &kept {
             if !edit::collide(&edits[*held], &edits[at]) {
@@ -506,6 +511,36 @@ fn settle_overlaps(edits: &[Edit]) -> Result<(Vec<usize>, Vec<usize>)> {
         }
     }
     Ok((kept, dropped))
+}
+
+/// Why an edit must be left out: one of its named lines no longer opens with what the model gave.
+fn drift(edit: &Edit, base: &[impl AsRef<str>]) -> Option<String> {
+    if let Some(msg) = miss_at(edit.start, &edit.expect_start, base) {
+        return Some(msg);
+    }
+    if edit.end > edit.start
+        && let Some(msg) = miss_at(edit.end - 1, &edit.expect_end, base)
+    {
+        return Some(msg);
+    }
+    None
+}
+
+/// The line one anchor names, refused: what it actually reads now, against what the model gave.
+fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String> {
+    if expect.is_empty() {
+        return None;
+    }
+    let actual = base.get(idx)?.as_ref();
+    if edit::opens(actual, expect) {
+        return None;
+    }
+    let shown: String = actual.trim().chars().take(120).collect();
+    let want = edit::flat(expect);
+    Some(format!(
+        "MISMATCH: line {} starts with {shown} instead of {want}, Re-Read or Re-Grep to splice",
+        idx + 1
+    ))
 }
 
 /// The lines one 1-based inclusive range holds, owned.
@@ -537,13 +572,6 @@ fn item_of(table: &Table, first: usize) -> Option<String> {
     (!tail.is_empty()).then(|| tail.join(" > "))
 }
 
-/// A text's content hash, the same one `read` stamps a file with.
-fn hash(text: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    text.hash(&mut hasher);
-    hasher.finish()
-}
-
 /// Replace whole lines by 1-based number: `from..=to` becomes `new`, any number of lines.
 pub(crate) fn mass_text(
     text: &str,
@@ -568,6 +596,8 @@ pub(crate) fn mass_text(
         end: to,
         block: edit::block_of(new),
         cut: false,
+        expect_start: String::new(),
+        expect_end: String::new(),
     };
     let updated = edit::spliced(text, &[&one]);
     let old_text = lines[from - 1..to].join("\n");

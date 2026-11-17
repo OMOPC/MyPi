@@ -18,6 +18,10 @@ pub enum Kind {
     Number,
     /// A line number, 1-based.
     Line,
+
+    /// A 1-based line number alone, or the number followed by the words the line opens with to
+    /// confirm it has not drifted; a bare number carries no drift check.
+    Axis,
     /// A boolean.
     Flag,
     /// A JSON object.
@@ -81,6 +85,10 @@ impl Param {
             Kind::Text => json!({"type": "string", "description": about}),
             Kind::Number => json!({"type": "integer", "description": about}),
             Kind::Line => json!({"type": "integer", "description": about}),
+            Kind::Axis => json!({
+                "type": ["integer", "string"],
+                "description": about,
+            }),
             Kind::Flag => json!({"type": "boolean", "description": about}),
             Kind::Object => json!({"type": "object", "description": about}),
             Kind::Choice(list) => json!({"type": "string", "enum": list, "description": about}),
@@ -111,7 +119,7 @@ impl Param {
     /// The default as text, converted to a JSON value per its kind.
     fn typed_default(&self, text: &str) -> Value {
         match self.kind {
-            Kind::Number | Kind::Line => {
+            Kind::Number | Kind::Line | Kind::Axis => {
                 text.parse::<i64>().map(|n| json!(n)).unwrap_or(Value::Null)
             }
             Kind::Flag => json!(text == "true" || text == "1"),
@@ -438,6 +446,32 @@ impl Item {
             bail!("`{}` is 1-based", self.field_path(name));
         }
         Ok(n as usize)
+    }
+
+    /// A 1-based line number, or that number with the words the line opens with: an integer reads
+    /// as the line alone, a string as `line + expected words`. The words come back trimmed, empty
+    /// for a bare number.
+    pub fn axis(&self, name: &str) -> Result<(usize, String)> {
+        let one = |raw: &str| -> Result<(usize, String)> {
+            let text = raw.trim();
+            let (head, rest) = match text.split_once(|c: char| c.is_whitespace()) {
+                Some((head, rest)) => (head, rest.trim()),
+                None => (text, ""),
+            };
+            let line = head.parse::<usize>().map_err(|_| {
+                self.wrong(name, "a line number, or `line + the words it opens with`")
+            })?;
+            anyhow::ensure!(line >= 1, "`{}` is 1-based", self.field_path(name));
+            Ok((line, rest.to_string()))
+        };
+        match self.value(name)? {
+            Value::Number(n) => match n.as_i64() {
+                Some(line) if line >= 1 => Ok((line as usize, String::new())),
+                _ => Err(self.wrong(name, "a positive line number")),
+            },
+            Value::String(text) => one(&text),
+            _ => Err(self.wrong(name, "a line number, or `line + the words it opens with`")),
+        }
     }
 
     /// One of an enum.

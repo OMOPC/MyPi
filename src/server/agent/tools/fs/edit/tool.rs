@@ -3,7 +3,7 @@
 use anyhow::{Context as _, Result, anyhow};
 use serde_json::Value;
 
-use crate::server::agent::tools::contract::env::Env;
+use crate::server::agent::tools::contract::env::{Env, License};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::change;
@@ -44,23 +44,22 @@ pub(crate) const TOOL: Tool = Tool {
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
     let path = args.str(PATH)?;
     let p = env.workspace.resolve(&path, true)?;
+    let old = args.str(OLD)?;
+    let new = args.str(NEW)?;
 
-    env.workspace.with_write(&p, || {
+    let updated = env.workspace.with_write(&p, || {
         let text = std::fs::read_to_string(&p).context("failed to read file")?;
         let table = lang::table(&p, &text);
-        let (updated, memo, message) = exact_text(
-            &text,
-            &table,
-            &args.str(OLD)?,
-            &args.str(NEW)?,
-            env.full_item_budget,
-        )?;
+        let (updated, memo, message) = exact_text(&text, &table, &old, &new, env.full_item_budget)?;
         write_atomic(&p, &updated)?;
-        Ok(ToolOutput::with_memo(
-            format!("{message}: {}", p.display()),
-            memo,
-        ))
-    })
+        Ok((updated, memo, message))
+    })?;
+    let (updated, memo, message) = updated;
+    env.seen.files.insert(p.clone(), License::of(&updated));
+    Ok(ToolOutput::with_memo(
+        format!("{message}: {}", p.display()),
+        memo,
+    ))
 }
 
 /// Replace one unique run of text.

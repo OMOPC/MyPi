@@ -43,7 +43,7 @@ pub(crate) enum State {
         taken: Vec<String>,
         block: Vec<String>,
         item: Option<String>,
-        why: &'static str,
+        why: String,
     },
 }
 
@@ -97,7 +97,6 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
                 why,
                 ..
             } => {
-                // Its lines are still in the file: they are numbered where it now finds them.
                 out.extend(taken_side(at.map(|(first, _)| first), taken, table, width));
                 out.extend(block_side(block, width));
                 out.push(format!("  ! {why}"));

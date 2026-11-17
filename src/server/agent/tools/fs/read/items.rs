@@ -1,13 +1,12 @@
 // The item mode: a header the model remembers, answered by every piece whose own text says it.
 
-use std::hash::{Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
 use super::hub;
 use super::tool::{MAX_BYTES_SOURCE as BYTES, MAX_LINES_SOURCE as LINES};
-use crate::server::agent::tools::contract::env::{Env, Stamp};
+use crate::server::agent::tools::contract::env::{Env, License};
 use crate::server::agent::tools::fs::lang::{self, Line, Table};
 
 /// A file this big is not read for its pieces.
@@ -195,13 +194,5 @@ fn shown(cwd: &Path, path: &Path) -> String {
 
 /// The file is one the model has now seen, under `splice`'s own definition.
 fn stamp(env: &mut Env, path: &Path, text: &str) {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    text.hash(&mut hasher);
-    env.seen.files.insert(
-        path.to_path_buf(),
-        Stamp {
-            lines: text.lines().count(),
-            hash: hasher.finish(),
-        },
-    );
+    env.seen.files.insert(path.to_path_buf(), License::of(text));
 }

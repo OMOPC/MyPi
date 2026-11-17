@@ -23,6 +23,12 @@ pub(crate) struct Edit {
     pub block: Vec<String>,
     /// A range a `@@CUT(a..b)@@` asked to be removed; carries no `new` of its own.
     pub cut: bool,
+
+    /// The words the `start` line must open with, if the model gave them: a drift check.
+    pub expect_start: String,
+
+    /// The words the `end` line must open with, if any: a drift check.
+    pub expect_end: String,
 }
 
 impl Edit {
@@ -31,9 +37,8 @@ impl Edit {
     /// that takes those lines away.
     pub(crate) fn read(item: &Item, call: usize, index: usize, base: &[&str]) -> Result<Vec<Self>> {
         let total = base.len();
-        let start = item.line("start")?;
-        let end = usize::try_from(item.int("end")?)
-            .map_err(|_| anyhow!("`{}.end` must be a line number, 0 or more", item.label()))?;
+        let (start, expect_start) = item.axis("start")?;
+        let (end, expect_end) = item.axis("end")?;
         anyhow::ensure!(
             start <= total + 1,
             "`{}.start` is {start}, past the last line: the file has {total} lines",
@@ -58,6 +63,8 @@ impl Edit {
             end,
             block: block_of(&text),
             cut: false,
+            expect_start,
+            expect_end,
         }];
         for (first, last) in cuts {
             anyhow::ensure!(
@@ -73,6 +80,8 @@ impl Edit {
                 end: last,
                 block: Vec::new(),
                 cut: true,
+                expect_start: String::new(),
+                expect_end: String::new(),
             });
         }
         Ok(out)
@@ -96,7 +105,20 @@ impl Edit {
     }
 }
 
-/// The lines of one `new` string: one trailing newline is its terminator, not an extra line.
+/// A line with its leading whitespace gone and its inner runs of whitespace folded to one space,
+/// so spacing never hides a drift match.
+pub(crate) fn flat(line: &str) -> String {
+    line.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Whether `line` opens with the words `expect`, compared as a flat prefix: the model walks the
+/// line from its front and everything it sent must match there, in order; it may stop short of the
+/// whole line, so `pub fn myfunc` confirms `pub fn myfunc() -> Result<()> {`.
+pub(crate) fn opens(line: &str, expect: &str) -> bool {
+    let line = flat(line);
+    let expect = flat(expect);
+    expect.is_empty() || line.starts_with(&expect)
+}
 pub(crate) fn block_of(new: &str) -> Vec<String> {
     if new.is_empty() {
         return Vec::new();
@@ -246,25 +268,3 @@ pub(crate) fn parse_range(text: &str) -> Result<(usize, usize)> {
     Ok((number(from)?, number(to)?))
 }
 
-/// Where a run of lines sits in a text: the first of the matches nearest to `near`, 0-based.
-///
-/// The run is compared whole, so a line that merely starts alike never answers. An empty run is a
-/// place rather than a stretch: it lands where `near` says, past the text's end if it must.
-pub(crate) fn locate(lines: &[&str], needle: &[&str], near: usize) -> Option<usize> {
-    let last = lines.len().checked_sub(needle.len())?;
-    let mut best: Option<(usize, usize)> = None;
-    for start in 0..=last {
-        if lines[start..start + needle.len()] != *needle {
-            continue;
-        }
-        let distance = start.abs_diff(near);
-        if best.is_none_or(|(held, _)| distance < held) {
-            best = Some((distance, start));
-        }
-    }
-    match best {
-        Some((_, start)) => Some(start),
-        None if needle.is_empty() => Some(near.min(lines.len())),
-        None => None,
-    }
-}

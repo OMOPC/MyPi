@@ -1,10 +1,9 @@
 //! The answer: the type section, the module section, the x-ray, the hits, and the stamps.
 
 use std::collections::BTreeSet;
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 
-use crate::server::agent::tools::contract::env::{GrepLimits, Seen, Stamp};
+use crate::server::agent::tools::contract::env::{GrepLimits, License, Seen};
 use crate::server::agent::tools::fs::lang::{self, Relation, Source};
 
 use super::{outline, scan};
@@ -246,20 +245,11 @@ fn clip_line(text: &str) -> String {
 
 // ---- the stamps ----
 
-/// Every file whose lines this answer showed is a file the model has now seen, under `splice`'s
-/// own definition: line count and content hash at this moment.
 pub(crate) fn stamp(seen: &mut Seen, files: &[scan::File], shown: &BTreeSet<usize>) {
     for &index in shown {
         let file = &files[index];
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        file.text.hash(&mut hasher);
-        seen.files.insert(
-            file.path.clone(),
-            Stamp {
-                lines: file.text.lines().count(),
-                hash: hasher.finish(),
-            },
-        );
+        seen.files
+            .insert(file.path.clone(), License::of(&file.text));
     }
 }
 

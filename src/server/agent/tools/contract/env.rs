@@ -1,6 +1,8 @@
 //! One session's conditions for its whole life: budgets, shell, folders, and the reads it holds.
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet};
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -95,15 +97,29 @@ pub struct Answer {
 pub struct Seen {
     /// Module directories whose context card has been shown.
     pub dirs: std::collections::HashSet<PathBuf>,
-    /// Every file read in this conversation: its line count and content hash.
-    pub files: BTreeMap<PathBuf, Stamp>,
+    /// Every file the model has read in this conversation: its license to write it.
+    pub files: BTreeMap<PathBuf, License>,
 }
 
-/// One file as it stood when it was read.
-#[derive(Debug, Clone, Copy)]
-pub struct Stamp {
-    pub lines: usize,
-    pub hash: u64,
+/// One file's licence to be written by `splice`: a read granted it, a drift check can revoke it.
+#[derive(Debug, Clone)]
+pub struct License {
+    /// A read or a clean write granted it; a refusal that leaves the file unwritten revokes it.
+    pub approval: bool,
+    /// The content hash at the granting moment; a write is refused if the file no longer matches.
+    pub hash: String,
+}
+
+impl License {
+    /// A licence over one text's UTF-8 bytes, granted now.
+    pub fn of(text: &str) -> Self {
+        let mut hasher = DefaultHasher::new();
+        text.as_bytes().hash(&mut hasher);
+        Self {
+            approval: true,
+            hash: format!("{:016x}", hasher.finish()),
+        }
+    }
 }
 
 impl Env {

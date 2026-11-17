@@ -1,7 +1,6 @@
 //! The `read` tool: files by line numbers, directories by name.
 
 use std::collections::BTreeSet;
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, anyhow};
@@ -9,7 +8,7 @@ use anyhow::{Context as _, Result, anyhow};
 use super::{dir, hub, items, sniff};
 use crate::server::agent::request::contract::ItemOk;
 use crate::server::agent::request::message::ImagePart;
-use crate::server::agent::tools::contract::env::{Env, Stamp};
+use crate::server::agent::tools::contract::env::{Env, License};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::lang::{self, Table};
@@ -263,6 +262,10 @@ fn block(
         }
         None => {
             let streamed = streamed(path, offset, limit)?;
+            // Only a window is shown, but a later splice still needs the whole-file licence.
+            if let Ok(all) = std::fs::read_to_string(path) {
+                env.seen.files.insert(path.to_path_buf(), License::of(&all));
+            }
             let numbers = if splice { Numbers::All } else { Numbers::None };
             assemble(
                 offset,
@@ -276,15 +279,7 @@ fn block(
     };
 
     if let Some(text) = &whole {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        text.hash(&mut hasher);
-        env.seen.files.insert(
-            path.to_path_buf(),
-            Stamp {
-                lines: text.lines().count(),
-                hash: hasher.finish(),
-            },
-        );
+        env.seen.files.insert(path.to_path_buf(), License::of(text));
     }
 
     // The status line is part of the body: it comes first, so the body is known before it is read.
