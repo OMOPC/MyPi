@@ -40,6 +40,7 @@ providers:
     baseUrl: http://127.0.0.1:1/v1
     api: openai-completion           # the completion dialect
     apiKey: ""                       # empty = no auth header
+    authHeader: false
     # Models this provider serves — nested, ids are provider-internal.
     models:
       - id: local:my-model           # model id sent to the server
@@ -70,6 +71,7 @@ providers:
   vendor:
     baseUrl: https://gateway.example.com/v1
     apiKey: ${VENDOR_API_KEY}        # reference the env var, never commit keys
+    authHeader: true                 # 填key时必须填true
     models:
       - id: vendor-a/model-x
         name: Model X
