@@ -49,5 +49,3 @@ read::TOOL
    own files; remove either half and a single-line file reaches the context whole.
 2. `dir.rs`'s verdict and `Env.persistent_docs`: a configured stem is compared with a file's stem
    exactly, so a name the config upper-cases still matches nothing on disk written lower case.
-3. `graph::parts::cut`'s budget and the body's: the view and the body bound themselves separately,
-   so a change to one leaves the other alone.

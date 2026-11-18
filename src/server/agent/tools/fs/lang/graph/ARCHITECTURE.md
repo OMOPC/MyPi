@@ -7,10 +7,10 @@ What is here, what each file holds, who talks to whom. Current state only.
 | file | holds |
 |---|---|
 | `mod.rs` | the types (`Unit`, `Decl`, `Child`, `Edge`, `Around`, `Boundary`, `RawEdge`, `Domain`, `Size`), and the two doors: `unit` and `build`/`render` |
-| `loader.rs` | the one read-only disk door: `Loader` with a per-call cache, plus filtered and unfiltered directory entries |
+| `loader.rs` | the one read-only disk door: `Loader` with a per-call cache, plus filtered and unfiltered directory entries and the one text door under the 4 MiB cap |
 | `index.rs` | turning facts into a neighbourhood: unit lookup, child expansion, size, incoming/outgoing, declared-by |
 | `walk.rs` | the upward search: `Levels` and `Tree`, the deadline, whole-level drops, the boundary |
-| `parts.rs` | the printing parts: relative paths, plurals, clipping, headings, node/edge/boundary lines, grouped importers, the view budget |
+| `parts.rs` | the printing parts: relative paths, plurals, clipping, headings, node/edge/boundary lines, grouped importers |
 | `view.rs` | the default narration, for a language with no `view` of its own |
 
 ## What it talks to
@@ -19,7 +19,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 - **`lang::suffixes(hub)`**: the suffixes a walk may read, so foreign files are never parsed.
 - **`lang::Row`**: the row shape every narration answers.
 - **`read`**: the only consumer today; it decides when to build, keeps the one-primer-per-unit
-  memory, stamps the file it read, and applies the view budget.
+  memory, stamps the file it read.
 - **Who calls it**: `read::tool` through `lang::hub`.
 
 ## Inside

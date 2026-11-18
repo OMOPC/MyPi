@@ -1,43 +1,45 @@
-//! What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits —
-//! `path:line`, the item it sits in, and numbered source. A block that stands there carries `+`;
-//! a deletion shows the lines it removed with `-`. The batch's audit hangs its lines where each
-//! edit's block ended.
+// What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits —
+// `path:line`, the item it sits in, and numbered source. A block that stands there carries `+`;
+// a deletion shows the lines it removed with `-`. The batch's audit hangs its lines where each
+// edit's block ended.
 
 use serde_json::{Value, json};
 
-use super::edit::Place;
+use super::edit::{self, Edit, Place};
 use super::fmt::Word;
 use crate::server::agent::tools::fs::lang::Table;
+use crate::server::agent::tools::fs::skeleton;
+use crate::server::agent::tools::summary;
 
-/// How many lines one side of a diff shows before its middle is folded away.
+// How many lines one side of a diff shows before its middle is folded away.
 const SIDE: usize = 12;
 
-/// How wide one source line reads inside the receipt.
+// How wide one source line reads inside the receipt.
 const WIDE: usize = 140;
 
-/// One edit of one call, as that call's answer shows it.
+// One edit of one call, as that call's answer shows it.
 pub(crate) struct Row {
-    /// Which item of the call's `edits`, 1-based; a range cut by a macro carries its owner's.
+    // Which item of the call's `edits`, 1-based; a range cut by a macro carries its owner's.
     pub index: usize,
-    /// The first line it named, 1-based, in the file as it was before the write.
+    // The first line it named, 1-based, in the file as it was before the write.
     pub from: usize,
     pub state: State,
 }
 
 pub(crate) enum State {
-    /// It was written: where it landed, the lines it took and the ones that stand there now.
+    // It was written: where it landed, the lines it took and the ones that stand there now.
     Applied {
         at: Place,
         old: Vec<String>,
         new: Vec<String>,
-        /// The item holding it, innermost two, outermost first: `impl X for Y > fn z`.
+        // The item holding it, innermost two, outermost first: `impl X for Y > fn z`.
         item: Option<String>,
-        /// The parser's words, when its block does not parse on its own.
+        // The parser's words, when its block does not parse on its own.
         blame: Option<String>,
     },
 
-    /// It was left out: where its own lines sit now, the block it would have put there, and the
-    /// item those lines are in.
+    // It was left out: where its own lines sit now, the block it would have put there, and the
+    // item those lines are in.
     Refused {
         at: Place,
         taken: Vec<String>,
@@ -47,8 +49,8 @@ pub(crate) enum State {
     },
 }
 
-/// The answer's fixed points: the file, its length, the line table `read` numbers by, and whether a
-/// refused edit's lines moved.
+// The answer's fixed points: the file, its length, the line table `read` numbers by, and whether a
+// refused edit's lines moved.
 pub(crate) struct Sheet<'a> {
     pub path: &'a str,
     pub after: usize,
@@ -56,7 +58,7 @@ pub(crate) struct Sheet<'a> {
     pub shifted: bool,
 }
 
-/// The answer's text, the memo a front end draws from, and where each edit's audit lines hang.
+// The answer's text, the memo a front end draws from, and where each edit's audit lines hang.
 pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Value, Vec<usize>) {
     let Sheet {
         path,
@@ -71,7 +73,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
 
     let mut out = vec![head(word, landed, rows.len(), after, shifted)];
     let mut marks: Vec<usize> = Vec::new();
-    let width = after.to_string().len().max(3);
+    let width = skeleton::width(after);
     for row in rows {
         out.push(heading(path, row));
         if let Some(item) = item(row) {
@@ -110,7 +112,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
     (out.join("\n"), memo(rows), marks)
 }
 
-/// The verdict, then the file's length: the whole point of the first line.
+// The verdict, then the file's length: the whole point of the first line.
 fn head(word: &Word, landed: usize, total: usize, after: usize, shifted: bool) -> String {
     let verdict = if landed == 0 {
         "FAILED, NOTHING WRITTEN"
@@ -129,7 +131,7 @@ fn head(word: &Word, landed: usize, total: usize, after: usize, shifted: bool) -
     format!("[Splice] {verdict} · now {after} lines")
 }
 
-/// What the formatter said about the whole text, when no edit carries the words itself.
+// What the formatter said about the whole text, when no edit carries the words itself.
 fn verdict_note(word: &Word, rows: &[Row]) -> Option<String> {
     let blamed = rows
         .iter()
@@ -141,8 +143,8 @@ fn verdict_note(word: &Word, rows: &[Row]) -> Option<String> {
     }
 }
 
-/// One place as `grep` names a hit: `path:line`, `path:first-last`, or a line saying the range is
-/// no longer in the file.
+// One place as `grep` names a hit: `path:line`, `path:first-last`, or a line saying the range is
+// no longer in the file.
 fn where_at(path: &str, at: Place) -> String {
     match at {
         Some((first, last)) if last > first => format!("{path}:{first}-{last}"),
@@ -151,8 +153,8 @@ fn where_at(path: &str, at: Place) -> String {
     }
 }
 
-/// Where one edit sits, as `grep` names a hit. A written edit is named where it landed; a deletion
-/// has no landing of its own, so it keeps the range it named.
+// Where one edit sits, as `grep` names a hit. A written edit is named where it landed; a deletion
+// has no landing of its own, so it keeps the range it named.
 fn heading(path: &str, row: &Row) -> String {
     match &row.state {
         State::Applied { old, new, at, .. } => {
@@ -173,8 +175,8 @@ fn item(row: &Row) -> Option<&str> {
     }
 }
 
-/// The lines an edit takes, unnumbered when they are gone and by their current numbers when they
-/// are still in the file, where `read` would number them.
+// The lines an edit takes, unnumbered when they are gone and by their current numbers when they
+// are still in the file, where `read` would number them.
 fn taken_side(first: Option<usize>, taken: &[String], table: &Table, width: usize) -> Vec<String> {
     if taken.is_empty() {
         return vec![format!("- {:>width$}|(nothing)", "", width = width)];
@@ -182,7 +184,14 @@ fn taken_side(first: Option<usize>, taken: &[String], table: &Table, width: usiz
     let Some(first) = first else {
         return taken
             .iter()
-            .map(|line| format!("- {:>width$}|{}", "", shown(line), width = width))
+            .map(|line| {
+                format!(
+                    "- {:>width$}|{}",
+                    "",
+                    summary::cut(line, WIDE),
+                    width = width
+                )
+            })
             .collect();
     };
     let mut picked: Vec<(usize, &str)> = Vec::new();
@@ -200,11 +209,15 @@ fn taken_side(first: Option<usize>, taken: &[String], table: &Table, width: usiz
         }
     }
     fold(picked, |number, line| {
-        format!("- {number:>width$}|{}", shown(line), width = width)
+        format!(
+            "- {number:>width$}|{}",
+            summary::cut(line, WIDE),
+            width = width
+        )
     })
 }
 
-/// A block, numbered inside itself.
+// A block, numbered inside itself.
 fn block_side(block: &[String], width: usize) -> Vec<String> {
     if block.is_empty() {
         return vec![format!(
@@ -219,11 +232,15 @@ fn block_side(block: &[String], width: usize) -> Vec<String> {
         .map(|(at, line)| (at + 1, line.as_str()))
         .collect();
     fold(rows, |number, line| {
-        format!("+ {number:>width$}|{}", shown(line), width = width)
+        format!(
+            "+ {number:>width$}|{}",
+            summary::cut(line, WIDE),
+            width = width
+        )
     })
 }
 
-/// A side of the diff, its middle folded away once it grows past what one answer may take.
+// A side of the diff, its middle folded away once it grows past what one answer may take.
 fn fold(rows: Vec<(usize, &str)>, row: impl Fn(usize, &str) -> String) -> Vec<String> {
     if rows.len() <= SIDE {
         return rows.into_iter().map(|(at, line)| row(at, line)).collect();
@@ -242,15 +259,7 @@ fn fold(rows: Vec<(usize, &str)>, row: impl Fn(usize, &str) -> String) -> Vec<St
     out
 }
 
-/// One source line as a receipt row: its own indentation kept, its tail cut.
-fn shown(line: &str) -> String {
-    match line.char_indices().nth(WIDE) {
-        Some((cut, _)) => format!("{}…", &line[..cut]),
-        None => line.to_string(),
-    }
-}
-
-/// The memo a front end draws from: one segment per edit, in the call's order.
+// The memo a front end draws from: one segment per edit, in the call's order.
 fn memo(rows: &[Row]) -> Value {
     let mut segments = Vec::new();
     for row in rows {
@@ -287,4 +296,101 @@ fn memo(rows: &[Row]) -> Value {
         }
     }
     json!({ "segments": segments })
+}
+
+// What the batch knows about one edit before its row is drawn.
+pub(crate) struct Fate {
+    // Whether the edit was written; a written one may still have lost its landing.
+    pub applied: bool,
+
+    // Where it landed, when the formatter's output could be walked back to it.
+    pub at: Place,
+
+    // The parser's words, when its block does not parse on its own.
+    pub blame: Option<String>,
+}
+
+// One edit, as its own call's answer shows it.
+pub(crate) fn row(edit: &Edit, fate: &Fate, lines: &[&str], base: &[String], table: &Table) -> Row {
+    if fate.applied {
+        let old = edit.taken(base).to_vec();
+        let new = match fate.at {
+            Some((first, last)) => take(lines, first, last),
+            None => Vec::new(),
+        };
+        let item = match edit.cut {
+            true => None,
+            false => fate.at.and_then(|(first, _)| item_of(table, first)),
+        };
+        return Row {
+            index: edit.index,
+            from: edit.start + 1,
+            state: State::Applied {
+                at: fate.at,
+                old,
+                new,
+                item,
+                blame: fate.blame.clone(),
+            },
+        };
+    }
+
+    if let Some(reason) = edit::drift(edit, base) {
+        let line = edit.start + 1;
+        return Row {
+            index: edit.index,
+            from: line,
+            state: State::Refused {
+                at: Some((line, line)),
+                taken: match edit.end > edit.start {
+                    true => edit.taken(base).to_vec(),
+                    false => Vec::new(),
+                },
+                block: edit.block.clone(),
+                item: item_of(table, line),
+                why: reason,
+            },
+        };
+    }
+
+    Row {
+        index: edit.index,
+        from: edit.start + 1,
+        state: State::Refused {
+            at: Some((edit.start + 1, edit.end)),
+            taken: edit.taken(base).to_vec(),
+            block: edit.block.clone(),
+            item: item_of(table, edit.start + 1),
+            why: "OVERLAPPED".to_string(),
+        },
+    }
+}
+
+// The lines one 1-based inclusive range holds, owned.
+fn take(lines: &[&str], first: usize, last: usize) -> Vec<String> {
+    if lines.is_empty() || last < first {
+        return Vec::new();
+    }
+    let first = first.clamp(1, lines.len());
+    let last = last.min(lines.len());
+    if last < first {
+        return Vec::new();
+    }
+    lines[first - 1..last]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect()
+}
+
+// The innermost two items a landing sits in, outermost first.
+fn item_of(table: &Table, first: usize) -> Option<String> {
+    let chain = table.around(first.saturating_sub(1));
+    let tail: Vec<&str> = chain
+        .iter()
+        .rev()
+        .take(2)
+        .rev()
+        .filter_map(|(_, line)| line.exact.as_deref())
+        .collect();
+    (!tail.is_empty()).then(|| tail.join(" > "))
 }

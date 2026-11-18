@@ -1,40 +1,49 @@
-//! One change: the lines it takes, the lines it puts in their place, and the snapshot it lands on.
+// One change: the lines it takes, the lines it puts in their place, and the snapshot it lands on.
 
 use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
+use crate::server::agent::tools::fs::change;
+use crate::server::agent::tools::fs::lang::Table;
 use crate::server::agent::tools::spec::Item;
+use crate::server::agent::tools::summary;
 
-/// One change's landing place: its first and last line, both 1-based, `last < first` when it left
-/// nothing there; `None` when the formatter's output could not be walked back to it.
+// One change's landing place: its first and last line, both 1-based, `last < first` when it left
+// nothing there; `None` when the formatter's output could not be walked back to it.
 pub(crate) type Place = Option<(usize, usize)>;
 
-/// One change, measured in the snapshot it was written against.
+// One change, measured in the snapshot it was written against.
 #[derive(Debug, Clone)]
 pub(crate) struct Edit {
-    /// Which call of the batch wrote it, in arrival order.
+    // Which call of the batch wrote it, in arrival order.
     pub call: usize,
-    /// Which item of that call's `edits`, 1-based.
+
+    // Which item of that call's `edits`, 1-based.
     pub index: usize,
-    /// The first line it takes, 0-based.
+
+    // The first line it takes, 0-based.
     pub start: usize,
-    /// One past the last line it takes, 0-based; `start` itself when it inserts.
+
+    // One past the last line it takes, 0-based; `start` itself when it inserts.
     pub end: usize,
-    /// The lines that stand in the range's place.
+
+    // The lines that stand in the range's place.
     pub block: Vec<String>,
-    /// A range a `@@CUT(a..b)@@` asked to be removed; carries no `new` of its own.
+
+    // A range a `@@CUT(a..b)@@` asked to be removed; carries no `new` of its own.
     pub cut: bool,
 
-    /// The words the `start` line must open with, if the model gave them: a drift check.
+    // The words the `start` line must open with, if the model gave them: a drift check.
     pub expect_start: String,
 
-    /// The words the `end` line must open with, if any: a drift check.
+    // The words the `end` line must open with, if any: a drift check.
     pub expect_end: String,
 }
 
 impl Edit {
-    /// One `edits[k]` of one call, read against a snapshot of `base` lines. A `@@COPY(a..b)@@` in
-    /// `new` becomes the snapshot's own lines; a `@@CUT(a..b)@@` does the same and adds the change
-    /// that takes those lines away.
+    // One `edits[k]` of one call, read against a snapshot of `base` lines. A `@@COPY(a..b)@@` in
+    // `new` becomes the snapshot's own lines; a `@@CUT(a..b)@@` does the same and adds the change
+    // that takes those lines away.
     pub(crate) fn read(item: &Item, call: usize, index: usize, base: &[&str]) -> Result<Vec<Self>> {
         let total = base.len();
         let (start, expect_start) = item.axis("start")?;
@@ -61,7 +70,7 @@ impl Edit {
             index,
             start: start - 1,
             end,
-            block: block_of(&text),
+            block: change::lines_of(&text),
             cut: false,
             expect_start,
             expect_end,
@@ -87,8 +96,8 @@ impl Edit {
         Ok(out)
     }
 
-    /// The same change with a comment around its block, so the formatter's output can be walked
-    /// back to it. `tag` names this run and `at` its position in the list handed to the formatter.
+    // The same change with a comment around its block, so the formatter's output can be walked
+    // back to it. `tag` names this run and `at` its position in the list handed to the formatter.
     pub(crate) fn marked(&self, tag: &str, at: usize) -> Self {
         let mut out = self.clone();
         let mut block = Vec::with_capacity(self.block.len() + 2);
@@ -99,39 +108,23 @@ impl Edit {
         out
     }
 
-    /// The lines it takes, as the snapshot holds them.
+    // The lines it takes, as the snapshot holds them.
     pub(crate) fn taken<'a>(&self, lines: &'a [String]) -> &'a [String] {
         &lines[self.start.min(lines.len())..self.end.min(lines.len())]
     }
 }
 
-/// A line with its leading whitespace gone and its inner runs of whitespace folded to one space,
-/// so spacing never hides a drift match.
-pub(crate) fn flat(line: &str) -> String {
-    line.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// Whether `line` opens with the words `expect`, compared as a flat prefix: the model walks the
-/// line from its front and everything it sent must match there, in order; it may stop short of the
-/// whole line, so `pub fn myfunc` confirms `pub fn myfunc() -> Result<()> {`.
+// Whether `line` opens with the words `expect`, compared as a flat prefix: the model walks the
+// line from its front and everything it sent must match there, in order; it may stop short of the
+// whole line, so `pub fn myfunc` confirms `pub fn myfunc() -> Result<()> {`.
 pub(crate) fn opens(line: &str, expect: &str) -> bool {
-    let line = flat(line);
-    let expect = flat(expect);
+    let line = summary::flat(line);
+    let expect = summary::flat(expect);
     expect.is_empty() || line.starts_with(&expect)
 }
-pub(crate) fn block_of(new: &str) -> Vec<String> {
-    if new.is_empty() {
-        return Vec::new();
-    }
-    new.strip_suffix('\n')
-        .unwrap_or(new)
-        .split('\n')
-        .map(str::to_string)
-        .collect()
-}
 
-/// One call's ranges, measured against the snapshot it was written against. A range may be cut
-/// once per call: two macros cutting into one another is the model contradicting itself.
+// One call's ranges, measured against the snapshot it was written against. A range may be cut
+// once per call: two macros cutting into one another is the model contradicting itself.
 pub(crate) fn call_edits(items: &[Item], call: usize, base: &[&str]) -> Result<Vec<Edit>> {
     anyhow::ensure!(!items.is_empty(), "`edits` must name at least one range");
     let mut out: Vec<Edit> = Vec::new();
@@ -156,11 +149,11 @@ pub(crate) fn call_edits(items: &[Item], call: usize, base: &[&str]) -> Result<V
     Ok(out)
 }
 
-/// A `new` string with its macros filled in, and the 0-based ranges it wants cut away.
-///
-/// `@@COPY(a..b)@@` and `@@CUT(a..b)@@` name lines of the snapshot, 1-based inclusive, and are
-/// filled with those lines as they stand. Filling is one pass: a token inside the copied lines is
-/// copied, never followed.
+// A `new` string with its macros filled in, and the 0-based ranges it wants cut away.
+//
+// `@@COPY(a..b)@@` and `@@CUT(a..b)@@` name lines of the snapshot, 1-based inclusive, and are
+// filled with those lines as they stand. Filling is one pass: a token inside the copied lines is
+// copied, never followed.
 fn rewritten(new: &str, base: &[&str], item: &Item) -> Result<(String, Vec<(usize, usize)>)> {
     let label = item.label();
     let mut text = String::with_capacity(new.len());
@@ -214,8 +207,8 @@ fn rewritten(new: &str, base: &[&str], item: &Item) -> Result<(String, Vec<(usiz
     Ok((text, cuts))
 }
 
-/// Whether two changes fight over the same lines. A point (an insertion) collides with the range
-/// that holds it strictly inside, and with another point on the same line.
+// Whether two changes fight over the same lines. A point (an insertion) collides with the range
+// that holds it strictly inside, and with another point on the same line.
 pub(crate) fn collide(a: &Edit, b: &Edit) -> bool {
     match (a.start == a.end, b.start == b.end) {
         (true, true) => a.start == b.start,
@@ -225,8 +218,8 @@ pub(crate) fn collide(a: &Edit, b: &Edit) -> bool {
     }
 }
 
-/// The snapshot with every change in place, applied from the bottom up so the lines above keep
-/// their numbers while they are still being used.
+// The snapshot with every change in place, applied from the bottom up so the lines above keep
+// their numbers while they are still being used.
 pub(crate) fn spliced(text: &str, edits: &[&Edit]) -> String {
     let mut out: Vec<String> = text.lines().map(str::to_string).collect();
     let mut ordered: Vec<&&Edit> = edits.iter().collect();
@@ -241,8 +234,8 @@ pub(crate) fn spliced(text: &str, edits: &[&Edit]) -> String {
     joined
 }
 
-/// Where each change lands when nothing but the changes themselves moves the lines: the ranges are
-/// ascending, so each one's own shift is the sum of the deltas above it.
+// Where each change lands when nothing but the changes themselves moves the lines: the ranges are
+// ascending, so each one's own shift is the sum of the deltas above it.
 pub(crate) fn shifted(edits: &[Edit]) -> Vec<Place> {
     let mut shift: isize = 0;
     let mut out = Vec::with_capacity(edits.len());
@@ -254,7 +247,7 @@ pub(crate) fn shifted(edits: &[Edit]) -> Vec<Place> {
     out
 }
 
-/// `12-14` or `12`, 1-based, ascending.
+// `12-14` or `12`, 1-based, ascending.
 pub(crate) fn parse_range(text: &str) -> Result<(usize, usize)> {
     let text = text.trim();
     let (from, to) = match text.split_once('-') {
@@ -268,3 +261,111 @@ pub(crate) fn parse_range(text: &str) -> Result<(usize, usize)> {
     Ok((number(from)?, number(to)?))
 }
 
+// Why an edit must be left out: one of its named lines no longer opens with what the model gave.
+pub(crate) fn drift(edit: &Edit, base: &[impl AsRef<str>]) -> Option<String> {
+    if let Some(msg) = miss_at(edit.start, &edit.expect_start, base) {
+        return Some(msg);
+    }
+    if edit.end > edit.start
+        && let Some(msg) = miss_at(edit.end - 1, &edit.expect_end, base)
+    {
+        return Some(msg);
+    }
+    None
+}
+
+// The line one anchor names, refused: what it actually reads now, against what the model gave.
+fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String> {
+    if expect.is_empty() {
+        return None;
+    }
+    let actual = base.get(idx)?.as_ref();
+    if opens(actual, expect) {
+        return None;
+    }
+    let shown: String = actual.trim().chars().take(120).collect();
+    let want = summary::flat(expect);
+    Some(format!(
+        "MISMATCH: line {} starts with {shown} instead of {want}, Re-Read or Re-Grep to splice",
+        idx + 1
+    ))
+}
+
+// Which edits may run and which are refused: the kept positions, then the refused ones. A block
+// whose named lines drifted is refused first; two of one call's own ranges may not overlap at all —
+// that is the model contradicting itself, and the whole call is left alone.
+pub(crate) fn settle_overlaps(edits: &[Edit], base: &[&str]) -> Result<(Vec<usize>, Vec<usize>)> {
+    let mut kept: Vec<usize> = Vec::new();
+    let mut dropped: Vec<usize> = Vec::new();
+    for at in 0..edits.len() {
+        if drift(&edits[at], base).is_some() {
+            dropped.push(at);
+            continue;
+        }
+        let mut clash = false;
+        for held in &kept {
+            if !collide(&edits[*held], &edits[at]) {
+                continue;
+            }
+            if edits[*held].call == edits[at].call {
+                bail!(
+                    "`edits[{}]` and `edits[{}]` of this call overlap; send one range per item",
+                    edits[*held].index,
+                    edits[at].index
+                );
+            }
+            clash = true;
+            break;
+        }
+        if clash {
+            dropped.push(at);
+        } else {
+            kept.push(at);
+        }
+    }
+    Ok((kept, dropped))
+}
+
+// Replace whole lines by 1-based number: `from..=to` becomes `new`, any number of lines.
+pub(crate) fn mass_text(
+    text: &str,
+    table: &Table,
+    from: usize,
+    to: usize,
+    new: &str,
+    cap: usize,
+) -> Result<(String, Value, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let total = lines.len();
+    anyhow::ensure!(from >= 1, "`range` is 1-based; got {from}");
+    anyhow::ensure!(from <= to, "`range` must count upwards; got {from}-{to}");
+    anyhow::ensure!(
+        to <= total,
+        "line {to} does not exist; file has {total} lines"
+    );
+    let one = Edit {
+        call: 0,
+        index: 1,
+        start: from - 1,
+        end: to,
+        block: change::lines_of(new),
+        cut: false,
+        expect_start: String::new(),
+        expect_end: String::new(),
+    };
+    let updated = spliced(text, &[&one]);
+    let old_text = lines[from - 1..to].join("\n");
+    let mut memo = change::context(table, text, from, to - from + 1, cap);
+    memo["atLine"] = json!(from);
+    memo["old"] = json!(old_text);
+    Ok((
+        updated,
+        memo,
+        change::receipt(
+            from,
+            to - from + 1,
+            one.block.len(),
+            total - (to - from + 1) + one.block.len(),
+        ),
+    ))
+}

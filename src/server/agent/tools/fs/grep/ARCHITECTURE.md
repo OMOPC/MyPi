@@ -6,12 +6,13 @@
   (one walk, one render), and the one-line history summary.
 - `scan.rs` — the walk: the zone (the nearest `Cargo.toml` above the cwd and its `src/`), the roots
   `scope` names (one miss line per unusable entry), the matcher (text or pattern), the parallel
-  collection of every readable file, and the item grouping that turns a file's hit lines into the
-  pieces the answer draws; a file over 4 MiB is out.
+  collection of every file `lang::files` names and `loader::text` reads, and the item grouping
+  that turns a file's hit lines into the pieces the answer draws.
 - `render.rs` — the answer: the header (hits, items, files, mode, tier), the folded reminder, the
   language's relation block (`[type]` / `[module]` / `[x-ray]`), the tier judgment over the item
-  count, the three densities (whole items, skeletons, the census in its 500-line room), the
-  `[scope]` lines, and the stamps into `env.seen`.
+  count, the three densities (whole items, outlines, the census in its 500-line room), the `[scope]`
+  lines, and the stamps into `env.seen`. Each drawn line comes from `fs/skeleton`'s gutter and
+  `fs/summary`'s cut, so every tool numbers and clips a line the same way.
 
 ## Relations
 

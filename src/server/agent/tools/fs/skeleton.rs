@@ -1,19 +1,36 @@
-// The skeleton a report draws: the pieces of a line range, and the seam around an error.
+// The skeleton a report draws: numbered source lines, the pieces of a line range, the seam around
+// an error.
 
 use super::lang::Table;
 use crate::server::agent::tools::summary;
 
-/// One piece, as a report reads it.
+// One piece, as a report reads it.
 pub(crate) struct Block {
-    /// Its first line, 0-based.
+    // Its first line, 0-based.
     pub(crate) start: usize,
-    /// Its last line, 0-based.
+
+    // Its last line, 0-based.
     pub(crate) end: usize,
-    /// Its name, cut to something that fits beside its numbers.
+
+    // Its name, cut to something that fits beside its numbers.
     pub(crate) head: String,
 }
 
-/// The innermost piece holding a 0-based line.
+// How wide a line-number gutter is for a file of `total` lines.
+pub(crate) fn width(total: usize) -> usize {
+    total.to_string().len().max(3)
+}
+
+// One source line behind its gutter: the number right-aligned, then the pipe, then the text. A
+// blank number leaves the same width of spaces, so both kinds start in one column.
+pub(crate) fn numbered(width: usize, mark: Option<usize>, line: &str) -> String {
+    match mark {
+        Some(at) => format!("{at:>width$}|{line}"),
+        None => format!("{:>width$}|{line}", ""),
+    }
+}
+
+// The innermost piece holding a 0-based line.
 pub(crate) fn innermost(table: &Table, at: usize) -> Option<Block> {
     let (open, line) = table.innermost(at)?;
     Some(Block {
@@ -23,8 +40,8 @@ pub(crate) fn innermost(table: &Table, at: usize) -> Option<Block> {
     })
 }
 
-/// The lines around one range: two above, its own edges, two below, the middle folded when the
-/// range is long.
+// The lines around one range: two above, its own edges, two below, the middle folded when the
+// range is long.
 pub(crate) fn seam(raw: &[&str], first: usize, last: usize, width: usize) -> Vec<String> {
     let n = raw.len();
     if n == 0 {
@@ -61,7 +78,7 @@ pub(crate) fn seam(raw: &[&str], first: usize, last: usize, width: usize) -> Vec
         .collect()
 }
 
-/// A piece's own name, cut to something that fits beside its numbers.
+// A piece's own name, cut to something that fits beside its numbers.
 fn head_of(exact: Option<&str>) -> String {
     summary::clip(exact.unwrap_or("").trim(), 64)
 }

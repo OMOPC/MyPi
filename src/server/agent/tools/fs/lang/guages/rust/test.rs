@@ -3,14 +3,15 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::check::{cargo, diagnostics, shown, title, unit};
+use super::check::{cargo, diagnostics, title, unit};
 use super::table::shape;
 use crate::server::agent::tools::fs::gate;
+use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::verdict::{Fault, Verdict};
 use crate::server::agent::tools::fs::lang::{Table, Tests};
 use crate::server::platform::stop::Stop;
 
-/// What this language owes the tools as test support.
+// What this language owes the tools as test support.
 pub(crate) const TESTS: Tests = Tests {
     unit,
     title,
@@ -18,7 +19,7 @@ pub(crate) const TESTS: Tests = Tests {
     run,
 };
 
-/// The tests this text declares on the given 1-based line ranges, by function name.
+// The tests this text declares on the given 1-based line ranges, by function name.
 fn find(text: &str, table: &Table, ranges: &[(usize, usize)]) -> Vec<String> {
     let raw: Vec<&str> = text.lines().collect();
     let mut names: Vec<String> = Vec::new();
@@ -39,7 +40,7 @@ fn find(text: &str, table: &Table, ranges: &[(usize, usize)]) -> Vec<String> {
     names
 }
 
-/// The test function this line opens, when the attributes above it say so.
+// The test function this line opens, when the attributes above it say so.
 fn test_at(table: &Table, raw: &[&str], at: usize) -> Option<String> {
     let line = table.line(at)?;
     if shape(line) != Some("fn") {
@@ -52,7 +53,7 @@ fn test_at(table: &Table, raw: &[&str], at: usize) -> Option<String> {
     name_of(line.exact.as_deref()?)
 }
 
-/// The first line of the attributes standing directly above this one; the line itself when none do.
+// The first line of the attributes standing directly above this one; the line itself when none do.
 fn block_start(raw: &[&str], at: usize) -> usize {
     let mut first = at;
     let mut probe = at;
@@ -71,7 +72,7 @@ fn block_start(raw: &[&str], at: usize) -> usize {
     first
 }
 
-/// Whether one attribute makes its item a test: `#[test]`, `#[tokio::test]`, `#[actix_rt::test]`.
+// Whether one attribute makes its item a test: `#[test]`, `#[tokio::test]`, `#[actix_rt::test]`.
 fn marks_test(line: &str) -> bool {
     let Some(body) = line.trim().strip_prefix("#[") else {
         return false;
@@ -84,7 +85,7 @@ fn marks_test(line: &str) -> bool {
     path.rsplit("::").next() == Some("test")
 }
 
-/// The function's own name, out of `pub async fn probe_edge_case<T>()`.
+// The function's own name, out of `pub async fn probe_edge_case<T>()`.
 fn name_of(exact: &str) -> Option<String> {
     let mut words = exact.split_whitespace();
     while let Some(word) = words.next() {
@@ -101,8 +102,8 @@ fn name_of(exact: &str) -> Option<String> {
     None
 }
 
-/// Run exactly these tests in one unit: the compiler names its own tests, and each is asked for by
-/// its full path so nothing else runs.
+// Run exactly these tests in one unit: the compiler names its own tests, and each is asked for by
+// its full path so nothing else runs.
 fn run(root: &Path, files: &[PathBuf], names: &[String], stop: &Stop) -> Verdict {
     let mut ran = 0usize;
     let mut faults: Vec<Fault> = Vec::new();
@@ -151,7 +152,7 @@ fn run(root: &Path, files: &[PathBuf], names: &[String], stop: &Stop) -> Verdict
     })
 }
 
-/// One target's turn: list the compiler's own names, then run the ones this batch wrote.
+// One target's turn: list the compiler's own names, then run the ones this batch wrote.
 fn one(
     root: &Path,
     files: &[PathBuf],
@@ -222,7 +223,7 @@ fn one(
     outcome(root, files, &run.out)
 }
 
-/// What one `cargo test` said: how many passed, and one fault per test that panicked.
+// What one `cargo test` said: how many passed, and one fault per test that panicked.
 fn outcome(root: &Path, files: &[PathBuf], out: &str) -> Verdict {
     let mut passed = 0usize;
     let mut faults: Vec<Fault> = Vec::new();
@@ -277,7 +278,7 @@ fn outcome(root: &Path, files: &[PathBuf], out: &str) -> Verdict {
     })
 }
 
-/// One finished block of a failure into a fault.
+// One finished block of a failure into a fault.
 fn flush(
     root: &Path,
     files: &[PathBuf],
@@ -289,13 +290,13 @@ fn flush(
     }
 }
 
-/// One failed test as a fault the audit can hang: the panic's own file and line.
+// One failed test as a fault the audit can hang: the panic's own file and line.
 fn fault_of(root: &Path, files: &[PathBuf], name: &str, body: &[String]) -> Fault {
     let short = tail(name).to_string();
     let mut message: Vec<String> = Vec::new();
     let mut file = files
         .first()
-        .map(|one| shown(root, one))
+        .map(|one| parts::rel(root, one))
         .unwrap_or_default();
     let mut line = 1usize;
     for text in body {
@@ -326,7 +327,7 @@ fn fault_of(root: &Path, files: &[PathBuf], name: &str, body: &[String]) -> Faul
     }
 }
 
-/// A panic's `src/lib.rs:20:9` as the file and the line the compiler named.
+// A panic's `src/lib.rs:20:9` as the file and the line the compiler named.
 fn place_of(where_: &str) -> Option<(String, usize)> {
     let mut parts = where_.rsplitn(3, ':');
     parts.next()?;
@@ -335,7 +336,7 @@ fn place_of(where_: &str) -> Option<(String, usize)> {
     (!path.is_empty()).then(|| (path.replace('\\', "/"), number))
 }
 
-/// The cargo targets these files belong to, one entry per distinct target.
+// The cargo targets these files belong to, one entry per distinct target.
 fn targets(root: &Path, files: &[PathBuf]) -> Vec<Vec<String>> {
     let mut out: Vec<Vec<String>> = Vec::new();
     for file in files {
@@ -350,7 +351,7 @@ fn targets(root: &Path, files: &[PathBuf]) -> Vec<Vec<String>> {
     out
 }
 
-/// What cargo calls the target one written file belongs to.
+// What cargo calls the target one written file belongs to.
 fn target_of(root: &Path, file: &Path) -> Vec<String> {
     let rel = file
         .strip_prefix(root)
@@ -378,7 +379,7 @@ fn target_of(root: &Path, file: &Path) -> Vec<String> {
     }
 }
 
-/// The last segment of a full test path: `tests::probe_edge_case` reads `probe_edge_case`.
+// The last segment of a full test path: `tests::probe_edge_case` reads `probe_edge_case`.
 fn tail(full: &str) -> &str {
     full.rsplit("::").next().unwrap_or(full)
 }

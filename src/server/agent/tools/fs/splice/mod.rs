@@ -5,4 +5,5 @@ mod fmt;
 mod receipt;
 mod tool;
 
-pub(crate) use tool::{TOOL, mass_text, parse_range};
+pub(crate) use edit::{mass_text, parse_range};
+pub(crate) use tool::TOOL;

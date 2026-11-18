@@ -1,4 +1,4 @@
-//! Directory listings: one level per directory, and each level judging its own documents.
+// Directory listings: one level per directory, and each level judging its own documents.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -6,22 +6,19 @@ use std::time::SystemTime;
 use anyhow::{Result, bail};
 
 use crate::server::agent::tools::fs::lang;
-use crate::server::agent::tools::fs::lang::graph::loader::entries_all;
-use crate::server::agent::tools::fs::lang::graph::parts::plural;
+use crate::server::agent::tools::fs::lang::graph::loader::{MAX_BYTES, entries_all};
+use crate::server::agent::tools::fs::lang::graph::parts::{plural, rel};
 use crate::server::agent::tools::workspace::canonicalize_lenient;
 use crate::server::platform::time;
 
-/// Direct files at or past this count fold into counts.
+// Direct files at or past this count fold into counts.
 const FOLD_AT: usize = 10;
 
-/// The most lines one listing may take.
+// The most lines one listing may take.
 const MAX_LINES: usize = 800;
 
-/// A file this big is not counted line by line.
-const LARGE: u64 = 4 * 1024 * 1024;
-
-/// One directory's listing. The root is special: `src/` becomes a section of its own. `docs` names
-/// the documents the user keeps current, which take no part in any level's verdict.
+// One directory's listing. The root is special: `src/` becomes a section of its own. `docs` names
+// the documents the user keeps current, which take no part in any level's verdict.
 pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool, docs: &[String]) -> Result<String> {
     let root = canonicalize_lenient(cwd);
     let target = canonicalize_lenient(path);
@@ -45,13 +42,13 @@ pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool, docs: &[String]) ->
         bail!("`read` lists directories at the session root and inside a source tree only");
     }
     if titled {
-        list.line(format!("{}/  {}", shown(cwd, &target), counts(&target)));
+        list.line(format!("{}/  {}", rel(cwd, &target), counts(&target)));
     }
     fill(&mut list, &target, 1, true, None, docs);
     Ok(list.finish())
 }
 
-/// The listing being built: its lines, and how many the budget pushed away.
+// The listing being built: its lines, and how many the budget pushed away.
 struct List {
     out: String,
     left: usize,
@@ -67,7 +64,7 @@ impl List {
         }
     }
 
-    /// One printed line, or one counted away when the budget is spent.
+    // One printed line, or one counted away when the budget is spent.
     fn line(&mut self, text: String) {
         if self.left == 0 {
             self.over += 1;
@@ -86,7 +83,7 @@ impl List {
     }
 }
 
-/// One level: files carry their size and their stamp, directories their entry counts.
+// One level: files carry their size and their stamp, directories their entry counts.
 fn fill(
     list: &mut List,
     dir: &Path,
@@ -107,7 +104,7 @@ fn fill(
     }
 }
 
-/// A child directory, one level deep: few files are listed, many are counted.
+// A child directory, one level deep: few files are listed, many are counted.
 fn expand_one(list: &mut List, dir: &Entry, depth: usize, docs: &[String]) {
     let rows = level(&dir.path, None, docs);
     let files: Vec<&Entry> = rows.iter().filter(|row| !row.dir).collect();
@@ -132,8 +129,8 @@ fn expand_one(list: &mut List, dir: &Entry, depth: usize, docs: &[String]) {
     }
 }
 
-/// One level's entries with the level's own verdict applied: a level whose documents are all newer
-/// than everything beside them keeps no stamps and marks the documents instead.
+// One level's entries with the level's own verdict applied: a level whose documents are all newer
+// than everything beside them keeps no stamps and marks the documents instead.
 fn level(dir: &Path, skip: Option<&Path>, docs: &[String]) -> Vec<Entry> {
     let mut rows: Vec<Entry> = entries_all(dir)
         .into_iter()
@@ -154,8 +151,8 @@ fn level(dir: &Path, skip: Option<&Path>, docs: &[String]) -> Vec<Entry> {
     rows
 }
 
-/// Whether the documents this level holds are newer than every other file beside them, so no stamp
-/// is needed to know they stand as written. A level holding no such document answers yes.
+// Whether the documents this level holds are newer than every other file beside them, so no stamp
+// is needed to know they stand as written. A level holding no such document answers yes.
 fn current_docs(rows: &[Entry]) -> bool {
     let mut oldest_doc: Option<SystemTime> = None;
     let mut newest_other: Option<SystemTime> = None;
@@ -177,22 +174,22 @@ fn current_docs(rows: &[Entry]) -> bool {
     }
 }
 
-/// One entry: what it is, how big, when it was last written, and the tag its level gave it.
+// One entry: what it is, how big, when it was last written, and the tag its level gave it.
 struct Entry {
     name: String,
     path: PathBuf,
     dir: bool,
     kind: Kind,
-    /// The file's last write, in the process's zone; cleared when the level vouches for its docs.
+    // The file's last write, in the process's zone; cleared when the level vouches for its docs.
     at: Option<SystemTime>,
     size: String,
-    /// `(latest)`, `(persistent)`, or nothing.
+    // `(latest)`, `(persistent)`, or nothing.
     tag: &'static str,
 }
 
 impl Entry {
-    /// The name as one line shows it: the stamp first when the level carries stamps, then the name
-    /// and the tag its level gave it.
+    // The name as one line shows it: the stamp first when the level carries stamps, then the name
+    // and the tag its level gave it.
     fn label(&self) -> String {
         let named = format!("{}{}", self.name, self.tag);
         match self.at {
@@ -202,14 +199,14 @@ impl Entry {
     }
 }
 
-/// What one file is to the freshness rule.
+// What one file is to the freshness rule.
 #[derive(Clone, Copy)]
 enum Kind {
-    /// A document the model would have to weigh: upper case, and not one the user declared.
+    // A document the model would have to weigh: upper case, and not one the user declared.
     Doc,
-    /// A document the user keeps current himself: never weighed, never dated.
+    // A document the user keeps current himself: never weighed, never dated.
     Pinned,
-    /// Anything else, and every directory.
+    // Anything else, and every directory.
     Plain,
 }
 
@@ -237,8 +234,8 @@ fn row(name: String, path: PathBuf, dir: bool, docs: &[String]) -> Entry {
     }
 }
 
-/// A name's part in the rule: only `.md` takes part, and only the stem is compared with the
-/// configured ones. Upper case means no lower-case letter and at least one upper-case one.
+// A name's part in the rule: only `.md` takes part, and only the stem is compared with the
+// configured ones. Upper case means no lower-case letter and at least one upper-case one.
 fn classify(name: &str, docs: &[String]) -> Kind {
     let Some(stem) = name.strip_suffix(".md") else {
         return Kind::Plain;
@@ -252,23 +249,41 @@ fn classify(name: &str, docs: &[String]) -> Kind {
     if head && rest { Kind::Doc } else { Kind::Plain }
 }
 
-/// A file's stamp and size from one look at its metadata.
+// A file's stamp and size from one look at its metadata.
 fn facts(path: &Path) -> (Option<SystemTime>, String) {
+    use std::io::Read as _;
+
     let Ok(meta) = std::fs::metadata(path) else {
         return (None, "unknown".to_string());
     };
     let at = meta.modified().ok();
-    if meta.len() > LARGE {
+    if meta.len() > MAX_BYTES {
         return (at, "large".to_string());
     }
-    let Ok(bytes) = std::fs::read(path) else {
+    let Ok(file) = std::fs::File::open(path) else {
         return (at, "unknown".to_string());
     };
-    if bytes.is_empty() {
+    // A whole-file read here cost one heap block per listed file; this scan holds 8 KiB.
+    let mut reader = std::io::BufReader::new(file);
+    let mut buf = [0u8; 8192];
+    let mut newlines = 0usize;
+    let mut last = 0u8;
+    let mut seen = 0usize;
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                newlines += buf[..n].iter().filter(|byte| **byte == b'\n').count();
+                last = buf[n - 1];
+                seen += n;
+            }
+            Err(_) => return (at, "unknown".to_string()),
+        }
+    }
+    if seen == 0 {
         return (at, "0 lines".to_string());
     }
-    let newlines = bytes.iter().filter(|byte| **byte == b'\n').count();
-    let lines = if bytes.ends_with(b"\n") {
+    let lines = if last == b'\n' {
         newlines
     } else {
         newlines + 1
@@ -276,18 +291,10 @@ fn facts(path: &Path) -> (Option<SystemTime>, String) {
     (at, format!("{lines} lines"))
 }
 
-/// A directory's own entry counts, without opening what it holds.
+// A directory's own entry counts, without opening what it holds.
 fn counts(dir: &Path) -> String {
     let kids = entries_all(dir);
     let files = kids.iter().filter(|kid| !kid.dir).count();
     let dirs = kids.len() - files;
     format!("{}, {}", plural(files, "file"), plural(dirs, "dir"))
-}
-
-fn shown(cwd: &Path, path: &Path) -> String {
-    let path: PathBuf = path
-        .strip_prefix(cwd)
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|_| path.to_path_buf());
-    path.to_string_lossy().replace('\\', "/")
 }

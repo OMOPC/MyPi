@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-// A file past this size is not read: the same cap `grep` uses.
-const MAX_BYTES: u64 = 4 * 1024 * 1024;
+// A file past this size is not read: the one cap every reader of the tree shares.
+pub(crate) const MAX_BYTES: u64 = 4 * 1024 * 1024;
 
 // One directory entry, already sorted.
 pub(crate) struct Entry {
@@ -26,19 +26,19 @@ impl Loader {
         }
     }
 
-    /// One file's text; a missing, unreadable or oversized file answers `None`.
+    // One file's text; a missing, unreadable or oversized file answers `None`.
     pub(crate) fn read(&self, path: &Path) -> Option<String> {
         if let Some(hit) = self.cache.borrow().get(path) {
             return hit.clone();
         }
-        let text = read_one(path);
+        let text = text(path);
         self.cache
             .borrow_mut()
             .insert(path.to_path_buf(), text.clone());
         text
     }
 
-    /// One directory's entries, junk skipped, directories first, names case-insensitive.
+    // One directory's entries, junk skipped, directories first, names case-insensitive.
     pub(crate) fn entries(&self, dir: &Path) -> Vec<Entry> {
         entries(dir)
     }
@@ -50,7 +50,8 @@ impl Default for Loader {
     }
 }
 
-fn read_one(path: &Path) -> Option<String> {
+// One file's text, capped: the only way the tree hands out a whole file.
+pub(crate) fn text(path: &Path) -> Option<String> {
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() || meta.len() > MAX_BYTES {
         return None;

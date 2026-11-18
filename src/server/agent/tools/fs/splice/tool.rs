@@ -1,20 +1,19 @@
-//! The `splice` tool: replace whole lines by number, many ranges in one file.
+// The `splice` tool: replace whole lines by number, many ranges in one file.
 
 use std::path::Path;
 
 use anyhow::{Context as _, Result, anyhow, bail};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::edit::{self, Edit, Place};
 use super::fmt::{self, Word};
-use super::receipt::{self, Row, State};
+use super::receipt::{self, Row};
 use crate::server::agent::request::contract::ToolCall;
 use crate::server::agent::tools::contract::env::{Answer, Env, License, Shell, Slot};
 use crate::server::agent::tools::contract::halt::stopped;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
-use crate::server::agent::tools::fs::change;
-use crate::server::agent::tools::fs::lang::{self, Table};
+use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
 use crate::server::agent::tools::workspace::write_atomic;
@@ -152,7 +151,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 }
 
 impl Answer {
-    /// What the front door hands the model.
+    // What the front door hands the model.
     fn output(&self) -> ToolOutput {
         let mut out = match &self.memo {
             Some(memo) => ToolOutput::with_memo(self.text.clone(), memo.clone()),
@@ -165,14 +164,14 @@ impl Answer {
     }
 }
 
-/// One splice call of this batch that names the same file.
+// One splice call of this batch that names the same file.
 struct Plan {
     call_id: String,
-    /// Its arguments, read by the same table the schema is built from.
+    // Its arguments, read by the same table the schema is built from.
     args: Result<Args>,
 }
 
-/// Every splice call of the batch that names `path`, in arrival order.
+// Every splice call of the batch that names `path`, in arrival order.
 fn plans(env: &Env, path: &Path) -> Vec<Plan> {
     let mut out = Vec::new();
     for call in &env.batch {
@@ -187,7 +186,7 @@ fn plans(env: &Env, path: &Path) -> Vec<Plan> {
     out
 }
 
-/// Whether this call is one of the batch's, aimed at `path`, before its arguments are trusted.
+// Whether this call is one of the batch's, aimed at `path`, before its arguments are trusted.
 fn names(call: &ToolCall, env: &Env, path: &Path) -> bool {
     let Ok(value) = serde_json::from_str::<Value>(&call.args) else {
         return false;
@@ -198,40 +197,34 @@ fn names(call: &ToolCall, env: &Env, path: &Path) -> bool {
     env.workspace.resolve(raw, true).ok().as_deref() == Some(path)
 }
 
-/// One call's ranges, measured against the snapshot it was written against.
-fn read_edits(args: &Args, call: usize, base: &[&str]) -> Result<Vec<Edit>> {
-    let items = args.objects(EDITS)?;
-    edit::call_edits(&items, call, base)
-}
-
-/// What one merged run leaves behind: owned, so the compiler can read the crate after the file's
-/// lock is gone.
+// What one merged run leaves behind: owned, so the compiler can read the crate after the file's
+// lock is gone.
 struct Built {
-    /// The file before the write.
+    // The file before the write.
     base: String,
-    /// The file as it now stands: what was written, or the base when nothing was.
+    // The file as it now stands: what was written, or the base when nothing was.
     shown: String,
     after: usize,
-    /// Every edit of the batch, in arrival order, and each call's slice of them.
+    // Every edit of the batch, in arrival order, and each call's slice of them.
     edits: Vec<Edit>,
     spans: Vec<(usize, usize)>,
-    /// The edits that were written, as positions into `edits`, and where each one landed.
+    // The edits that were written, as positions into `edits`, and where each one landed.
     held: Vec<usize>,
     landings: Vec<Place>,
-    /// The edits that lost to an earlier call, as positions into `edits`.
+    // The edits that lost to an earlier call, as positions into `edits`.
     dropped: Vec<usize>,
-    /// The calls whose arguments could not be read at all.
+    // The calls whose arguments could not be read at all.
     unreadable: Vec<Option<String>>,
-    /// What the formatter made of the merged text.
+    // What the formatter made of the merged text.
     word: Word,
-    /// The edits whose block does not parse on its own, with the parser's words.
+    // The edits whose block does not parse on its own, with the parser's words.
     blamed: Vec<(usize, String)>,
     written: Option<String>,
 }
 
 impl Built {
-    /// One answer per call of the batch: its own edits, its own verdicts, and where the audit's
-    /// check lines will hang.
+    // One answer per call of the batch: its own edits, its own verdicts, and where the audit's
+    // check lines will hang.
     fn answers(&self, plans: &[Plan], path: &Path) -> Vec<(Answer, Vec<Slot>)> {
         let lines: Vec<&str> = self.shown.lines().collect();
         let base: Vec<String> = self.base.lines().map(str::to_string).collect();
@@ -260,7 +253,22 @@ impl Built {
                         .iter()
                         .position(|held| *held == index)
                         .and_then(|position| self.landings.get(position).copied().flatten());
-                    rows.push(self.row(index, &lines, &base, &table));
+                    let fate = receipt::Fate {
+                        applied: self.held.contains(&index),
+                        at: landing,
+                        blame: self
+                            .blamed
+                            .iter()
+                            .find(|(held, _)| *held == index)
+                            .map(|(_, why)| why.clone()),
+                    };
+                    rows.push(receipt::row(
+                        &self.edits[index],
+                        &fate,
+                        &lines,
+                        &base,
+                        &table,
+                    ));
                     slots.push(Slot {
                         landing,
                         insert_at: 0,
@@ -291,7 +299,7 @@ impl Built {
             .collect()
     }
 
-    /// Whether a written edit above a refused one moved the refused one's lines.
+    // Whether a written edit above a refused one moved the refused one's lines.
     fn moved(&self) -> bool {
         self.dropped.iter().any(|at| {
             self.held
@@ -299,74 +307,10 @@ impl Built {
                 .any(|held| self.edits[*held].start < self.edits[*at].start)
         })
     }
-
-    /// One edit, as its own call's answer shows it.
-    fn row(&self, at: usize, lines: &[&str], base: &[String], table: &Table) -> Row {
-        let edit = &self.edits[at];
-        let blame = self
-            .blamed
-            .iter()
-            .find(|(index, _)| *index == at)
-            .map(|(_, why)| why.clone());
-        if let Some(position) = self.held.iter().position(|held| *held == at) {
-            let landing = self.landings.get(position).copied().flatten();
-            let old = edit.taken(base).to_vec();
-            let new = match landing {
-                Some((first, last)) => take(lines, first, last),
-                None => Vec::new(),
-            };
-            let item = match edit.cut {
-                true => None,
-                false => landing.and_then(|(first, _)| item_of(table, first)),
-            };
-            return Row {
-                index: edit.index,
-                from: edit.start + 1,
-                state: State::Applied {
-                    at: landing,
-                    old,
-                    new,
-                    item,
-                    blame,
-                },
-            };
-        }
-
-        if let Some(reason) = drift(edit, base) {
-            let line = edit.start + 1;
-            return Row {
-                index: edit.index,
-                from: line,
-                state: State::Refused {
-                    at: Some((line, line)),
-                    taken: if edit.end > edit.start {
-                        edit.taken(base).to_vec()
-                    } else {
-                        Vec::new()
-                    },
-                    block: edit.block.clone(),
-                    item: item_of(table, line),
-                    why: reason,
-                },
-            };
-        }
-
-        Row {
-            index: edit.index,
-            from: edit.start + 1,
-            state: State::Refused {
-                at: Some((edit.start + 1, edit.end)),
-                taken: edit.taken(base).to_vec(),
-                block: edit.block.clone(),
-                item: item_of(table, edit.start + 1),
-                why: "OVERLAPPED".to_string(),
-            },
-        }
-    }
 }
 
-/// The whole group: the snapshot, one write, and one answer per call. `None` = the turn was stopped
-/// before the write, so the file is exactly as it was and no call has an answer.
+// The whole group: the snapshot, one write, and one answer per call. `None` = the turn was stopped
+// before the write, so the file is exactly as it was and no call has an answer.
 fn compute(
     path: &Path,
     license: Option<License>,
@@ -398,7 +342,7 @@ fn compute(
     }
 
     let (edits, spans, unreadable) = flatten(plans, &base);
-    let (kept, dropped) = settle_overlaps(&edits, &base)?;
+    let (kept, dropped) = edit::settle_overlaps(&edits, &base)?;
     let formatter = lang::format(path);
 
     let mut held: Vec<usize> = Vec::new();
@@ -456,8 +400,8 @@ fn compute(
     }))
 }
 
-/// The batch's edits in arrival order, each call's slice of them, and the calls whose arguments
-/// could not be read at all.
+// The batch's edits in arrival order, each call's slice of them, and the calls whose arguments
+// could not be read at all.
 type Flattened = (Vec<Edit>, Vec<(usize, usize)>, Vec<Option<String>>);
 
 fn flatten(plans: &[Plan], base: &[&str]) -> Flattened {
@@ -467,7 +411,10 @@ fn flatten(plans: &[Plan], base: &[&str]) -> Flattened {
     for (at, plan) in plans.iter().enumerate() {
         let from = edits.len();
         match &plan.args {
-            Ok(args) => match read_edits(args, at, base) {
+            Ok(args) => match args
+                .objects(EDITS)
+                .and_then(|items| edit::call_edits(&items, at, base))
+            {
                 Ok(list) => edits.extend(list),
                 Err(why) => unreadable[at] = Some(format!("{why:#}")),
             },
@@ -478,150 +425,7 @@ fn flatten(plans: &[Plan], base: &[&str]) -> Flattened {
     (edits, spans, unreadable)
 }
 
-/// Which edits may run and which are refused: the kept positions, then the refused ones. A block
-/// whose named lines drifted is refused first; two of one call's own ranges may not overlap at all —
-/// that is the model contradicting itself, and the whole call is left alone.
-fn settle_overlaps(edits: &[Edit], base: &[&str]) -> Result<(Vec<usize>, Vec<usize>)> {
-    let mut kept: Vec<usize> = Vec::new();
-    let mut dropped: Vec<usize> = Vec::new();
-    for at in 0..edits.len() {
-        if drift(&edits[at], base).is_some() {
-            dropped.push(at);
-            continue;
-        }
-        let mut clash = false;
-        for held in &kept {
-            if !edit::collide(&edits[*held], &edits[at]) {
-                continue;
-            }
-            if edits[*held].call == edits[at].call {
-                bail!(
-                    "`edits[{}]` and `edits[{}]` of this call overlap; send one range per item",
-                    edits[*held].index,
-                    edits[at].index
-                );
-            }
-            clash = true;
-            break;
-        }
-        if clash {
-            dropped.push(at);
-        } else {
-            kept.push(at);
-        }
-    }
-    Ok((kept, dropped))
-}
-
-/// Why an edit must be left out: one of its named lines no longer opens with what the model gave.
-fn drift(edit: &Edit, base: &[impl AsRef<str>]) -> Option<String> {
-    if let Some(msg) = miss_at(edit.start, &edit.expect_start, base) {
-        return Some(msg);
-    }
-    if edit.end > edit.start
-        && let Some(msg) = miss_at(edit.end - 1, &edit.expect_end, base)
-    {
-        return Some(msg);
-    }
-    None
-}
-
-/// The line one anchor names, refused: what it actually reads now, against what the model gave.
-fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String> {
-    if expect.is_empty() {
-        return None;
-    }
-    let actual = base.get(idx)?.as_ref();
-    if edit::opens(actual, expect) {
-        return None;
-    }
-    let shown: String = actual.trim().chars().take(120).collect();
-    let want = edit::flat(expect);
-    Some(format!(
-        "MISMATCH: line {} starts with {shown} instead of {want}, Re-Read or Re-Grep to splice",
-        idx + 1
-    ))
-}
-
-/// The lines one 1-based inclusive range holds, owned.
-fn take(lines: &[&str], first: usize, last: usize) -> Vec<String> {
-    if lines.is_empty() || last < first {
-        return Vec::new();
-    }
-    let first = first.clamp(1, lines.len());
-    let last = last.min(lines.len());
-    if last < first {
-        return Vec::new();
-    }
-    lines[first - 1..last]
-        .iter()
-        .map(|line| (*line).to_string())
-        .collect()
-}
-
-/// The innermost two items a landing sits in, outermost first.
-fn item_of(table: &Table, first: usize) -> Option<String> {
-    let chain = table.around(first.saturating_sub(1));
-    let tail: Vec<&str> = chain
-        .iter()
-        .rev()
-        .take(2)
-        .rev()
-        .filter_map(|(_, line)| line.exact.as_deref())
-        .collect();
-    (!tail.is_empty()).then(|| tail.join(" > "))
-}
-
-/// Replace whole lines by 1-based number: `from..=to` becomes `new`, any number of lines.
-pub(crate) fn mass_text(
-    text: &str,
-    table: &Table,
-    from: usize,
-    to: usize,
-    new: &str,
-    cap: usize,
-) -> Result<(String, Value, String)> {
-    let lines: Vec<&str> = text.lines().collect();
-    let total = lines.len();
-    anyhow::ensure!(from >= 1, "`range` is 1-based; got {from}");
-    anyhow::ensure!(from <= to, "`range` must count upwards; got {from}-{to}");
-    anyhow::ensure!(
-        to <= total,
-        "line {to} does not exist; file has {total} lines"
-    );
-    let one = Edit {
-        call: 0,
-        index: 1,
-        start: from - 1,
-        end: to,
-        block: edit::block_of(new),
-        cut: false,
-        expect_start: String::new(),
-        expect_end: String::new(),
-    };
-    let updated = edit::spliced(text, &[&one]);
-    let old_text = lines[from - 1..to].join("\n");
-    let mut memo = change::context(table, text, from, to - from + 1, cap);
-    memo["atLine"] = json!(from);
-    memo["old"] = json!(old_text);
-    Ok((
-        updated,
-        memo,
-        change::receipt(
-            from,
-            to - from + 1,
-            one.block.len(),
-            total - (to - from + 1) + one.block.len(),
-        ),
-    ))
-}
-
-/// `12-14` or `12`, 1-based, ascending.
-pub(crate) fn parse_range(text: &str) -> Result<(usize, usize)> {
-    edit::parse_range(text)
-}
-
-/// One line for a history listing: which file.
+// One line for a history listing: which file.
 fn summary(call: &CallRecord) -> String {
-    summary::clip(&summary::field(call, "path").unwrap_or_default(), 96)
+    summary::path(call)
 }

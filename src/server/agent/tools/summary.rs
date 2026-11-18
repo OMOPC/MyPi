@@ -1,10 +1,10 @@
-//! Reading a recorded call's arguments, and clipping a summary to one line.
+// Reading a recorded call's arguments, and clipping a summary to one line.
 
 use serde_json::Value;
 
 use crate::server::agent::tools::contract::view::CallRecord;
 
-/// One string field of a call's arguments.
+// One string field of a call's arguments.
 pub(crate) fn field(call: &CallRecord, name: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(&call.args)
         .ok()?
@@ -13,7 +13,7 @@ pub(crate) fn field(call: &CallRecord, name: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// One array field's elements, in the order the call gave them.
+// One array field's elements, in the order the call gave them.
 pub(crate) fn array(call: &CallRecord, name: &str) -> Vec<Value> {
     serde_json::from_str::<Value>(&call.args)
         .ok()
@@ -21,7 +21,7 @@ pub(crate) fn array(call: &CallRecord, name: &str) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-/// The `path` of every object in one array field.
+// The `path` of every object in one array field.
 pub(crate) fn paths(call: &CallRecord, name: &str) -> Vec<String> {
     array(call, name)
         .iter()
@@ -29,7 +29,7 @@ pub(crate) fn paths(call: &CallRecord, name: &str) -> Vec<String> {
         .collect()
 }
 
-/// The first item's text, plus how many others the call carried.
+// The first item's text, plus how many others the call carried.
 pub(crate) fn counted(first: &str, total: usize) -> String {
     match total {
         0 | 1 => first.to_string(),
@@ -37,11 +37,25 @@ pub(crate) fn counted(first: &str, total: usize) -> String {
     }
 }
 
-/// Whitespace runs collapsed to one space; past `cap` characters, cut and marked.
-pub(crate) fn clip(text: &str, cap: usize) -> String {
-    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    match flat.char_indices().nth(cap) {
-        Some((cut, _)) => format!("{}…", &flat[..cut]),
-        None => flat,
+// The path a call wrote to, as a history listing shows it.
+pub(crate) fn path(call: &CallRecord) -> String {
+    clip(&field(call, "path").unwrap_or_default(), 96)
+}
+
+// Whitespace runs collapsed to one space, so spacing never hides a match.
+pub(crate) fn flat(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+// A text cut to `cap` characters, its tail marked rather than silently gone.
+pub(crate) fn cut(text: &str, cap: usize) -> String {
+    match text.char_indices().nth(cap) {
+        Some((at, _)) => format!("{}…", &text[..at]),
+        None => text.to_string(),
     }
+}
+
+// Whitespace runs folded to one space, then cut to `cap` characters: one listing line.
+pub(crate) fn clip(text: &str, cap: usize) -> String {
+    cut(&flat(text), cap)
 }

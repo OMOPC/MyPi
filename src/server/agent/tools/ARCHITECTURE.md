@@ -16,7 +16,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `contract/job.rs` | the job vocabulary a tool shares with the loop: `JobSpec`, `Schedule`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink`, and the `JobHost` port |
 | `engine.rs` | `Engine`: `Batch::run` — env, gates, decode, run, stamp, measure (every tool but `read`), events; a call whose arguments arrived answers, and a stop landing mid-call becomes the result's reason |
 | `spec.rs` | `Kind`, `Param`, `schema_of`, `Args`, `Item`, `Tool`, `Run`, `Summary`, `ToolProgress` |
-| `summary.rs` | one recorded call's arguments, and the clip every tool's history summary reuses |
+| `summary.rs` | one recorded call's arguments, the one-line history summary every file tool reuses, and the shared text parts: whitespace folding, cutting a line, clipping a summary |
 | `registry.rs` | `TOOLS`, `spec`, `roster` |
 | `workspace.rs` | `Workspace`, the licensed zones, the per-path write lock, `write_atomic`, `canonicalize_lenient` |
 | `fs/mod.rs` | declares the fs family |
@@ -24,13 +24,13 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `fs/grep/` | the `grep` tool; see `fs/grep/README.md` |
 | `fs/write/{mod,tool}.rs` | `write`: the content through the formatter, the write whatever the formatter said, then the compiler's report unless the text does not parse |
 | `fs/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
-| `fs/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the copy and cut macros filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
-| `fs/splice/edit.rs` | one change: its range, its block, the macro ranges it fills and the changes it cuts, the overlap rule, the reverse-order splice, and where its lines land without a formatter |
+| `fs/splice/{mod,edit,tool}.rs` | `splice`: whole lines by number, many ranges at once; the copy and cut macros filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit |
+| `fs/splice/edit.rs` | one change: its range, its block, the macro ranges it fills and the changes it cuts, the drift and overlap rules, the reverse-order splice, where its lines land without a formatter, and `mass_text` / `parse_range` for `final` |
 | `fs/gate.rs` | the process gate: one child run to its end under a deadline, its whole group killed by a stop or a deadline, its two streams read on threads of their own, and where a toolchain program is found |
-| `fs/skeleton.rs` | the report's skeleton over a line table: the innermost piece holding a line, the seam drawn around a range |
+| `fs/skeleton.rs` | the report's skeleton over a line table: the gutter width and a numbered source line, the innermost piece holding a line, the seam drawn around a range |
 | `fs/fault.rs` | the batch's audit: one check per unit written into, by the language that owns it, every error and warning landing once — under the edit whose lines it hit, under the write that replaced the file whole, or in the unit's list on the last answer that can take it |
 | `fs/splice/fmt.rs` | the language's formatter through the gate: the merged text with a marker comment around every block, the markers' lines as each change's landing, the text without them, and the per-block trials that only name what the parser blames |
-| `fs/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, and the segment memo a front end draws |
+| `fs/splice/receipt.rs` | the receipt, shaped like `grep`'s hits: the verdict, then `path:line`, the item, the lines taken and the block in place, the reasons under them, one edit's row, and the segment memo a front end draws |
 | `fs/change.rs` | `context` (the piece around a changed line, its breadcrumb and excerpt), `receipt`, `line_of`, `lines_of` |
 | `fs/lang/mod.rs` | the registry: the `Language` every sorter answers with, the list of languages, the suffix lookup, and the two questions forwarded to the language that wrote a table |
 | `fs/lang/table.rs` | one file's line table: each line's stamp, the shape it reads by, the line it names, its other end, the language that wrote it; the pieces holding a line, the shallowest pieces of a range, roots and children |

@@ -1,9 +1,10 @@
-//! The batch's shared audit: after a batch's last write, one check per unit written into, run by
-//! the language that owns it. Faults that land on a written edit hang under it; the unit's report rides on the last written
-//! answer.
+// The batch's shared audit: after a batch's last write, one check per unit written into, run by
+// the language that owns it. Faults that land on a written edit hang under it; the unit's report rides on the last written
+// answer.
 
 use std::path::{Path, PathBuf};
 
+use super::lang::graph::parts;
 use super::lang::verdict::{Check, Fault, Unparsed, Verdict};
 use super::skeleton;
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
@@ -12,13 +13,13 @@ use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::fs::lang::{Checker, Tests};
 use crate::server::platform::stop::Stop;
 
-/// How many lines one error block may take.
+// How many lines one error block may take.
 const ROOM: usize = 16;
 
-/// How many diagnostics one folded report lists.
+// How many diagnostics one folded report lists.
 const FAULTS: usize = 12;
 
-/// A file that did not parse: the formatter's verdict is the whole report.
+// A file that did not parse: the formatter's verdict is the whole report.
 pub(crate) fn unparsed(why: &Unparsed) -> String {
     let at = match why.line {
         Some(line) => format!("line {line}: "),
@@ -30,7 +31,7 @@ pub(crate) fn unparsed(why: &Unparsed) -> String {
     )
 }
 
-/// Finish every written call's answer with the batch's one check.
+// Finish every written call's answer with the batch's one check.
 pub(crate) fn settle(env: &mut Env, results: &mut [ToolResult]) {
     let stop = env.stop.clone();
     let shells = std::mem::take(&mut env.shells);
@@ -49,8 +50,8 @@ pub(crate) fn settle(env: &mut Env, results: &mut [ToolResult]) {
     finish(&shells, &checks, &tests, results);
 }
 
-/// One check per unit, in the order the writes named them: each unit's own checker, and the files
-/// this batch wrote into it.
+// One check per unit, in the order the writes named them: each unit's own checker, and the files
+// this batch wrote into it.
 fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check, &'static Checker)> {
     let mut units: Vec<(PathBuf, &'static Checker, Vec<PathBuf>)> = Vec::new();
     for shell in shells {
@@ -71,8 +72,8 @@ fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check, &'static Checke
         .collect()
 }
 
-/// One test run per unit whose writes declared a test, in the order the writes named them. A unit
-/// whose check found an error is not run: the same compile error twice reads as two mistakes.
+// One test run per unit whose writes declared a test, in the order the writes named them. A unit
+// whose check found an error is not run: the same compile error twice reads as two mistakes.
 fn gather_tests(
     shells: &[Shell],
     checks: &[(PathBuf, Check, &'static Checker)],
@@ -127,8 +128,8 @@ fn gather_tests(
         .collect()
 }
 
-/// The audit's pure half: every diagnostic lands once — under the edit whose lines it hit, under
-/// the write that replaced the whole file, or in the crate's own list.
+// The audit's pure half: every diagnostic lands once — under the edit whose lines it hit, under
+// the write that replaced the whole file, or in the crate's own list.
 pub(crate) fn finish(
     shells: &[Shell],
     checks: &[(PathBuf, Check, &'static Checker)],
@@ -224,15 +225,15 @@ pub(crate) fn finish(
     }
 }
 
-/// Whether one call's answer can still take lines.
+// Whether one call's answer can still take lines.
 fn holds(results: &[ToolResult], call_id: &str) -> bool {
     results
         .iter()
         .any(|result| result.call_id == call_id && result.reason.is_none())
 }
 
-/// Where one diagnostic belongs: under the edit whose lines it landed on, under the write that
-/// replaced the whole file, or nowhere a shell can hold it.
+// Where one diagnostic belongs: under the edit whose lines it landed on, under the write that
+// replaced the whole file, or nowhere a shell can hold it.
 fn place(
     root: &Path,
     shells: &[Shell],
@@ -260,25 +261,19 @@ fn place(
     lone.push(fault.clone());
 }
 
-/// The report's head: how many of each the crate still owes the reader.
+// The report's head: how many of each the crate still owes the reader.
 fn head(name: &str, faults: usize, warns: usize) -> String {
-    let mut parts: Vec<String> = Vec::new();
+    let mut counts: Vec<String> = Vec::new();
     if faults > 0 {
-        parts.push(match faults {
-            1 => "1 error".to_string(),
-            n => format!("{n} errors"),
-        });
+        counts.push(parts::plural(faults, "error"));
     }
     if warns > 0 {
-        parts.push(match warns {
-            1 => "1 warn".to_string(),
-            n => format!("{n} warns"),
-        });
+        counts.push(parts::plural(warns, "warn"));
     }
-    format!("[i] check · {name} {}", parts.join(", "))
+    format!("[i] check · {name} {}", counts.join(", "))
 }
 
-/// The report's lines: every error, then every warning; folded past the cap unless unfolded.
+// The report's lines: every error, then every warning; folded past the cap unless unfolded.
 fn listing(faults: &[Fault], warns: &[Fault], unfold: bool) -> Vec<String> {
     let lines: Vec<String> = faults.iter().chain(warns.iter()).map(one).collect();
     if unfold || lines.len() <= FAULTS {
@@ -292,7 +287,7 @@ fn listing(faults: &[Fault], warns: &[Fault], unfold: bool) -> Vec<String> {
     out
 }
 
-/// One report line: where, what, and the compiler's own suggestion.
+// One report line: where, what, and the compiler's own suggestion.
 fn one(fault: &Fault) -> String {
     let mut line = format!("  {}:{}: {}", fault.file, fault.line, fault.message);
     if !fault.helps.is_empty() {
@@ -301,7 +296,7 @@ fn one(fault: &Fault) -> String {
     line
 }
 
-/// One fault's line as it hangs under an edit of a spliced file.
+// One fault's line as it hangs under an edit of a spliced file.
 fn hanging(fault: &Fault) -> String {
     let mut line = format!("  ! line {}: {}", fault.line, fault.message);
     if !fault.helps.is_empty() {
@@ -310,7 +305,7 @@ fn hanging(fault: &Fault) -> String {
     line
 }
 
-/// One fault's lines as they stand under a written file's answer: the source seam and the words.
+// One fault's lines as they stand under a written file's answer: the source seam and the words.
 fn seam_block(root: &Path, fault: &Fault) -> Vec<String> {
     let mut out = vec![format!("--- {}:{} ---", fault.file, fault.line)];
     if let Ok(source) = std::fs::read_to_string(root.join(&fault.file)) {
@@ -323,12 +318,12 @@ fn seam_block(root: &Path, fault: &Fault) -> Vec<String> {
     out
 }
 
-/// Whether a fault's line lands inside one edit's landing.
+// Whether a fault's line lands inside one edit's landing.
 fn covers(slot: &Slot, line: usize) -> bool {
     matches!(slot.landing, Some((first, last)) if first <= line && line <= last)
 }
 
-/// Collect one insert point's lines, in the order the compiler named them.
+// Collect one insert point's lines, in the order the compiler named them.
 fn group(
     groups: &mut Vec<(String, usize, Vec<String>)>,
     call_id: &str,
@@ -344,15 +339,19 @@ fn group(
     }
 }
 
-/// Insert whole lines into one answer's text; a refused or missing answer stays as it is.
+// The answer one call still owns; a refused or missing one takes nothing.
+fn slot<'a>(results: &'a mut [ToolResult], call_id: &str) -> Option<&'a mut ToolResult> {
+    results
+        .iter_mut()
+        .find(|result| result.call_id == call_id && result.reason.is_none())
+}
+
+// Insert whole lines into one answer's text; a refused or missing answer stays as it is.
 fn insert(results: &mut [ToolResult], call_id: &str, at: usize, lines: &[String]) {
     if lines.is_empty() {
         return;
     }
-    let Some(result) = results
-        .iter_mut()
-        .find(|result| result.call_id == call_id && result.reason.is_none())
-    else {
+    let Some(result) = slot(results, call_id) else {
         return;
     };
     let mut text: Vec<String> = result.result.lines().map(str::to_string).collect();
@@ -363,15 +362,12 @@ fn insert(results: &mut [ToolResult], call_id: &str, at: usize, lines: &[String]
     result.result = text.join("\n");
 }
 
-/// Append whole lines to one answer's text, on the same terms.
+// Append whole lines to one answer's text, on the same terms.
 fn append(results: &mut [ToolResult], call_id: &str, lines: &[String]) {
     if lines.is_empty() {
         return;
     }
-    let Some(result) = results
-        .iter_mut()
-        .find(|result| result.call_id == call_id && result.reason.is_none())
-    else {
+    let Some(result) = slot(results, call_id) else {
         return;
     };
     let mut text = result.result.clone();
@@ -382,14 +378,13 @@ fn append(results: &mut [ToolResult], call_id: &str, lines: &[String]) {
     result.result = text;
 }
 
-/// The error's own lines, two above and two below, and the piece they sit in.
+// The error's own lines, two above and two below, and the piece they sit in.
 fn seam(text: &str, line: usize, path: &Path) -> Vec<String> {
     let raw: Vec<&str> = text.lines().collect();
     let table = lang::table(path, text);
     let mut out: Vec<String> = Vec::new();
-    let width = raw.len().to_string().len().max(3);
+    let width = skeleton::width(raw.len());
     let spot = line.saturating_sub(1);
-
     if let Some(block) = skeleton::innermost(&table, spot) {
         out.push(format!(
             "in: {} ({}..{})",

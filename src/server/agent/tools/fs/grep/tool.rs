@@ -1,4 +1,4 @@
-//! The `grep` tool: hits inside the crate's own source, each with the piece around it.
+// The `grep` tool: hits inside the crate's own source, each with the piece around it.
 
 use super::{render, scan};
 use crate::server::agent::tools::contract::env::Env;
@@ -67,7 +67,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     Ok(ToolOutput::text(text))
 }
 
-/// One line for a history listing: the query.
+// One line for a history listing: the query.
 fn summary(call: &CallRecord) -> String {
     summary::clip(&summary::field(call, "query").unwrap_or_default(), 96)
 }

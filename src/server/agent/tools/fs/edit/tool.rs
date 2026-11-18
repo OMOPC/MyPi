@@ -95,5 +95,5 @@ pub(crate) fn exact_text(
 
 /// One line for a history listing: which file.
 fn summary(call: &CallRecord) -> String {
-    summary::clip(&summary::field(call, "path").unwrap_or_default(), 96)
+    summary::path(call)
 }

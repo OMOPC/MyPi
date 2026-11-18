@@ -138,8 +138,8 @@ read in a unit, `entry file` when the entry file itself was read. Each unit gets
 conversation, and a compaction clears that memory. A file this same call already answered shows
 `[body in this batch]` instead of its exports.
 
-The view has its own 800-line and 256 KiB budget, apart from the body's: a body that fills its cap
-still comes with a whole view. The upward walk covers the next directory up and everything beside
+The view carries no budget of its own: a body that fills its cap still comes with a whole view.
+The upward walk covers the next directory up and everything beside
 it, one whole level at a time, and stops at the crate root or when its 300 ms budget runs out. A
 level it could not finish is dropped whole, because half a level reads as "nobody imports this".
 Past 200 importers the list folds by directory. The downward side never walks: it reads the names

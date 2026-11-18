@@ -1,4 +1,4 @@
-//! The `read` tool: files by line numbers, directories by name.
+// The `read` tool: files by line numbers, directories by name.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,7 @@ use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::lang::graph::{self, Loader};
 use crate::server::agent::tools::fs::lang::{self, Table};
+use crate::server::agent::tools::fs::skeleton;
 use crate::server::agent::tools::fs::splice::TOOL as SPLICE;
 use crate::server::agent::tools::spec::{Args, Item, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
@@ -20,15 +21,15 @@ use base64::Engine as _;
 
 const FILES: usize = 0;
 
-/// A source file's own budget: 800 lines, 256 KiB.
+// A source file's own budget: 800 lines, 256 KiB.
 pub(crate) const MAX_LINES_SOURCE: usize = 800;
 pub(crate) const MAX_BYTES_SOURCE: usize = 256 * 1024;
 
-/// Every other file's budget: 200 lines, 64 KiB.
+// Every other file's budget: 200 lines, 64 KiB.
 const MAX_LINES: usize = 200;
 const MAX_BYTES: usize = 64 * 1024;
 
-/// An image's byte cap: a bigger file fails with the cap named.
+// An image's byte cap: a bigger file fails with the cap named.
 const MAX_IMAGE_BYTES: u64 = 4 * 1024 * 1024;
 
 const FILE_FIELDS: &[Param] = &[
@@ -76,7 +77,7 @@ pub(crate) const TOOL: Tool = Tool {
     summary,
 };
 
-/// Read every named path, answering in the call's order.
+// Read every named path, answering in the call's order.
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
     let items = args.objects(FILES)?;
     anyhow::ensure!(!items.is_empty(), "`files` must name at least one path");
@@ -152,16 +153,23 @@ fn named(
 ) -> Result<(String, Vec<ImagePart>)> {
     let raw = item.text("path")?;
     let text = items::answer(env, path, wanted)?;
-    let answered = if headed {
-        format!("==> {raw}\n{text}")
-    } else {
-        text
-    };
-    Ok((answered, Vec::new()))
+    Ok((titled(&raw, text, headed), Vec::new()))
 }
 
-/// An image's answer, when the file is one and this session's model can see: a one-line card and
-/// the bytes as a part. A non-image, or a model without vision, answers `None`.
+// One file's line of a batch: the reader must know which answer is whose.
+pub(super) fn header(raw: &str) -> String {
+    format!("==> {raw}\n")
+}
+
+// The header is a batch's signpost; one item alone answers bare.
+pub(super) fn titled(raw: &str, text: String, on: bool) -> String {
+    match on {
+        true => format!("{}{text}", header(raw)),
+        false => text,
+    }
+}
+// An image's answer, when the file is one and this session's model can see: a one-line card and
+// the bytes as a part. A non-image, or a model without vision, answers `None`.
 fn image(env: &Env, path: &Path) -> Result<Option<(String, ImagePart)>> {
     let Some(format) = sniff::detect(path)? else {
         return Ok(None);
@@ -174,9 +182,9 @@ fn image(env: &Env, path: &Path) -> Result<Option<(String, ImagePart)>> {
     let bytes = std::fs::read(path).context("failed to read image")?;
     anyhow::ensure!(
         bytes.len() as u64 <= MAX_IMAGE_BYTES,
-        "the image is {} MiB; the cap is {} MiB",
-        bytes.len() / (1024 * 1024),
-        MAX_IMAGE_BYTES / (1024 * 1024),
+        "the image is {} KiB; the cap is {} KiB",
+        bytes.len().div_ceil(1024),
+        MAX_IMAGE_BYTES / 1024,
     );
     let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
     let card = format!(
@@ -192,7 +200,7 @@ fn image(env: &Env, path: &Path) -> Result<Option<(String, ImagePart)>> {
     )))
 }
 
-/// The lines one item may take: the file's own cap, or what the call named when that is smaller.
+// The lines one item may take: the file's own cap, or what the call named when that is smaller.
 fn window(item: &Item, cap: usize) -> Result<usize> {
     match item.opt_int("limit")? {
         None => Ok(cap),
@@ -203,7 +211,7 @@ fn window(item: &Item, cap: usize) -> Result<usize> {
     }
 }
 
-/// One path's answer: a listing, or a body with its module view.
+// One path's answer: a listing, or a body with its module view.
 fn block(
     env: &mut Env,
     batch: &BTreeSet<PathBuf>,
@@ -216,29 +224,19 @@ fn block(
 
     if path.is_dir() {
         let text = dir::listing(path, &env.workspace.cwd(), !headed, &env.persistent_docs)?;
-        let listed = if headed {
-            format!("==> {raw}\n{text}")
-        } else {
-            text
-        };
-        return Ok((listed, Vec::new()));
+        return Ok((titled(&raw, text, headed), Vec::new()));
     }
 
     if let Some((card, image)) = image(env, path)? {
-        let text = if headed {
-            format!("==> {raw}\n{card}")
-        } else {
-            card
-        };
-        return Ok((text, vec![image]));
+        return Ok((titled(&raw, card, headed), vec![image]));
     }
 
     let splice = env.allows(SPLICE.name);
-    let language = lang::owner(path).is_some();
-    let source = lang::source(path);
+    let language = lang::owner(path);
+    let source = language.is_some_and(|one| one.source);
     // A sorted language is read whole so its key lines can be numbered.
     let limit = window(item, if source { MAX_LINES_SOURCE } else { MAX_LINES })?;
-    let whole = if language {
+    let whole = if language.is_some() {
         std::fs::read_to_string(path).ok()
     } else {
         None
@@ -304,14 +302,7 @@ fn block(
         }
     }
 
-    Ok((
-        if headed {
-            format!("==> {raw}\n{text}")
-        } else {
-            text
-        },
-        Vec::new(),
-    ))
+    Ok((titled(&raw, text, headed), Vec::new()))
 }
 
 // One file's neighbourhood, printed and bounded on its own.
@@ -328,23 +319,22 @@ fn sketch(facts: &lang::Hub, loader: &Loader, path: &Path, batch: &BTreeSet<Path
         text.push_str(&row.text);
         text.push('\n');
     }
-    let mut text = graph::parts::cut(text, 800, 256 * 1024);
     text.push('\n');
     text
 }
 
-/// How a file's lines are prefixed, if at all.
+// How a file's lines are prefixed, if at all.
 enum Numbers<'a> {
-    /// A session with `edit` and without `splice`: no numbers.
+    // A session with `edit` and without `splice`: no numbers.
     None,
-    /// Another language under `splice`: every line carries one.
+    // Another language under `splice`: every line carries one.
     All,
-    /// A sorted language under `splice`: only the key lines do.
+    // A sorted language under `splice`: only the key lines do.
     Table(&'a Table),
 }
 
 impl Numbers<'_> {
-    /// Do any lines carry a number? A gutter is only reserved when they do.
+    // Do any lines carry a number? A gutter is only reserved when they do.
     fn on(&self) -> bool {
         !matches!(self, Numbers::None)
     }
@@ -358,16 +348,16 @@ impl Numbers<'_> {
     }
 }
 
-/// A body and, when the file continues past it, the line that says so.
+// A body and, when the file continues past it, the line that says so.
 struct Body {
     text: String,
     status: Option<String>,
 }
 
-/// The window's lines, prefixed by a gutter as wide as the file's own numbers, capped by bytes.
-///
-/// The gutter is `total`'s digit count plus one pipe, so a numbered line and an unnumbered one
-/// start in the same column and an empty line costs a newline and nothing else.
+// The window's lines, prefixed by a gutter as wide as the file's own numbers, capped by bytes.
+//
+// The gutter is `total`'s digit count plus one pipe, so a numbered line and an unnumbered one
+// start in the same column and an empty line costs a newline and nothing else.
 fn assemble<'a>(
     first: usize,
     total: usize,
@@ -416,7 +406,7 @@ fn assemble<'a>(
     Body { text, status }
 }
 
-/// One line: its number, or the same width of blanks, then the pipe that ends the gutter.
+// One line: its number, or the same width of blanks, then the pipe that ends the gutter.
 fn push(out: &mut String, at: usize, line: &str, number: bool, on: bool, width: usize) {
     if !on {
         // Without numbers the body is the file itself, so a line of spaces stays a line of spaces.
@@ -428,25 +418,18 @@ fn push(out: &mut String, at: usize, line: &str, number: bool, on: bool, width: 
         out.push('\n');
         return;
     }
-    if number {
-        out.push_str(&format!("{at:>width$}|{line}\n"));
-    } else {
-        for _ in 0..width {
-            out.push(' ');
-        }
-        out.push('|');
-        out.push_str(line);
-        out.push('\n');
-    }
+    let mark = number.then_some(at);
+    out.push_str(&skeleton::numbered(width, mark, line));
+    out.push('\n');
 }
 
 struct Streamed {
     total: usize,
-    /// The window's lines, unprefixed: the gutter needs the total, which is only known at the end.
+    // The window's lines, unprefixed: the gutter needs the total, which is only known at the end.
     lines: Vec<String>,
 }
 
-/// A file of any other kind, streamed line by line so a huge one never lands in memory whole.
+// A file of any other kind, streamed line by line so a huge one never lands in memory whole.
 fn streamed(path: &Path, offset: usize, limit: usize) -> Result<Streamed> {
     use std::io::BufRead as _;
 
@@ -474,7 +457,7 @@ fn streamed(path: &Path, offset: usize, limit: usize) -> Result<Streamed> {
     Ok(Streamed { total, lines })
 }
 
-/// The largest character boundary within the first `bytes` bytes.
+// The largest character boundary within the first `bytes` bytes.
 fn floor_boundary(line: &str, bytes: usize) -> usize {
     let mut end = bytes.min(line.len());
     while end > 0 && !line.is_char_boundary(end) {
@@ -483,7 +466,7 @@ fn floor_boundary(line: &str, bytes: usize) -> usize {
     end
 }
 
-/// One line for a history listing: the paths, the first named and the rest counted.
+// One line for a history listing: the paths, the first named and the rest counted.
 fn summary(call: &CallRecord) -> String {
     let paths = summary::paths(call, "files");
     let first = paths.first().cloned().unwrap_or_default();

@@ -1,11 +1,11 @@
-//! Image sniffing: the format comes from the bytes, never from the file's name.
+// Image sniffing: the format comes from the bytes, never from the file's name.
 
 use std::io::Read as _;
 use std::path::Path;
 
 use anyhow::{Context as _, Result};
 
-/// The format a file's head names, as the data-URL subtype the wire takes.
+// The format a file's head names, as the data-URL subtype the wire takes.
 pub(crate) fn detect(path: &Path) -> Result<Option<&'static str>> {
     let mut head = [0u8; 12];
     let mut file = std::fs::File::open(path).context("failed to open file")?;
