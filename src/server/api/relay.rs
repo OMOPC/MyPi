@@ -191,6 +191,12 @@ impl Relay {
         self.report(gone);
     }
 
+    /// A turn just opened: every watcher but the writer is told the words that opened it.
+    pub(crate) fn told(&self, session: i64, viewer: &str, text: &str) {
+        let said = json!({"signal": "user", "text": text});
+        self.deliver(session, Frame::new("stream", "signal", said), Some(viewer));
+    }
+
     /// Remember who wrote the slot; the turn it opens is named after the slot, nobody else.
     pub(crate) fn note_mail(&self, conn: u64, session: i64, viewer: &str) {
         let gone = {
@@ -258,18 +264,31 @@ impl Relay {
     fn event(&self, event: Event) {
         let session = event.session;
         let element = match event.element {
-            Element::Mailbox { turn } => {
-                self.slot_opened(session, turn);
-                self.deliver(
-                    session,
-                    Frame::new("stream", "signal", json!({"signal": "mailbox"})),
-                    None,
-                );
+            Element::Mailbox { turn, text } => {
+                let writer = self.slot_opened(session, turn);
+                let said = match &text {
+                    Some(text) => json!({"signal": "mailbox", "text": text}),
+                    None => json!({"signal": "mailbox"}),
+                };
+                match writer {
+                    // The writer echoes its own letter, so its own copy carries no words.
+                    Some(writer) => {
+                        self.deliver(session, Frame::new("stream", "signal", said), Some(&writer));
+                        self.send_one(
+                            session,
+                            &writer,
+                            Frame::new("stream", "signal", json!({"signal": "mailbox"})),
+                        );
+                    }
+                    None => self.deliver(session, Frame::new("stream", "signal", said), None),
+                }
                 return;
             }
             other => other,
         };
+
         let (turn, door) = self.turn_of(session);
+
         match element {
             Element::Stream(stream) => {
                 let (kind, extra) = match stream {
@@ -349,24 +368,25 @@ impl Relay {
 
     /// The slot was taken: the writer recorded at write time owns the turn, and the door is the
     /// slot. A letter taken into a turn that is already running keeps that turn's door.
-    fn slot_opened(&self, session: i64, turn: i64) {
+    fn slot_opened(&self, session: i64, turn: i64) -> Option<String> {
         let mut state = self.state();
-        let viewer = state.pending.remove(&session).unwrap_or_default();
-        if state
+        let viewer = state.pending.remove(&session).filter(|who| !who.is_empty());
+        if let Some(active) = state
             .active
             .get(&session)
-            .is_some_and(|active| active.turn == turn)
+            .filter(|active| active.turn == turn)
         {
-            return;
+            return Some(active.viewer.clone());
         }
         state.active.insert(
             session,
             Active {
                 turn,
                 opened_by: "mailbox",
-                viewer,
+                viewer: viewer.clone().unwrap_or_default(),
             },
         );
+        viewer
     }
 
     /// One piece of live output, labelled with the turn and the door that opened it.
@@ -424,6 +444,30 @@ impl Relay {
             .entry(session)
             .or_default()
             .push(frame.clone());
+        let mut dead = Vec::new();
+        for (id, tx) in targets {
+            if tx.send(frame.clone()).is_err() {
+                dead.push(id);
+            }
+        }
+        for id in dead {
+            state.conns.remove(&id);
+        }
+        let gone = drop_unfollowed(&mut state);
+        drop(state);
+        self.report(gone);
+    }
+
+    /// One frame for one viewer's connection, never buffered: the writer's own copy of a signal.
+    fn send_one(&self, session: i64, viewer: &str, frame: Frame) {
+        let mut state = self.state();
+        let targets: Vec<(u64, Sender<Frame>)> = state
+            .conns
+            .iter()
+            .filter(|(_, entry)| entry.session == Some(session))
+            .filter(|(_, entry)| entry.viewer.as_deref() == Some(viewer))
+            .map(|(id, entry)| (*id, entry.tx.clone()))
+            .collect();
         let mut dead = Vec::new();
         for (id, tx) in targets {
             if tx.send(frame.clone()).is_err() {

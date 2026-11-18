@@ -82,7 +82,8 @@ fn read_stream(zone: &mut HistoryZone, frame: &Frame) {
             zone.notice(text, level, life);
         }
         "signal" => {
-            if content.get("signal").and_then(Value::as_str) == Some("rewind") {
+            let field = content.get("signal").and_then(Value::as_str);
+            if field == Some("rewind") {
                 zone.pin.clear();
                 zone.tick = 0;
                 // The cut rewrote the rounds: whatever a round was waiting on names rows the
@@ -90,6 +91,17 @@ fn read_stream(zone: &mut HistoryZone, frame: &Frame) {
                 zone.pending = None;
                 zone.asking.clear();
                 zone.outbox.push(Request::Structure);
+            }
+            if matches!(field, Some("user") | Some("mailbox")) {
+                match content.get("text").and_then(Value::as_str) {
+                    Some(text) => {
+                        let at = zone.local.running_mut().echo(text);
+                        zone.mark(Idx::Turn(at as u32));
+                        zone.shouts.push(Shout::new(name::TICK, json!({})));
+                    }
+                    // No words: the api read this front end as the writer, so the words are its own.
+                    None => zone.shouts.push(Shout::new(name::MAILBOX, json!({}))),
+                }
             }
             zone.shouts.push(Shout::new(name::SIGNAL, content.clone()));
         }

@@ -520,7 +520,7 @@ fn take_mail(
         });
         taken = true;
     }
-    // A letter joins the turn it landed in; the writer's front end echoes it on the take signal.
+    // A letter joins the turn it landed in: the writer echoes it, the watchers read the text.
     if let Some(letter) = handle.mailbox.take() {
         pen::turn::append_user(
             &inner.writer,
@@ -531,7 +531,10 @@ fn take_mail(
         )?;
         let _ = inner.out.send(Event {
             session: handle.id,
-            element: Element::Mailbox { turn },
+            element: Element::Mailbox {
+                turn,
+                text: Some(letter.text.clone()),
+            },
         });
         transcript.append_user(Stored::User {
             prefix: letter.prefix,

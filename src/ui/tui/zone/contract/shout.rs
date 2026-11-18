@@ -32,6 +32,8 @@ pub mod name {
     pub const QUEUE: &str = "queue";
     /// A message the front end put out: history draws it now. `{text, prefix, suffix}`.
     pub const ECHO: &str = "echo";
+    /// History asks input for the letter it holds; input answers on `echo`.
+    pub const MAILBOX: &str = "mailbox";
     /// That message opened nothing: history takes the echo back. `{reason}`.
     pub const RETRACT: &str = "retract";
     /// The input zone: one line the history zone draws. `{level, text}`.

@@ -18,9 +18,11 @@ pub enum Element {
     Stream(Stream),
     Notice(Notice),
     Tool(ToolEvent),
-    /// The front end's slot became this turn; the api names the frames after it.
+    /// The front end's slot became this turn; the api names the frames after it. `text` is the
+    /// letter's own words, absent when the turn opened with no user block.
     Mailbox {
         turn: i64,
+        text: Option<String>,
     },
     /// A turn closed: the id ranges its blocks occupy, in landing order, and whether it is the
     /// compaction that rewrote the history.

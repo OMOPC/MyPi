@@ -409,6 +409,10 @@ fn start_turn(
         pen::turn::Start::Wake { text } => Some(text.clone()),
         _ => None,
     };
+    let user = match &start {
+        pen::turn::Start::User { text, .. } => Some(text.clone()),
+        _ => None,
+    };
     let mode = mode_of(&start);
     let cwd = handle.cwd();
     let model = Some(handle.model());
@@ -424,7 +428,7 @@ fn start_turn(
     }
     handle.transcript().started();
     if queued {
-        announce(inner, handle.id, turn);
+        announce(inner, handle.id, turn, user.clone());
     }
     if let Some(text) = wake {
         let _ = inner.out.send(Event {
@@ -458,6 +462,10 @@ fn start_turn(
                         };
                         let queued = next.queued();
                         let start = next.start();
+                        let user = match &start {
+                            pen::turn::Start::User { text, .. } => Some(text.clone()),
+                            _ => None,
+                        };
                         thread_handle.stop.reset();
                         mode = mode_of(&start);
                         let cwd = thread_handle.cwd();
@@ -468,7 +476,7 @@ fn start_turn(
                                     thread_handle.transcript().append_user(opening);
                                 }
                                 if queued {
-                                    announce(&inner, thread_handle.id, next);
+                                    announce(&inner, thread_handle.id, next, user);
                                 }
                                 current = next;
                             }
@@ -563,10 +571,10 @@ fn start_of(handle: &Handle, msg: Message) -> pen::turn::Start {
 }
 
 /// Tell the api that the slot turned into this turn, so its door is named after the slot.
-fn announce(inner: &Arc<Inner>, session: i64, turn: i64) {
+fn announce(inner: &Arc<Inner>, session: i64, turn: i64, text: Option<String>) {
     let _ = inner.out.send(Event {
         session,
-        element: Element::Mailbox { turn },
+        element: Element::Mailbox { turn, text },
     });
 }
 

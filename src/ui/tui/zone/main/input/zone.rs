@@ -223,12 +223,8 @@ impl InputZone {
         self.statusline.on_event(event, content, &ctx);
     }
 
-    /// One signal: the slot was taken, or a field this zone follows changed.
+    /// One signal: a field this zone follows changed.
     fn signal(&mut self, content: &Value, out: &mut Vec<Request>) {
-        if content.get("signal").and_then(Value::as_str) == Some("mailbox") {
-            out.extend(self.opened());
-            return;
-        }
         if let Some(address) = content.get("model").and_then(Value::as_str) {
             self.model(address, out);
         }
@@ -369,6 +365,10 @@ impl SubZone for InputZone {
                     self.outbox.push(Request::Usage);
                 }
                 self.notify(event, content);
+            }
+            name::MAILBOX => {
+                let out = self.opened();
+                self.outbox.extend(out);
             }
             name::SIGNAL => {
                 let mut out = Vec::new();

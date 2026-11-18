@@ -46,8 +46,15 @@ and its notices land after them. Until then the running round keeps the screen a
 stays busy, so nothing else grows beside it.
 
 The two regions are the only holders of block content. What the budget takes away leaves the slot's
-number and kind behind, so a later scroll asks for it again instead of keeping it twice.
+|The two regions are the only holders of block content. What the budget takes away leaves the slot's
+|number and kind behind, so a later scroll asks for it again instead of keeping it twice.
 
+|### A user block
+
+|A message the reader's own front end sent is drawn from that front end's echo. A message another
+|front end sent arrives on the session stream as `signal: user` or `signal: mailbox` carrying its
+|`text`, and is drawn the same way. A `signal: mailbox` with no `text` says the server read this front
+|end as the writer: history asks input for the letter it holds and draws what comes back.
 ### Products
 
 One product per block: text blocks hand over segments, everything else hands over rows folded at a

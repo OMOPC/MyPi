@@ -40,8 +40,16 @@ pub(crate) fn open(
             "a child session takes no messages".into(),
         ));
     }
+    // A compaction opens with no words of the user's: nobody else has a block to draw for it.
+    let opening = match &message {
+        Message::Submit { text, .. } => text.clone(),
+        Message::Compact { .. } => String::new(),
+    };
     api.ensure_booked(session)?;
     let turn = api.ledger().deliver(session, message)?;
     api.relay().opened(conn, session, viewer, turn, door);
+    if !opening.is_empty() {
+        api.relay().told(session, viewer, &opening);
+    }
     Ok(json!({"turn": turn}))
 }

@@ -67,7 +67,8 @@ Subscribe: `watch`, `submit`, `compact`.
 - `mailbox` is the session's one pending message. `text` present and non-empty, or an empty `text`
   with a `prefix` or `suffix`, writes it whole over whatever was there; no `text` and no prefix
   clears it. The loop takes it at a blocking point and opens a turn named `mailbox`, exactly as a
-  `submit` would; taking it clears it and puts `signal: mailbox` on the stream for every watcher.
+  `submit` would; taking it clears it and puts `signal: mailbox` on the stream, carrying the words
+  for every watcher but the writer.
 - `effort` sets how hard the session's next laps ask the model to think. It is the one write door
   that changes no row: the rung lives on the session's request config and dies with the booking. A
   model that declares no rung answers `bad_payload` rather than accepting a value it could never
@@ -147,7 +148,8 @@ turn's first frame, always — not usually.
 | slot taken | `stream` | `signal` | `signal: mailbox` |
 | live output | `stream` | the door that opened the turn | `session`, `turn`, `kind`, the piece |
 | notice | `stream` | `notice` | `session`, `level`, `content` |
-| round structure | `stream` | the door that opened the turn | `session`, `turn`, `ranges`, `compact` |
+| slot taken | `stream` | `signal` | `signal: mailbox`, and `text` for every watcher but the writer |
+| turn opened | `stream` | `signal` | `signal: user`, `text` |
 
 - `kind` in a live payload is one of `text`, `thinking`, `arguments`, `boundary`, `tool_start`,
   `tool_progress`, `tool_end`, `wake`. A `wake` piece is one job's reminder and keeps its own block.
@@ -159,9 +161,13 @@ turn's first frame, always — not usually.
 - A write signal names the field its door changed: `cwd` with the landed path, `model` with the
   address, `name` with the new name, `effort` with the rung. `delete` and `rewind` say so in `signal` and carry their own
   fields.
-- A write signal skips the viewer that issued it. The slot-taken signal, live output, notices and
-  structure go to everyone watching.
-- The turn a live frame carries is recorded when `submit` or `compact` opens it. A turn the slot
+- A write signal skips the viewer that issued it. The slot-taken signal, the turn-opened signal,
+  live output, notices and structure go to everyone watching.
+
+- A turn's opening words reach the other front ends as `signal: user`; a letter taken into a running
+  turn reaches them as `signal: mailbox`. Both name the words in `text` and both skip the writer,
+  which echoes its own message already. The writer's own copy of the slot signal carries no `text`:
+  that absence is how a front end knows the words are its own to echo.
   opened is announced by the loop on the same channel and is recorded under the viewer that wrote
   the slot, named `mailbox`; the same moment puts `signal: mailbox` on the stream. A turn a job
   woke names `wake`.
