@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 
-use super::edit::{self, Edit, Place};
+use super::edit::{Edit, Place};
 use super::fmt::Word;
 use crate::server::agent::tools::fs::lang::Table;
 use crate::server::agent::tools::fs::skeleton;
@@ -38,12 +38,10 @@ pub(crate) enum State {
         blame: Option<String>,
     },
 
-    // It was left out: where its own lines sit now, the block it would have put there, and the
-    // item those lines are in.
+    // It was left out: where its own lines sit once the written ones moved them, the item those
+    // lines are in, and what stopped it.
     Refused {
         at: Place,
-        taken: Vec<String>,
-        block: Vec<String>,
         item: Option<String>,
         why: String,
     },
@@ -92,17 +90,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Val
                     out.push(format!("  ! {blame}"));
                 }
             }
-            State::Refused {
-                at,
-                taken,
-                block,
-                why,
-                ..
-            } => {
-                out.extend(taken_side(at.map(|(first, _)| first), taken, table, width));
-                out.extend(block_side(block, width));
-                out.push(format!("  ! {why}"));
-            }
+            State::Refused { why, .. } => out.push(format!("  ! {why}")),
         }
         marks.push(out.len());
     }
@@ -274,25 +262,13 @@ fn memo(rows: &[Row]) -> Value {
                     "new": new.join("\n"),
                 }));
             }
-            State::Refused {
-                at,
-                taken,
-                block,
-                why,
-                ..
-            } => {
-                // The segment's own lines are the ones it takes now, not the ones it named before.
-                let now = at.map(|(first, _)| first).unwrap_or(row.from);
-                segments.push(json!({
-                    "edit": row.index,
-                    "state": "rejected",
-                    "fromLine": now,
-                    "atLine": now,
-                    "old": taken.join("\n"),
-                    "new": block.join("\n"),
-                    "error": why,
-                }));
-            }
+            State::Refused { at, why, .. } => segments.push(json!({
+                "edit": row.index,
+                "state": "rejected",
+                "fromLine": row.from,
+                "atLine": at.map(|(first, _)| first).unwrap_or(row.from),
+                "error": why,
+            })),
         }
     }
     json!({ "segments": segments })
@@ -308,6 +284,9 @@ pub(crate) struct Fate {
 
     // The parser's words, when its block does not parse on its own.
     pub blame: Option<String>,
+
+    // Why it was refused, when it was: `at` is then where its lines sit after the write.
+    pub why: Option<String>,
 }
 
 // One edit, as its own call's answer shows it.
@@ -335,33 +314,13 @@ pub(crate) fn row(edit: &Edit, fate: &Fate, lines: &[&str], base: &[String], tab
         };
     }
 
-    if let Some(reason) = edit::drift(edit, base) {
-        let line = edit.start + 1;
-        return Row {
-            index: edit.index,
-            from: line,
-            state: State::Refused {
-                at: Some((line, line)),
-                taken: match edit.end > edit.start {
-                    true => edit.taken(base).to_vec(),
-                    false => Vec::new(),
-                },
-                block: edit.block.clone(),
-                item: item_of(table, line),
-                why: reason,
-            },
-        };
-    }
-
     Row {
         index: edit.index,
         from: edit.start + 1,
         state: State::Refused {
-            at: Some((edit.start + 1, edit.end)),
-            taken: edit.taken(base).to_vec(),
-            block: edit.block.clone(),
-            item: item_of(table, edit.start + 1),
-            why: "OVERLAPPED".to_string(),
+            at: fate.at,
+            item: fate.at.and_then(|(first, _)| item_of(table, first)),
+            why: fate.why.clone().unwrap_or_default(),
         },
     }
 }

@@ -47,6 +47,10 @@ A `@@CUT(a..b)@@` inside `new` carries no words of its own, because the macro na
 | a file changed on disk since `read` described it | the anchor's coordinates moved; a fresh read is the way back |
 | a licence revoked by a refused write | the next write needs a fresh read |
 
+The lines are judged before the anchors: a range that fights another over them is refused for the
+fight, and only a range whose lines are its own is asked whether it still finds what it named. So
+two refusals never stack on one range, and every refused range still owns the lines it names.
+
 A refusal takes one range, never the call — except two of the call's own ranges overlapping, which
 leaves that call alone. The verdict counts what landed and what did not, and a refusal's reason
 stands under its own block.
@@ -134,25 +138,24 @@ src/demo.rs:3-5
 
 A written edit is named where it landed and shows the block that stands there now; the plus side
 counts inside the block. A deletion has no landing of its own: it is named by the range it took, and
-shows what left, unnumbered. A refused edit's lines are still in the file, so it is named where it
-now finds them, numbered where `read` would number it, and carries both halves; a range that cannot
-be found says so rather than printing a guess. Both sides fold in the middle past twelve rows, and a
-line is cut at 140 characters.
+shows what left, unnumbered. Both sides fold in the middle past twelve rows, and a line is cut at
+140 characters.
 
-A refusal carries its reason under the block, and a block the parser blames carries the parser's
-words there:
+A refused edit shows its reason and nothing else, under a heading of the line its own range now
+starts on: the written ranges above it moved it, so the old number it was sent with is not where it
+sits any more. A block the parser blames carries the parser's words under it:
 
 ```text
 [Splice] PARTLY FAILED, LINES SHIFTED · now 13 lines
 
-src/demo.rs:3-5
-  in: pub fn alpha
--   3|pub fn alpha() -> u8 {
--   5|}
-+   1|pub fn alpha() -> u16 {
-+   2|    1
+src/demo.rs:9-11
+  in: pub fn beta
++   1|pub fn beta() -> u16 {
++   2|    2
 +   3|}
-  ! overlaps an earlier splice call on this file
+src/demo.rs:14
+  in: pub fn gamma
+  ! OVERLAPPED: an earlier call on this file wrote these lines; Re-Read or Re-Grep, then resend
   ! line 3: mismatched types
 ```
 
@@ -173,18 +176,18 @@ src/demo.rs:2
 ### The memo
 
 One segment per range, in the call's order: the lines it took and the lines that stand there now,
-numbered on both sides.
+numbered on both sides. A range that was left out carries positions and a reason, never lines.
 
 ```text
 { "segments": [ { "edit": 1, "state": "applied", "fromLine": 11, "atLine": 11,
                   "old": "<lines that went>", "new": "<lines that took their place>" }, … ] }
 ```
 
-A range left out carries the lines it takes as they now read, its block, and what stopped it; its
-`atLine` is the line the range must name on a retry. A `@@CUT(a..b)@@` adds a segment of its own —
-the lines it removed, with an empty `new`, under the same edit number. Segments that are not
-neighbours are drawn apart, and the card folds what it does not need. The new line numbers are the
-formatter's, so the tool carries them rather than leaving the front end to guess.
+A range left out carries no lines at all: its `fromLine` is the line it named, its `atLine` the
+line its own range starts on now, and `error` what stopped it. A `@@CUT(a..b)@@` adds a segment of
+its own — the lines it removed, with an empty `new`, under the same edit number. Segments that are
+not neighbours are drawn apart, and the card folds what it does not need. The new line numbers are
+the formatter's, so the tool carries them rather than leaving the front end to guess.
 
 ### Stopping
 
@@ -204,6 +207,9 @@ spends `read`'s line numbers instead of fighting them.
 number on one side and a quotation on the other; the ends that have no line to name — an insert's
 `end`, an append's `start` — say so by carrying none.
 
+**A refusal is placed, not guessed.** A refused range still owns the lines it named, so where it
+starts after the write is arithmetic over the written ranges above it — never a number carried over
+from the snapshot, and never a net sum that lets an insert and a cut cancel.
 **A refusal is local.** One stale range is dropped and the rest of the batch lands; a call whose
 own ranges contradict each other is left alone, since there is no way to tell which one the model
 meant. Either way the verdict names what landed, and the model resends only what lost.

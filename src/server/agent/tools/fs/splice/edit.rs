@@ -306,17 +306,22 @@ fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String>
     ))
 }
 
-// Which edits may run and which are refused: the kept positions, then the refused ones. A block
-// whose named lines drifted is refused first; two of one call's own ranges may not overlap at all —
-// that is the model contradicting itself, and the whole call is left alone.
-pub(crate) fn settle_overlaps(edits: &[Edit], base: &[&str]) -> Result<(Vec<usize>, Vec<usize>)> {
+// What a range loses to: an earlier call of the batch already wrote the lines it names.
+pub(crate) const OVERLAP: &str =
+    "OVERLAPPED: an earlier call on this file wrote these lines; Re-Read or Re-Grep, then resend";
+
+// Which edits may run and which are refused: the kept positions, then each refused one with its
+// reason. The lines are judged first, because a range that fights another over them says nothing
+// about the file; only a range whose lines are its own is then asked whether it still finds what it
+// named. Two ranges of one call may not overlap at all — that is the model contradicting itself,
+// and the call is left alone.
+pub(crate) fn settle_overlaps(
+    edits: &[Edit],
+    base: &[&str],
+) -> Result<(Vec<usize>, Vec<(usize, String)>)> {
     let mut kept: Vec<usize> = Vec::new();
-    let mut dropped: Vec<usize> = Vec::new();
+    let mut dropped: Vec<(usize, String)> = Vec::new();
     for at in 0..edits.len() {
-        if drift(&edits[at], base).is_some() {
-            dropped.push(at);
-            continue;
-        }
         let mut clash = false;
         for held in &kept {
             if !collide(&edits[*held], &edits[at]) {
@@ -333,7 +338,9 @@ pub(crate) fn settle_overlaps(edits: &[Edit], base: &[&str]) -> Result<(Vec<usiz
             break;
         }
         if clash {
-            dropped.push(at);
+            dropped.push((at, OVERLAP.to_string()));
+        } else if let Some(why) = drift(&edits[at], base) {
+            dropped.push((at, why));
         } else {
             kept.push(at);
         }

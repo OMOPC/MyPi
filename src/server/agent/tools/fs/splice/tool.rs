@@ -214,8 +214,8 @@ struct Built {
     // The edits that were written, as positions into `edits`, and where each one landed.
     held: Vec<usize>,
     landings: Vec<Place>,
-    // The edits that lost to an earlier call, as positions into `edits`.
-    dropped: Vec<usize>,
+    // The edits that were left out, as positions into `edits`, each with the words that stopped it.
+    dropped: Vec<(usize, String)>,
     // The calls whose arguments could not be read at all.
     unreadable: Vec<Option<String>>,
     // What the formatter made of the merged text.
@@ -233,7 +233,10 @@ impl Built {
         let base: Vec<String> = self.base.lines().map(str::to_string).collect();
         let table = lang::table(path, &self.shown);
         let shown = path.display().to_string();
-        let shifted = self.moved();
+        let refused = self.displaced();
+        let shifted = refused
+            .iter()
+            .any(|(index, at, _)| at.0 != self.edits[*index].start + 1);
 
         (0..plans.len())
             .map(|at| {
@@ -256,14 +259,20 @@ impl Built {
                         .iter()
                         .position(|held| *held == index)
                         .and_then(|position| self.landings.get(position).copied().flatten());
+                    // A refused edit's place is where its own lines sit after the write.
+                    let left = refused.iter().find(|(dropped, _, _)| *dropped == index);
                     let fate = receipt::Fate {
                         applied: self.held.contains(&index),
-                        at: landing,
+                        at: match left {
+                            Some((_, at, _)) => Some(*at),
+                            None => landing,
+                        },
                         blame: self
                             .blamed
                             .iter()
                             .find(|(held, _)| *held == index)
                             .map(|(_, why)| why.clone()),
+                        why: left.map(|(_, _, why)| why.clone()),
                     };
                     rows.push(receipt::row(
                         &self.edits[index],
@@ -302,13 +311,40 @@ impl Built {
             .collect()
     }
 
-    // Whether a written edit above a refused one moved the refused one's lines.
-    fn moved(&self) -> bool {
-        self.dropped.iter().any(|at| {
-            self.held
-                .iter()
-                .any(|held| self.edits[*held].start < self.edits[*at].start)
-        })
+    // Each refused edit with where its lines sit now. A refused range shares no line with a written
+    // one, so every written range is entirely above it or entirely below; the ones above it each add
+    // their own change of length, in order, and nothing cancels.
+    fn displaced(&self) -> Vec<(usize, (usize, usize), String)> {
+        let mut order: Vec<usize> = (0..self.held.len()).collect();
+        order.sort_by_key(|at| self.edits[self.held[*at]].start);
+        let mut written: Vec<(usize, usize, isize)> = Vec::with_capacity(order.len());
+        let mut shift: isize = 0;
+        for at in order {
+            let edit = &self.edits[self.held[at]];
+            // A landing the formatter walked back to counts its own lines; anything else falls back
+            // to the block the call sent.
+            let held = match self.landings.get(at).copied().flatten() {
+                Some((first, last)) => (last + 1).saturating_sub(first),
+                None => edit.block.len(),
+            };
+            shift += held as isize - (edit.end - edit.start) as isize;
+            written.push((edit.start, edit.end, shift));
+        }
+        self.dropped
+            .iter()
+            .map(|(index, why)| {
+                let edit = &self.edits[*index];
+                let shift = written
+                    .iter()
+                    .filter(|(_, end, _)| *end <= edit.start)
+                    .next_back()
+                    .map(|(_, _, shift)| *shift)
+                    .unwrap_or(0);
+                let first = (edit.start as isize + shift).max(0) as usize + 1;
+                let last = (edit.end as isize + shift).max(0) as usize;
+                (*index, (first, last), why.clone())
+            })
+            .collect()
     }
 }
 
