@@ -63,14 +63,8 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let files = scan::collect(&dirs, &picked, &matcher);
     let mode = if regex { "regex" } else { "literal" };
     let (text, shown) = render::answer(
-        &query,
-        mode,
-        &files,
-        &zone,
-        env.grep,
-        env.limits.lines,
-        lavish,
-        &misses,
+        &query, mode, &files, &zone, env.grep,
+        lavish, &misses,
     );
     render::stamp(&mut env.seen, &files, &shown);
     Ok(ToolOutput::text(text))

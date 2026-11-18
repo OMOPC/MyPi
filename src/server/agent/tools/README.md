@@ -654,7 +654,7 @@ not checked here; a bad argument is the server's error to report.
 | `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
 | `config.server.agent.tools.edit.fullItembudget` | lines an edited item may take and still be handed over whole, default 40; a longer item hands over the window around the change |
 | `config.server.agent.tools.grep.*` | `deepMax` 6, `foldMax` 25, `fileMax` 6: the three hit thresholds. `xrayImpls` 8, `xrayItems` 12: the x-ray's own caps, which the hit thresholds do not charge |
-| `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` and `grep` keep their own |
+| `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` keeps its own |
 | `config.server.agent.tools.outputMaxBytes` | inline byte budget, default 32768; `read` and `grep` keep their own |
 | `config.server.agent.tools.browser.bin` | the browser executable; empty = `$MYPI_BROWSER_BIN`, else `/opt/helium/helium` |
 | `config.server.agent.tools.browser.profileDir` | the persistent profile; empty = `<data dir>/browser/profile` |

@@ -18,8 +18,8 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
     `.md` file; omitted, the whole `src/`. An entry that is missing, names no readable file, or
     stands outside `src/` is skipped while the rest still run, and the answer ends with one
     `[scope]` line per such entry naming the reason.
-  - `lavish` — default false; a folded answer draws one tier richer: tier 3 as 2, tier 2 as 1,
-    tier 1 as itself. It never widens the line budget.
+  - `lavish` — default false; a folded answer draws one tier richer, and only one: the pool's front
+    rises to the richer tier's density, the rest keeps its own. It never widens anything.
 - Structure comes from the language sorter (`fs/lang`), the same table `read`, `splice` and `edit`
   read: comments and literals blanked, braces paired, head words recognized. Each line carries a
   stamp, the shape it reads by, and the line it names. A Markdown document is read by its own
@@ -29,10 +29,10 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
   fills (`[type]`, `[module]`, `[x-ray]` for Rust; a language that names none skips them), then the
   hits.
 - Hits are answered at the density their count allows, by `deepMax` and `foldMax`:
-  - Tier 1 — up to `deepMax` hits: each hit comes with its innermost item whole, or a six-line
-    window when that item is longer than forty lines, under an `in:` breadcrumb of every item
-    around it. An excerpt line carries its number only when it is a hit or a key line of the
-    sorter's own table, so a number means a line `splice` may start or end on.
+  - Tier 1 — up to `deepMax` hits: each hit comes with its innermost item whole, whatever the item's
+    size, under an `in:` breadcrumb of every item around it. An excerpt line carries its number only
+    when it is a hit or a key line of the sorter's own table, so a number means a line `splice` may
+    start or end on. A hit no piece holds hands over its own line alone.
   - Tier 2 — up to `foldMax` hits: each file answers as the trees its hits hang in. For every hit
     its own chain of pieces opens level by level: the real opening lines with their numbers, the
     hit line at its place, the closings drawn as the file has them — every row in the file's own
@@ -40,13 +40,16 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
     set where a sibling's text starts; a run breaks at a different label or at a chain child. A
     file whose hits hang under several top pieces draws one tree per piece, and a hit no piece
     holds is its own one-row tree.
-    own one-row tree.
-  - Tier 3 — past `foldMax`: per-file hit counts only, widest first, and one line saying the query
-    is too wide.
+  - Tier 3 — past `foldMax`: per-file hit counts only, widest first, within its own 500-row room —
+    the one bar a grep answer knows, and a room only the census draws from. With `lavish`, the
+    pool's front is sketched out of that same room first.
+  - `lavish` on a tier 2 or tier 3 answer mixes two densities: counted tier 2 hands the first
+    `deepMax` hits whole and sketches the rest; counted tier 3 sketches the first `foldMax` hits
+    and counts the rest. Each mixing states its own account — `[whole: …]`, `[sketched: …]` — and
+    every cap or room that bites names what it left out; nothing is dropped silently.
   - A tier 2 or tier 3 answer carries `[folded: …]`: go `lavish`, or narrow the scope — whichever
-    moves are still open. `fileMax` caps one file's hits in one answer. Every cap that bites states
-    what it left out; nothing is dropped silently.
-- The line budget (`outputMaxLines`) bounds every tier alike; a tier that runs out of room says
+    moves are still open. `fileMax` caps one file's hits in one answer, and the queue it feeds is
+    files in name order, lines top down.
   what it left undrawn.
 - Every file whose lines an answer showed is stamped in `env.seen` — line count and content hash,
   the stamp `read` writes — so `splice` works on it without a second `read`.
@@ -64,7 +67,8 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
   live here; `fs/lang` never learns how grep draws.
 - **A number means a spliceable line.** Tiers 1 and 2 only number lines the table keys, so a line
   number can be fed back to `splice` or `edit` unchanged.
-- **Every reminder names a move the next call can make.** `[folded: …]` offers `lavish` only while
+- **Density over budget.** A grep answer is never cut for length; the census alone has its own
+  500-row room, and the rest of the tiers draw the whole truth. A mixed answer states its account.
   it is off, and narrowing otherwise; it never asks for what is already done.
 
 ## Unresolved
@@ -73,9 +77,9 @@ None.
 
 ## Config fields
 
-- `config.server.agent.tools.grep.deepMax` — 6: hits a tier 1 answer expands whole.
-- `config.server.agent.tools.grep.foldMax` — 25: hits a tier 2 answer may list before it folds to
-  per-file counts.
-- `config.server.agent.tools.grep.fileMax` — 6: hits one file may show in one answer.
+- `config.server.agent.tools.grep.deepMax` — 6: hits a tier 1 answer hands over whole; with
+  `lavish`, the pool's front that rises to tier 1.
+- `config.server.agent.tools.grep.foldMax` — 25: hits a tier 2 answer may sketch before the rest
+  folds to per-file counts; with `lavish`, the pool's front that rises to tier 2.
 - `config.server.agent.tools.grep.xrayImpls` — 8: `impl` blocks one x-ray may list.
 - `config.server.agent.tools.grep.xrayItems` — 12: members one block may list.

@@ -9,11 +9,12 @@
   collection of every readable file; a file over 4 MiB is out.
 - `render.rs` — the answer: the header, the folded reminder, the language's relation block
   (`[type]` / `[module]` / `[x-ray]`), the tier judgment over `deepMax` and `foldMax` with `lavish`
-  lifting the drawn tier by one, the three tier renderers, the budget cut, the `[scope]` lines, and
-  the stamps into `env.seen`.
-- `outline.rs` — tier 2's drawing: per file, the trees its hits hang in. Every hit's chain of pieces
-  opens level by level with real lines, every row in the file's own order; the pieces beside a chain
-  fold to one row per run of one label, `start::end label …`.
+  lifting the pool's front one tier, the three densities (whole items, sketches, the census with
+  its own 500-row room), the mixing of two densities in one answer, the `[scope]` lines, and the
+  stamps into `env.seen`.
+- `outline.rs` — tier 2's sketch: per file, the trees the hits the caller names hang in. Every
+  hit's chain of pieces opens level by level with real lines, every row in the file's own order;
+  the pieces beside a chain fold to one row per run of one label, `start::end label …`.
 
 ## Relations
 

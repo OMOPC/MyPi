@@ -1,12 +1,15 @@
 //! The answer: the type section, the module section, the x-ray, the hits, and the stamps.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::server::agent::tools::contract::env::{GrepLimits, License, Seen};
 use crate::server::agent::tools::fs::lang::{self, Relation, Source};
 
 use super::{outline, scan};
+
+// The census's own room, its header included: the one bar a grep answer knows.
+const LEDGER_MAX: usize = 500;
 
 /// One answered call's text, and the files whose lines it showed.
 pub(crate) fn answer(
@@ -15,11 +18,9 @@ pub(crate) fn answer(
     files: &[scan::File],
     zone: &scan::Zone,
     caps: GrepLimits,
-    budget: usize,
     lavish: bool,
     misses: &[String],
 ) -> (String, BTreeSet<usize>) {
-    let budget = budget.max(24);
     let total: usize = files.iter().map(|file| file.hits.len()).sum();
     let touched = files.iter().filter(|file| !file.hits.is_empty()).count();
     let counted = if total <= caps.deep {
@@ -39,7 +40,7 @@ pub(crate) fn answer(
         plural(total, "hit"),
         plural(touched, "file"),
     );
-    if tier >= 2 {
+    if counted >= 2 {
         let hint = if lavish {
             "narrow the scope"
         } else {
@@ -71,8 +72,7 @@ pub(crate) fn answer(
         }
     }
     out.push('\n');
-    let left = budget.saturating_sub(out.lines().count()).max(12);
-    out.push_str(&hits(files, zone, tier, caps, left, &mut shown));
+    out.push_str(&hits(files, zone, counted, caps, lavish, &mut shown));
     for miss in misses {
         out.push_str(miss);
         out.push('\n');
@@ -97,159 +97,192 @@ fn paint(relation: &Relation) -> String {
 
 // ---- the hits ----
 
-/// Hit lines, at the density the total allows: whole items, the file's skeleton, then counts.
-fn hits(
-    files: &[scan::File],
-    zone: &scan::Zone,
-    tier: usize,
-    caps: GrepLimits,
-    budget: usize,
-    shown: &mut BTreeSet<usize>,
-) -> String {
-    let mut out = String::new();
-    let mut left = budget;
-    let total: usize = files.iter().map(|file| file.hits.len()).sum();
-    let mut covered = 0usize;
-
-    if tier == 3 {
-        let mut rows: Vec<(String, usize)> = files
-            .iter()
-            .filter(|file| !file.hits.is_empty())
-            .map(|file| (rel(zone, &file.path), file.hits.len()))
-            .collect();
-        rows.sort_by(|a, b| b.1.cmp(&a.1));
-        let room = budget.saturating_sub(2);
-        out.push_str("[hits] too wide to list; per file\n");
-        for (path, count) in rows.iter().take(room) {
-            out.push_str(&format!("  {path}  {count}\n"));
-        }
-        if rows.len() > room {
-            out.push_str(&format!("  [+{} more files]\n", rows.len() - room));
-        }
-        return out;
-    }
-
+// The pool a call draws from: files in name order, lines top down, each file's own cap first.
+fn pool(files: &[scan::File], caps: GrepLimits) -> Vec<(usize, usize)> {
+    let mut pool: Vec<(usize, usize)> = Vec::new();
     for (at, file) in files.iter().enumerate() {
         if file.hits.is_empty() {
             continue;
         }
-        let raw: Vec<&str> = file.text.lines().collect();
-        let label = rel(zone, &file.path);
-        if tier == 2 {
-            let block = outline::file(file, &raw, &label, caps);
-            let rows = block.lines().count();
-            if rows >= left {
-                out.push_str(&format!(
-                    "[+{} more files; narrow the query]\n",
-                    touched_after(files, at)
-                ));
-                return out;
-            }
-            left -= rows;
-            covered += file.hits.len();
-            shown.insert(at);
-            out.push_str(&block);
-            continue;
-        }
-        // Two hits inside one item hand over the same lines once; the second is already visible.
-        let mut shown_span: Option<(usize, usize)> = None;
         for &line in file.hits.iter().take(caps.file) {
-            let span = excerpt(file, line);
-            if shown_span == Some(span) {
-                covered += 1;
-                shown.insert(at);
+            pool.push((at, line));
+        }
+    }
+    pool
+}
+
+// One file's capped hits: the plain sketch hands this over as one set of trees.
+fn capped(file: &scan::File, caps: GrepLimits) -> Vec<usize> {
+    file.hits.iter().take(caps.file).copied().collect()
+}
+
+/// The hits at the density their count allows: whole items, sketches, then the census. Lavish
+/// lifts the pool's front one tier; the rest of the pool stays at its own tier's density.
+fn hits(
+    files: &[scan::File],
+    zone: &scan::Zone,
+    counted: usize,
+    caps: GrepLimits,
+    lavish: bool,
+    shown: &mut BTreeSet<usize>,
+) -> String {
+    let pool = pool(files, caps);
+    let total: usize = files.iter().map(|file| file.hits.len()).sum();
+    let mut out = String::new();
+
+    // Counted tier 1: every hit hands over its piece whole, whatever its size.
+    if counted == 1 {
+        for &(at, line) in &pool {
+            out.push_str(&item(&files[at], line, &rel(zone, &files[at].path)));
+            shown.insert(at);
+        }
+        tails(files, zone, caps, &mut out);
+        return out;
+    }
+
+    // Counted tier 2, no lavish: one sketch per file, the trees its capped hits hang in.
+    if counted == 2 && !lavish {
+        for (at, file) in files.iter().enumerate() {
+            if file.hits.is_empty() {
                 continue;
             }
-            shown_span = Some(span);
-            let block = block(file, &raw, &label, line);
-            let rows = block.lines().count();
-            if rows >= left {
-                out.push_str(&format!(
-                    "[+{} more hits; narrow the query]\n",
-                    total - covered
-                ));
-                return out;
-            }
-            left -= rows;
-            covered += 1;
+            let raw: Vec<&str> = file.text.lines().collect();
+            let want = capped(file, caps);
+            out.push_str(&outline::file(file, &raw, &rel(zone, &file.path), &want));
             shown.insert(at);
-            out.push_str(&block);
         }
-        if file.hits.len() > caps.file {
+        tails(files, zone, caps, &mut out);
+        return out;
+    }
+
+    // Counted tier 2 with lavish: the pool's front hands its pieces whole, the rest keeps its
+    // sketch. The pool is one foldMax deep by construction, so all of it is drawn.
+    if counted == 2 {
+        let front = pool.len().min(caps.deep);
+        if pool.len() > front {
             out.push_str(&format!(
-                "  {label} [+{} more in this file]\n",
-                file.hits.len() - caps.file
+                "[whole: {front} hits, sketched: {} hits]\n",
+                pool.len() - front
             ));
         }
+        for &(at, line) in pool.iter().take(front) {
+            out.push_str(&item(&files[at], line, &rel(zone, &files[at].path)));
+            shown.insert(at);
+        }
+        let mut rest: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for &(at, line) in pool.iter().skip(front) {
+            rest.entry(at).or_default().push(line);
+        }
+        for (at, want) in rest {
+            let file = &files[at];
+            let raw: Vec<&str> = file.text.lines().collect();
+            out.push_str(&outline::file(file, &raw, &rel(zone, &file.path), &want));
+            shown.insert(at);
+        }
+        tails(files, zone, caps, &mut out);
+        return out;
+    }
+
+    // Counted tier 3, no lavish: the census alone, from its own room.
+    if !lavish {
+        out.push_str("[hits] too wide to list; per file\n");
+        out.push_str(&census(files, zone, shown, LEDGER_MAX.saturating_sub(1)));
+        return out;
+    }
+
+    // Counted tier 3 with lavish: the pool's front is sketched out of the census's own room, the
+    // rest counts per file, and what the sketches took the census cannot draw.
+    let front = pool.len().min(caps.fold);
+    out.push_str(&format!("[sketched: {front} of {total} hits]\n"));
+    out.push_str("[hits] too wide to list; per file\n");
+    let mut left = LEDGER_MAX.saturating_sub(2);
+    for &(at, line) in pool.iter().take(front) {
+        let file = &files[at];
+        let raw: Vec<&str> = file.text.lines().collect();
+        let block = outline::file(file, &raw, &rel(zone, &file.path), &[line]);
+        left = left.saturating_sub(block.lines().count());
+        shown.insert(at);
+        out.push_str(&block);
+    }
+    out.push_str(&census(files, zone, shown, left));
+    out
+}
+
+// One line per file whose hits ran past its own cap: a cap that bites names what it left.
+fn tails(files: &[scan::File], zone: &scan::Zone, caps: GrepLimits, out: &mut String) {
+    for file in files.iter() {
+        let over = file.hits.len().saturating_sub(caps.file);
+        if over > 0 {
+            out.push_str(&format!(
+                "  {} [+{over} more in this file]\n",
+                rel(zone, &file.path)
+            ));
+        }
+    }
+}
+
+// The census's rows: one per file that holds a hit, widest first, within the room left.
+fn census(
+    files: &[scan::File],
+    zone: &scan::Zone,
+    shown: &mut BTreeSet<usize>,
+    room: usize,
+) -> String {
+    let mut rows: Vec<(usize, String, usize)> = files
+        .iter()
+        .enumerate()
+        .filter(|(_, file)| !file.hits.is_empty())
+        .map(|(at, file)| (at, rel(zone, &file.path), file.hits.len()))
+        .collect();
+    rows.sort_by(|a, b| b.2.cmp(&a.2));
+    let mut out = String::new();
+    for (at, path, count) in rows.iter().take(room) {
+        out.push_str(&format!("  {path}  {count}\n"));
+        shown.insert(*at);
+    }
+    if rows.len() > room {
+        out.push_str(&format!("  [+{} more files]\n", rows.len() - room));
     }
     out
 }
 
-/// Files from `at` on that still hold hits: what a budget cut left undrawn.
-fn touched_after(files: &[scan::File], at: usize) -> usize {
-    files
-        .iter()
-        .skip(at)
-        .filter(|file| !file.hits.is_empty())
-        .count()
-}
-
-/// One hit with the piece it sits in, whole when the piece is short enough.
-fn block(file: &scan::File, raw: &[&str], label: &str, line: usize) -> String {
-    let mut out = format!("{label}:{}\n", line + 1);
-    let chain = file.table.around(line);
-    if !chain.is_empty() {
-        let parts: Vec<String> = chain
-            .iter()
-            .filter_map(|(at, piece)| {
-                piece
-                    .exact
-                    .as_deref()
-                    .map(|exact| format!("{exact} ({}..{})", at + 1, piece.mate.unwrap_or(*at) + 1))
-            })
-            .collect();
-        out.push_str(&format!("  in: {}\n", parts.join(" > ")));
-    }
-    let (from, to) = excerpt(file, line);
+/// One hit with the piece it sits in, whole: the breadcrumb, then every line from the piece's
+/// head to its close; a hit no piece holds hands over its own line alone.
+fn item(file: &scan::File, line: usize, label: &str) -> String {
+    let raw: Vec<&str> = file.text.lines().collect();
     let width = (raw.len().to_string().len()).max(3);
-    for index in from..=to {
+    let mut out = format!("{label}:{}\n", line + 1);
+    let Some((open, piece)) = file.table.innermost(line) else {
+        out.push_str(&format!("{:>width$}|{}\n", line + 1, clip(raw[line])));
+        return out;
+    };
+    let close = piece.mate.unwrap_or(open);
+    let parts: Vec<String> = file
+        .table
+        .around(line)
+        .iter()
+        .filter_map(|(at, piece)| {
+            piece
+                .exact
+                .as_deref()
+                .map(|exact| format!("{exact} ({}..{})", at + 1, piece.mate.unwrap_or(*at) + 1))
+        })
+        .collect();
+    out.push_str(&format!("  in: {}\n", parts.join(" > ")));
+    for index in open..=close {
         let numbered = index == line || file.table.key(index);
         let number = if numbered {
             format!("{:>width$}", index + 1)
         } else {
             " ".repeat(width)
         };
-        out.push_str(&format!("{number}|{}\n", clip_line(raw[index])));
+        out.push_str(&format!("{number}|{}\n", clip(raw[index])));
     }
     out
 }
 
-/// The lines one hit hands over: its piece when that is short, else a window around it.
-fn excerpt(file: &scan::File, line: usize) -> (usize, usize) {
-    const ITEM_CAP: usize = 40;
-    const WINDOW: usize = 6;
-    let lines = file.text.lines().count();
-    match file.table.innermost(line) {
-        Some((open, piece)) => {
-            let end = piece.mate.unwrap_or(open);
-            if end.saturating_sub(open) <= ITEM_CAP {
-                (open, end)
-            } else {
-                (
-                    line.saturating_sub(WINDOW),
-                    (line + WINDOW).min(lines.saturating_sub(1)),
-                )
-            }
-        }
-        None => (
-            line.saturating_sub(WINDOW),
-            (line + WINDOW).min(lines.saturating_sub(1)),
-        ),
-    }
-}
-
-/// One excerpt line: long lines are cut, so one line never eats the budget.
-fn clip_line(text: &str) -> String {
+/// One drawn line: long lines are cut, so one line never drowns the item around it.
+fn clip(text: &str) -> String {
     const CAP: usize = 240;
     match text.char_indices().nth(CAP) {
         Some((cut, _)) => format!("{}…", &text[..cut]),
@@ -259,9 +292,10 @@ fn clip_line(text: &str) -> String {
 
 // ---- the stamps ----
 
+/// One answered call's stamp: the files whose lines an answer showed, into `seen`.
 pub(crate) fn stamp(seen: &mut Seen, files: &[scan::File], shown: &BTreeSet<usize>) {
-    for &index in shown {
-        let file = &files[index];
+    for at in shown {
+        let file = &files[*at];
         seen.files
             .insert(file.path.clone(), License::of(&file.text));
     }
@@ -275,6 +309,7 @@ fn rel(zone: &scan::Zone, path: &Path) -> String {
     shown.to_string_lossy().replace('\\', "/")
 }
 
+/// One count with its noun: one hit, two hits.
 fn plural(count: usize, word: &str) -> String {
     match count {
         1 => format!("1 {word}"),

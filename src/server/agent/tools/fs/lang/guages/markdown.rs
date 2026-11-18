@@ -176,7 +176,7 @@ fn marker(line: &str) -> bool {
     matches!(after, Some(' ') | Some('\t'))
 }
 
-/// One list: its first and its last line are key, and every outer item's own line when items nest.
+/// One list: its first and its last line are key, and outer item lines that stand alone when items nest.
 fn listed(raw: &[&str], table: &mut Table, open: usize) -> usize {
     let base = indent(raw[open]);
     let mut outer: Vec<usize> = Vec::new();
@@ -209,7 +209,10 @@ fn listed(raw: &[&str], table: &mut Table, open: usize) -> usize {
     table.span(open, body, Some("list".to_string()), Some(first));
     if nested {
         for item in outer {
-            table.span(item, item, None, None);
+            // An item line already heading the run's own piece keeps it; only blank lines get one.
+            if !table.line(item).is_some_and(Line::head) {
+                table.span(item, item, None, None);
+            }
         }
     }
     at

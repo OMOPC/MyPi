@@ -4,7 +4,6 @@
 use std::collections::BTreeSet;
 
 use super::scan;
-use crate::server::agent::tools::contract::env::GrepLimits;
 use crate::server::agent::tools::fs::lang::Table;
 use crate::server::agent::tools::summary;
 
@@ -14,11 +13,10 @@ const MIN_WIDTH: usize = 3;
 // One drawn source line's clip.
 const CLIP: usize = 160;
 
-// One file's skeleton: the trees its hits hang in, each drawn whole, one after another.
-pub(crate) fn file(file: &scan::File, raw: &[&str], label: &str, caps: GrepLimits) -> String {
+pub(crate) fn file(file: &scan::File, raw: &[&str], label: &str, want: &[usize]) -> String {
     let width = raw.len().to_string().len().max(MIN_WIDTH);
     let mut forest = Forest::default();
-    for &line in file.hits.iter().take(caps.file) {
+    for &line in want {
         forest.hang(&file.table, line);
     }
     let mut pool: Vec<(usize, String)> = Vec::new();
@@ -31,15 +29,8 @@ pub(crate) fn file(file: &scan::File, raw: &[&str], label: &str, caps: GrepLimit
     for (_, text) in &pool {
         out.push_str(text);
     }
-    if file.hits.len() > caps.file {
-        out.push_str(&format!(
-            "  {label} [+{} more in this file]\n",
-            file.hits.len() - caps.file
-        ));
-    }
     out
 }
-
 // One piece on a hit's chain: the lines it opens and closes on, the chain below it, its own hits.
 struct Node {
     open: usize,
