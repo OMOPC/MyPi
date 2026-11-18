@@ -13,15 +13,21 @@ pub fn home() -> Option<PathBuf> {
 }
 
 /// Persistent, machine-generated data: the sessions database, the browser
-/// profile. `$XDG_DATA_HOME/mypi`, else `~/.local/share/mypi`.
+/// profile. `$XDG_DATA_HOME/mypi` on unix, `~/.mypi/data` on windows.
 pub fn data_dir() -> PathBuf {
-    base("XDG_DATA_HOME", ".local/share").join("mypi")
+    match os::current().family {
+        Family::Unix => base("XDG_DATA_HOME", ".local/share").join("mypi"),
+        Family::Windows => in_home(".mypi").join("data"),
+    }
 }
 
-/// Configuration the user edits: `$XDG_CONFIG_HOME/mypi`, else `~/.config/mypi`. A missing
-/// `config.yaml` is written here.
+/// Configuration the user edits: `$XDG_CONFIG_HOME/mypi` on unix, `~/.mypi` on windows.
+/// A missing `config.yaml` is written here.
 pub fn config_dir() -> PathBuf {
-    base("XDG_CONFIG_HOME", ".config").join("mypi")
+    match os::current().family {
+        Family::Unix => base("XDG_CONFIG_HOME", ".config").join("mypi"),
+        Family::Windows => in_home(".mypi"),
+    }
 }
 
 /// The user's download folder: the desktop's own answer, else `~/Downloads`.
@@ -76,14 +82,19 @@ pub fn var_os(name: &str) -> Option<std::ffi::OsString> {
 /// An XDG base directory: the variable if it is set, else the specification's
 /// default under the home directory.
 fn base(variable: &str, fallback: &str) -> PathBuf {
-    if os::current().family != Family::Unix {
-        return PathBuf::from(".");
-    }
     if let Some(dir) = var_os(variable) {
         return PathBuf::from(dir);
     }
     match home() {
         Some(home) => home.join(fallback),
         None => PathBuf::from("."),
+    }
+}
+
+/// A folder under the user's home; the same name here when there is no home.
+fn in_home(folder: &str) -> PathBuf {
+    match home() {
+        Some(home) => home.join(folder),
+        None => PathBuf::from(folder),
     }
 }
