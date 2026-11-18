@@ -84,9 +84,8 @@ pub fn prepare(path: &std::path::Path) -> Result<Connection> {
             usage_cache_write  INTEGER,
             usage_reasoning    INTEGER,
             call_id            TEXT,
-            result             TEXT,
-            images             TEXT,
-            memo               TEXT,
+            name               TEXT,
+            args               TEXT,
             intent             TEXT,
             text               TEXT,
             first              INTEGER,
@@ -94,7 +93,8 @@ pub fn prepare(path: &std::path::Path) -> Result<Connection> {
             result             TEXT,
             memo               TEXT,
             duration_ms        INTEGER,
-            ts                 TEXT
+            ts                 TEXT,
+            images             TEXT
         );
         CREATE TABLE IF NOT EXISTS cwd_history (
             session_id INTEGER NOT NULL REFERENCES sessions(id),
