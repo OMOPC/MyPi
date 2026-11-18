@@ -105,9 +105,9 @@ that string answers whole, every line numbered, in line order. What is matched i
 b`); runs of whitespace collapse on both sides, so spacing never hides a match, and nothing else is
 normalized.
 
-follows in parentheses: `fn walk(&self) (impl List)  2..5`. A directory scopes every file a language
-reads under it, and each answer's file is named above its first piece: `==> src/a/b.rs`.
-under it, and each answer's file is named above its first piece: `==> src/a/b.rs`.
+A piece's own line and its span follow in parentheses: `fn walk(&self) (impl List)  2..5`. A
+directory scopes every file a language reads under it, and each answer's file is named above its
+first piece: `==> src/a/b.rs`.
 
 `offset` and `limit` belong to the body read and take no part here. The answer spends the source
 file's own budget, 800 lines and 256 KiB, and pieces past it are counted in `[+N more items]`. Every

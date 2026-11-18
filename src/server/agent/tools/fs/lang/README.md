@@ -18,7 +18,6 @@ text. An opening line and its closing line pair into "this piece runs from line 
 - whether it knows its units and edges (`Hub`): the unit a file belongs to, the units a unit
   declares, what a file exposes, where to look for importers, and how to narrate the result;
 - whether its files are source, which decides how much of one a read shows;
-- whether its files are source, which decides how much of one a read shows;
 - whether it has a formatter, and how to run it on a text;
 - whether it has a checker, and how to find and run the unit a file belongs to.
 

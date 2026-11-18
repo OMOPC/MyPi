@@ -11,11 +11,9 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `table.rs` | `Stamp`, `Line`, `Table`: one file's lines, each line's stamp, the line it names, its other end, the language that wrote it, and the queries over them |
 | `verdict.rs` | what a formatter and a checker answer: the formatted text, the text that did not parse, one unit's check, one diagnostic |
 | `guages/mod.rs` | declares the languages |
-| `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, names, source flag, formatter and checker |
-| `guages/rust/table.rs` | the Rust sorter: head words, three key-line passes, head templates, what a piece binds |
-| `guages/rust/scan.rs` | Rust's own scan: a cursor and a line buffer Rust's delimiters drive, then the brace pairs and their closing lines |
-| `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, relations, source flag, formatter and checker |
+| `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, relations, graph facts, source flag, formatter and checker |
 | `guages/rust/table.rs` | the Rust sorter: head words, three key-line passes, head templates, what a piece is |
+| `guages/rust/scan.rs` | Rust's own scan: a cursor and a line buffer Rust's delimiters drive, then the brace pairs and their closing lines |
 | `guages/rust/relations.rs` | Rust's relation index: `A::b` as a module or type member, a lone name's declarations and impl blocks, and how it reads `::` and names |
 | `guages/rust/facts.rs` | Rust's graph facts: the unit a file belongs to, the units an entry declares, its exports, its edges with their forwarding resolved, and the crate root as the domain |
 | `guages/rust/view.rs` | Rust's narration: exports, down, out, up, and where the scan stopped |
