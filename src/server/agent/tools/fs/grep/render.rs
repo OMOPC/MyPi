@@ -130,9 +130,16 @@ fn hits(
     let total: usize = files.iter().map(|file| file.hits.len()).sum();
     let mut out = String::new();
 
-    // Counted tier 1: every hit hands over its piece whole, whatever its size.
+    // Counted tier 1: every hit hands over its piece whole, whatever its size; two hits inside
+    // one piece hand it over once, the second is already visible.
     if counted == 1 {
+        let mut handed: BTreeSet<(usize, usize, usize)> = BTreeSet::new();
         for &(at, line) in &pool {
+            let span = item_span(&files[at], line);
+            if !handed.insert((at, span.0, span.1)) {
+                shown.insert(at);
+                continue;
+            }
             out.push_str(&item(&files[at], line, &rel(zone, &files[at].path)));
             shown.insert(at);
         }
@@ -165,7 +172,13 @@ fn hits(
                 pool.len() - front
             ));
         }
+        let mut handed: BTreeSet<(usize, usize, usize)> = BTreeSet::new();
         for &(at, line) in pool.iter().take(front) {
+            let span = item_span(&files[at], line);
+            if !handed.insert((at, span.0, span.1)) {
+                shown.insert(at);
+                continue;
+            }
             out.push_str(&item(&files[at], line, &rel(zone, &files[at].path)));
             shown.insert(at);
         }
@@ -191,15 +204,20 @@ fn hits(
     }
 
     // Counted tier 3 with lavish: the pool's front is sketched out of the census's own room, the
-    // rest counts per file, and what the sketches took the census cannot draw.
+    // rest counts per file, and what the sketches took the census cannot draw. A file's front
+    // hits sketch together, as one call of the skeleton.
     let front = pool.len().min(caps.fold);
     out.push_str(&format!("[sketched: {front} of {total} hits]\n"));
     out.push_str("[hits] too wide to list; per file\n");
     let mut left = LEDGER_MAX.saturating_sub(2);
+    let mut rest: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for &(at, line) in pool.iter().take(front) {
+        rest.entry(at).or_default().push(line);
+    }
+    for (at, want) in rest {
         let file = &files[at];
         let raw: Vec<&str> = file.text.lines().collect();
-        let block = outline::file(file, &raw, &rel(zone, &file.path), &[line]);
+        let block = outline::file(file, &raw, &rel(zone, &file.path), &want);
         left = left.saturating_sub(block.lines().count());
         shown.insert(at);
         out.push_str(&block);
@@ -244,6 +262,15 @@ fn census(
         out.push_str(&format!("  [+{} more files]\n", rows.len() - room));
     }
     out
+}
+
+/// The span one hit hands over: its innermost piece's lines, or the hit line alone when no piece
+/// holds it; two hits of one span hand their lines over once.
+fn item_span(file: &scan::File, line: usize) -> (usize, usize) {
+    match file.table.innermost(line) {
+        Some((open, piece)) => (open, piece.mate.unwrap_or(open)),
+        None => (line, line),
+    }
 }
 
 /// One hit with the piece it sits in, whole: the breadcrumb, then every line from the piece's
