@@ -35,10 +35,11 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
     sorter's own table, so a number means a line `splice` may start or end on.
   - Tier 2 — up to `foldMax` hits: each file answers as the trees its hits hang in. For every hit
     its own chain of pieces opens level by level: the real opening lines with their numbers, the
-    hit line at its place, then the closing lines innermost first, drawn as the file has them. The
-    pieces beside a chain fold to one row per run of one label, `start::end label …`, set where a
-    sibling's text starts; a run breaks at a different label or at a chain child. A file whose
-    hits hang under several top pieces draws one tree per piece, and a hit no piece holds is its
+    hit line at its place, the closings drawn as the file has them — every row in the file's own
+    order. The pieces beside a chain fold to one row per run of one label, `start::end label …`,
+    set where a sibling's text starts; a run breaks at a different label or at a chain child. A
+    file whose hits hang under several top pieces draws one tree per piece, and a hit no piece
+    holds is its own one-row tree.
     own one-row tree.
   - Tier 3 — past `foldMax`: per-file hit counts only, widest first, and one line saying the query
     is too wide.

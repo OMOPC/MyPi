@@ -1,5 +1,5 @@
 // The skeleton a folded answer draws: every hit's own chain of pieces opened level by level,
-// the pieces beside each chain folded to one label row.
+// the pieces beside each chain folded to one label row, every row in the file's own order.
 
 use std::collections::BTreeSet;
 
@@ -21,11 +21,15 @@ pub(crate) fn file(file: &scan::File, raw: &[&str], label: &str, caps: GrepLimit
     for &line in file.hits.iter().take(caps.file) {
         forest.hang(&file.table, line);
     }
-    let mut out = format!("{label}\n");
-    let mut drawn = BTreeSet::new();
+    let mut pool: Vec<(usize, String)> = Vec::new();
     for root in &forest.roots {
-        paint(root, raw, &file.table, width, &mut out, &mut drawn);
-        unwind(root, raw, width, &mut out, &mut drawn);
+        paint(root, raw, &file.table, width, &mut pool);
+    }
+    pool.sort_by_key(|(line, _)| *line);
+    pool.dedup_by(|a, b| a.0 == b.0);
+    let mut out = format!("{label}\n");
+    for (_, text) in &pool {
+        out.push_str(text);
     }
     if file.hits.len() > caps.file {
         out.push_str(&format!(
@@ -97,58 +101,39 @@ impl Node {
     }
 }
 
-// One tree's content rows: the openings and hits top-down, then the folds beside the chain.
-fn paint(
-    node: &Node,
-    raw: &[&str],
-    table: &Table,
-    width: usize,
-    out: &mut String,
-    drawn: &mut BTreeSet<usize>,
-) {
-    row(node.open, raw, width, out, drawn);
+// One tree's rows into the pool: its opening and closing lines, its own hits, the children's
+// trees, and the folds beside its chain; the pool's sort puts every row where the file has it.
+fn paint(node: &Node, raw: &[&str], table: &Table, width: usize, pool: &mut Vec<(usize, String)>) {
+    pool.push((node.open, line_text(node.open, raw, width)));
     for &line in &node.hits {
         if line != node.open && line != node.close {
-            row(line, raw, width, out, drawn);
+            pool.push((line, line_text(line, raw, width)));
         }
     }
     for child in &node.children {
-        paint(child, raw, table, width, out, drawn);
+        paint(child, raw, table, width, pool);
     }
-    folds(node, table, raw, width, out);
-}
-
-// One tree's closing rows, innermost first, after all its content rows are down.
-fn unwind(node: &Node, raw: &[&str], width: usize, out: &mut String, drawn: &mut BTreeSet<usize>) {
-    for child in &node.children {
-        unwind(child, raw, width, out, drawn);
-    }
+    folds(node, table, raw, width, pool);
     if node.close > node.open {
-        row(node.close, raw, width, out, drawn);
+        pool.push((node.close, line_text(node.close, raw, width)));
     }
 }
 
-// One drawn line: its number, then the file's own text; a line is drawn once.
-fn row(line: usize, raw: &[&str], width: usize, out: &mut String, drawn: &mut BTreeSet<usize>) {
-    if drawn.insert(line) {
-        out.push_str(&format!(
-            "{:>width$} |{}\n",
-            line + 1,
-            summary::clip(raw[line], CLIP)
-        ));
-    }
+// One drawn source line: its number, then the file's own text.
+fn line_text(line: usize, raw: &[&str], width: usize) -> String {
+    format!("{:>width$} |{}\n", line + 1, summary::clip(raw[line], CLIP))
 }
 
 // The pieces beside one node's chain, folded to one row per run of one label; a chain child or
 // an unlabeled piece ends the run.
-fn folds(node: &Node, table: &Table, raw: &[&str], width: usize, out: &mut String) {
+fn folds(node: &Node, table: &Table, raw: &[&str], width: usize, pool: &mut Vec<(usize, String)>) {
     let chain: BTreeSet<usize> = node.children.iter().map(|child| child.open).collect();
     let end = table.end(node.open).unwrap_or(node.open);
     let mut run: Option<(usize, usize, &str)> = None;
     for at in table.items(node.open + 1, end) {
         let Some(line) = table.line(at) else { continue };
         if chain.contains(&at) {
-            flush(run.take(), raw, width, out);
+            flush(run.take(), raw, width, pool);
             continue;
         }
         match line.label.as_deref() {
@@ -157,25 +142,29 @@ fn folds(node: &Node, table: &Table, raw: &[&str], width: usize, out: &mut Strin
                     run = Some((start, line.mate.unwrap_or(at), label));
                 }
                 past => {
-                    flush(past, raw, width, out);
+                    flush(past, raw, width, pool);
                     run = Some((at, line.mate.unwrap_or(at), label));
                 }
             },
-            None => flush(run.take(), raw, width, out),
+            None => flush(run.take(), raw, width, pool),
         }
     }
-    flush(run.take(), raw, width, out);
+    flush(run.take(), raw, width, pool);
 }
 
-// One fold row: its range where its first sibling's own text starts, then label and ellipsis.
-fn flush(run: Option<(usize, usize, &str)>, raw: &[&str], width: usize, out: &mut String) {
+// One fold row, sorted by the line its range starts on: its range where its first sibling's own
+// text starts, then label and ellipsis.
+fn flush(
+    run: Option<(usize, usize, &str)>,
+    raw: &[&str],
+    width: usize,
+    pool: &mut Vec<(usize, String)>,
+) {
     if let Some((start, end, label)) = run {
         let pad = width + 2 + raw[start].len() - raw[start].trim_start().len();
-        out.push_str(&format!(
-            "{}{}::{} {label} …\n",
-            " ".repeat(pad),
-            start + 1,
-            end + 1,
+        pool.push((
+            start,
+            format!("{}{}::{} {label} …\n", " ".repeat(pad), start + 1, end + 1,),
         ));
     }
 }

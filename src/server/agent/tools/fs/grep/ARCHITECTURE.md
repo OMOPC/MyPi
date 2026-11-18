@@ -12,8 +12,8 @@
   lifting the drawn tier by one, the three tier renderers, the budget cut, the `[scope]` lines, and
   the stamps into `env.seen`.
 - `outline.rs` — tier 2's drawing: per file, the trees its hits hang in. Every hit's chain of pieces
-  opens level by level with real lines and closes innermost first; the pieces beside a chain fold to
-  one row per run of one label, `start::end label …`.
+  opens level by level with real lines, every row in the file's own order; the pieces beside a chain
+  fold to one row per run of one label, `start::end label …`.
 
 ## Relations
 
