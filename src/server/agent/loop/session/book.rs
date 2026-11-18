@@ -109,9 +109,8 @@ impl Loop {
             grep: crate::server::agent::tools::contract::env::GrepLimits {
                 deep: grep.deep,
                 fold: grep.fold,
-                file: grep.file,
                 impls: grep.impls,
-                items: grep.items,
+                members: grep.members,
             },
             bash: crate::server::agent::tools::contract::env::BashEnv {
                 timeout: cfg.bash_timeout(),

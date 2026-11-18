@@ -104,7 +104,7 @@ that tool needs (the tool checks them, not the schema).
 
 | tool | parameters, in index order |
 |---|---|
-| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`), `lavish` (default false: a folded answer draws one tier richer) |
+| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`), `lavish` (default false: the whole answer draws one tier denser, never a mixture) |
 | `read` | `files` always: one item per path, with its own `offset` (1-based, default 1), `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap) and `item` (a piece's own header: every piece under the path whose text carries it answers whole, every line numbered) |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
@@ -653,7 +653,7 @@ not checked here; a bad argument is the server's error to report.
 | `config.server.agent.tools.bashTimeout` | one shell command's deadline; default 600 s |
 | `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
 | `config.server.agent.tools.edit.fullItembudget` | lines an edited item may take and still be handed over whole, default 40; a longer item hands over the window around the change |
-| `config.server.agent.tools.grep.*` | `deepMax` 6, `foldMax` 25, `fileMax` 6: the three hit thresholds. `xrayImpls` 8, `xrayItems` 12: the x-ray's own caps, which the hit thresholds do not charge |
+| `config.server.agent.tools.grep.*` | `deepMax` 6, `foldMax` 25: the item thresholds, items being the smallest piece holding a run of nested hits. `xrayImpls` 8, `xrayItems` 12: the x-ray's own caps, which the item thresholds do not charge |
 | `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` keeps its own |
 | `config.server.agent.tools.outputMaxBytes` | inline byte budget, default 32768; `read` and `grep` keep their own |
 | `config.server.agent.tools.browser.bin` | the browser executable; empty = `$MYPI_BROWSER_BIN`, else `/opt/helium/helium` |

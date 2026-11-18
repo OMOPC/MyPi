@@ -5,21 +5,19 @@
 - `tool.rs` — the tool's face: the parameter table (`query`, `regex`, `scope`, `lavish`), `run`
   (one walk, one render), and the one-line history summary.
 - `scan.rs` — the walk: the zone (the nearest `Cargo.toml` above the cwd and its `src/`), the roots
-  `scope` names (one miss line per unusable entry), the matcher (text or pattern), and the parallel
-  collection of every readable file; a file over 4 MiB is out.
-- `render.rs` — the answer: the header, the folded reminder, the language's relation block
-  (`[type]` / `[module]` / `[x-ray]`), the tier judgment over `deepMax` and `foldMax` with `lavish`
-  lifting the pool's front one tier, the three densities (whole items, sketches, the census with
-  its own 500-row room), the mixing of two densities in one answer, the `[scope]` lines, and the
-  stamps into `env.seen`.
-- `outline.rs` — tier 2's sketch: per file, the trees the hits the caller names hang in. Every
-  hit's chain of pieces opens level by level with real lines, every row in the file's own order;
-  the pieces beside a chain fold to one row per run of one label, `start::end label …`.
+  `scope` names (one miss line per unusable entry), the matcher (text or pattern), the parallel
+  collection of every readable file, and the item grouping that turns a file's hit lines into the
+  pieces the answer draws; a file over 4 MiB is out.
+- `render.rs` — the answer: the header (hits, items, files, mode, tier), the folded reminder, the
+  language's relation block (`[type]` / `[module]` / `[x-ray]`), the tier judgment over the item
+  count, the three densities (whole items, skeletons, the census in its 500-line room), the
+  `[scope]` lines, and the stamps into `env.seen`.
 
 ## Relations
 
-- Depends on `fs/lang` for every structural fact: the line table (`around`, `inner`, `end`) and the
-  language's own relation index. Labels are opaque strings here; no language is special-cased.
+- Depends on `fs/lang` for every structural fact: the line table (`innermost`, `around`, `end`,
+  `key`) and the language's own relation index. Labels are opaque strings here; no language is
+  special-cased.
 - Depends on `contract::env` for the caps (`GrepLimits`) and the stamp (`Seen`, `License`); the loop
   fills both from config when it books a session.
 - Depends on `fs::workspace` only for a lenient canonicalize of scope paths.

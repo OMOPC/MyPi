@@ -201,19 +201,17 @@ pub struct Limits {
     pub bytes: usize,
 }
 
-/// What `grep` folds by: five counts, three for the hits and two for the x-ray.
+/// What `grep` folds by: four counts, two for the items and two for the x-ray.
 #[derive(Debug, Clone, Copy)]
 pub struct GrepLimits {
-    /// Hits an answer expands whole, item and all.
+    /// Items an answer expands whole, every line of them.
     pub deep: usize,
-    /// Hits it lists one line each; more than this folds to per-file counts.
+    /// Items it sketches; more than this folds to per-file counts.
     pub fold: usize,
-    /// Hits one file may show.
-    pub file: usize,
     /// `impl` blocks one x-ray may list.
     pub impls: usize,
     /// Members one block may list.
-    pub items: usize,
+    pub members: usize,
 }
 
 /// The model roster a session offers its children: address → display name.

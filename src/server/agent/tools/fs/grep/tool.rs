@@ -29,7 +29,7 @@ const PARAMS: &[Param] = &[
     Param::df(
         "lavish",
         Kind::Flag,
-        "Draw a folded answer one tier richer: tier 3 as 2, tier 2 as 1",
+        "Draw the whole answer one tier denser: tier 3 as 2, tier 2 as 1",
         "false",
     ),
 ];
@@ -41,7 +41,7 @@ pub(crate) const TOOL: Tool = Tool {
             lookup.",
     fields: "Requires `query`; `regex` and `scope` are optional.\n\
              - `A::b` syntax: besides literal matches, also locates where type/trait/module `A` declares `b`.\n\
-             - `lavish`: a folded answer draws one tier richer.\n\
+             - `lavish`: the whole answer draws one tier denser.\n\
              - Output: 1-based line numbers + surrounding item scopes.",
     params: PARAMS,
     run,
@@ -62,10 +62,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let (dirs, picked, misses) = scan::roots(&zone, &args.str_list(SCOPE)?);
     let files = scan::collect(&dirs, &picked, &matcher);
     let mode = if regex { "regex" } else { "literal" };
-    let (text, shown) = render::answer(
-        &query, mode, &files, &zone, env.grep,
-        lavish, &misses,
-    );
+    let (text, shown) = render::answer(&query, mode, &files, &zone, env.grep, lavish, &misses);
     render::stamp(&mut env.seen, &files, &shown);
     Ok(ToolOutput::text(text))
 }

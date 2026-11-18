@@ -23,9 +23,8 @@ keys! {
     KEY_CONFIG_SERVER_AGENT_TOOLS_ALIASES = "config", "server.agent.tools", "aliases", List, DefaultValue::List(NO_ARGS), "User aliases as `name=command`; fixed for every session.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_EDIT_FULL_ITEM_BUDGET = "config", "server.agent.tools.edit", "fullItembudget", Int, DefaultValue::Int(40), "Lines an edited item may take and still be handed over whole; a longer one hands over the window around the change.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_READ_PERSISTENT_DOCS = "config", "server.agent.tools.read", "persistentDocs", List, DefaultValue::List(&["DESIGN"]), "Documents the user keeps current: `.md` stems, upper-cased; no listing dates them.", true;
-    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX = "config", "server.agent.tools.grep", "deepMax", Int, DefaultValue::Int(6), "Hits a grep answer expands whole: the item around each one.", true;
-    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX = "config", "server.agent.tools.grep", "foldMax", Int, DefaultValue::Int(25), "Hits grep lists one line each; more than this folds to per-file counts.", true;
-    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FILE_MAX = "config", "server.agent.tools.grep", "fileMax", Int, DefaultValue::Int(6), "Hits one file may show in one answer.", true;
+    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX = "config", "server.agent.tools.grep", "deepMax", Int, DefaultValue::Int(6), "Items a grep answer expands whole, every line of them.", true;
+    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX = "config", "server.agent.tools.grep", "foldMax", Int, DefaultValue::Int(25), "Items grep sketches; more than this folds to per-file counts.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS = "config", "server.agent.tools.grep", "xrayImpls", Int, DefaultValue::Int(8), "`impl` blocks one type's x-ray may list; it takes no share of the hit caps.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS = "config", "server.agent.tools.grep", "xrayItems", Int, DefaultValue::Int(12), "Members one block may list in a grep answer.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_BIN = "config", "server.agent.tools.browser", "bin", Text, DefaultValue::Null, "Chromium-family executable; empty = $MYPI_BROWSER_BIN or a shipped default.", true;

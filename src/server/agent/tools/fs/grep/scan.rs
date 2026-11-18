@@ -117,13 +117,56 @@ impl Matcher {
     }
 }
 
-/// One source file, its matching lines, and its pieces.
+/// One source file, the items its hits make, and its pieces.
 pub(crate) struct File {
     pub path: PathBuf,
     pub text: String,
-    /// Matching lines, 0-based.
-    pub hits: Vec<usize>,
+    pub items: Vec<Item>,
     pub table: Table,
+}
+
+/// One drawn unit: the smallest piece holding a run of nested hits, and those hits.
+pub(crate) struct Item {
+    pub open: usize,
+    pub close: usize,
+    /// Hit lines, 0-based, ascending.
+    pub hits: Vec<usize>,
+}
+
+/// The items a file's hits make: each hit takes its nearest enclosing piece, a span that lands
+/// inside an item joins it, and a later span that swallows items absorbs them into one.
+fn items(table: &Table, hits: &[usize]) -> Vec<Item> {
+    let mut out: Vec<Item> = Vec::new();
+    for &line in hits {
+        let (open, close) = match table.innermost(line) {
+            Some((open, piece)) => (open, piece.mate.unwrap_or(open)),
+            None => (line, line),
+        };
+        let mut held: Vec<usize> = Vec::new();
+        while out
+            .last()
+            .is_some_and(|last| open <= last.open && close >= last.close)
+        {
+            let last = out.pop().expect("the guard just read it");
+            held.extend(last.hits);
+        }
+        if held.is_empty()
+            && let Some(item) = out.last_mut()
+            && open >= item.open
+            && close <= item.close
+        {
+            item.hits.push(line);
+            continue;
+        }
+        held.push(line);
+        held.sort_unstable();
+        out.push(Item {
+            open,
+            close,
+            hits: held,
+        });
+    }
+    out
 }
 
 /// Every named file, and every readable file under these directories; read in parallel.
@@ -175,10 +218,11 @@ fn read(path: &Path, matcher: &Matcher) -> Option<File> {
         .map(|(at, _)| at)
         .collect();
     let table = lang::table(path, &text);
+    let items = items(&table, &hits);
     Some(File {
         path: path.to_path_buf(),
         text,
-        hits,
+        items,
         table,
     })
 }

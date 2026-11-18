@@ -1,6 +1,5 @@
 //! grep: a word's hits, with the structure around each one.
 
-mod outline;
 mod render;
 mod scan;
 mod tool;
