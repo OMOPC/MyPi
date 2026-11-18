@@ -30,18 +30,20 @@ name.
 ### The process tree
 
 ```text
-spawn_grouped(cmd)         start the command so it leads a group of its own
-guard_orphan(cmd)          Linux only: kill the tree when the forking thread ends
-signal_group(pgid, sig)    Term or Kill, whole group
-terminate_tree(pid)        Term, then Kill once `grace()` has run out
+Process::spawn(cmd)        start the command as the leader of a fresh tree
+process.take_stdin()       take one stream; each stream can be taken once
+process.interrupt()        ask the tree to stop; a windows tree has no polite signal
+process.kill()             take the tree down now
+process.try_wait/wait()    look at or wait for the leader's exit
 ```
 
-On unix the child becomes its own session (`setsid`) before `exec`, and a group is signalled through
-the `kill` syscall declared in that file; on windows the child gets no console window and the tree is
-taken down with `taskkill /T`. Nothing here spawns `setsid`, `kill` or `timeout` as a program.
-`guard_orphan` sets `PR_SET_PDEATHSIG`, which the kernel delivers when the thread that forked the
-child ends — a caller that wants it to mean "the process died" must fork from a thread that lives
-that long.
+A tree is one kernel container: its leader, every process the leader starts, and the handle that
+ends them together. On unix the leader becomes its own session (`setsid`) before `exec`, and the
+container is the process group, signalled through the `kill` syscall; `PR_SET_PDEATHSIG` ties the
+leader to the forking thread, so the browser forks from a thread that never ends. On windows the
+container is a job object: `KILL_ON_JOB_CLOSE` takes the tree down when the last `Process` handle
+drops, and `TerminateJobObject` takes it down on request. A drop of the last handle ends the tree on
+both families. Nothing here spawns `setsid`, `kill`, `taskkill` or `timeout` as a program.
 
 ### The stamp
 
@@ -90,7 +92,8 @@ run time. The environment is read on demand, through this layer's one mouth.
    lands, by whoever lands it.
 6. **A shell is a value.** No caller asks this layer which system it is on; the resolved `Shell`
    carries every difference a command line has.
-7. **A command is stopped by its group.** One spawn makes one group; stopping signals the group.
+7. **A command is stopped by its tree.** One spawn makes one container; stopping takes the container
+   down.
 8. **Tests are not a concern of this layer.** Timing, zone tables, the environment and the process
    tree are checked by running the program; this folder carries no unit tests.
 

@@ -252,7 +252,7 @@ named, and until it is, its whole body is what is read.
   fewer automation tells than any headless mode. This domain is for surfaces that need operating;
   plain text fetching has other tools.
 - **One browser per process.** One persistent profile keeps logins; one window keeps the user able
-  to supervise; one process group gives the exit path a single handle.
+  to supervise; one tree gives the exit path a single handle.
 - **Owned versus attached.** A browser the user started is theirs; the domain only speaks CDP to it.
   A browser the domain started is a child of the server and must not survive it.
 - **A resident fork thread.** `PR_SET_PDEATHSIG` binds to the forking thread, so a fork from a

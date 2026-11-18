@@ -59,8 +59,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `mcp/mod.rs` | the `mcp` tool: list and call |
 | `mcp/bridge.rs` | `McpBridge`, `ServerInfo`, `ToolInfo`, `McpResult`, `McpContent` |
 | `mcp/setup.rs` | `mcp.json` → the server table, read for the session's cwd; the project's file replaces the global one |
-| `mcp/sync.rs` | `SyncMcpBridge`: one lazy stdio server per name; a rescan re-reads the table and drops the pool when the table or the directory changed; a stop kills the group of the server a call waits on |
-| `mcp/stdio.rs` | one stdio server process in a process group of its own: spawn, JSON-RPC, pending map, stderr tail, shutdown |
+| `mcp/sync.rs` | `SyncMcpBridge`: one lazy stdio server per name; a rescan re-reads the table and drops the pool when the table or the directory changed; a stop kills the tree of the server a call waits on |
+| `mcp/stdio.rs` | one stdio server process in a tree of its own: spawn, JSON-RPC, pending map, stderr tail, shutdown |
 | `memo/mod.rs` | declares the memo family |
 | `memo/context/{mod,tool}.rs` | `context`: `query` through `Source::history`, `show` through `Source::block`, long listings to `Export::dir` |
 | `memo/memo/{mod,tool}.rs` | the `memo` tool: writes as effects, reads through `MemoRead` |
@@ -84,7 +84,7 @@ What is here, what each file holds, who talks to whom. Current state only.
   browser keys, which the web domain reads itself.
 - **`platform`**: `time::now_stamp` (the effect stamp) and the local-time parts, `log::warn`,
   `env::temp_dir`, `shell::Shell` (the session's shell: program, one-shot argument shape,
-  stored-text path form), `proc` (process group spawn, group signal, tree teardown), `stop::Stop`
+  stored-text path form), `proc` (tree spawn, stop and teardown), `stop::Stop`
   (the session's stop signal and the actions a call registers on it).
 - **`request`**: `ToolCall`, `ToolDef`, `Message` for definitions and the context window.
 - **`web`**: `WebArgs`, `run` from the `web` tool; `shutdown` from `main`.

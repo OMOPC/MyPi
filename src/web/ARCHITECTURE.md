@@ -64,8 +64,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 - **`server::config`**: `Config::load()`, `BrowserOptions` and `bring_to_front()`, read inside
   `lifecycle::port` and `lifecycle::bring_to_front`. This is the domain's only reach into the
   backend, and it is why `Env` carries no browser settings.
-- **`server::platform`**: `env::data_dir` for the default profile root, `proc::guard_orphan` before
-  a fork, and `proc::terminate_tree` to close a group.
+- **`server::platform`**: `env::data_dir` for the default profile root, and `proc::Process` for the
+  browser's tree: spawn on the resident thread, stop, wait.
 - **Crates**: `tungstenite` (WebSocket), `html-to-markdown-rs` (DOM to Markdown), `url`, `ureq`
   (DevTools HTTP), `signal-hook` (exit signals).
 - **Who calls it**: `server::agent::tools::web` — `run` for every operation. `main` calls
@@ -116,7 +116,7 @@ lifecycle::signal → shutdown
    refuses a name it cannot find.
 5. `page::RENDER_WAIT` and the providers' parsers: a page that has not rendered yields no hits, and
    the wait is what keeps the loop from reading a shell.
-6. `platform::proc::guard_orphan` and `process::launch`: the fork must happen on the resident
+6. `platform::proc::Process` and `process::launch`: the fork must happen on the resident
    thread for the Linux parent-death signal to mean the server.
 7. `tabs::close_session` and `loop::session::book::unbook`: every way a session ends must pass
    through `unbook`, or that session's two tabs outlive it until the 30-minute reap.

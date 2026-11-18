@@ -10,7 +10,6 @@ use serde_json::{Value, json};
 use super::bridge::{McpBridge, McpContent, McpResult, ServerInfo, ToolInfo};
 use super::setup::ServerConfig;
 use super::stdio::{self, Server};
-use crate::server::platform::proc::{self, Signal};
 use crate::server::platform::stop::Stop;
 
 pub struct SyncMcpBridge {
@@ -138,15 +137,15 @@ impl SyncMcpBridge {
         stop: &Arc<Stop>,
     ) -> Result<McpResult> {
         let server = self.server_for(name)?;
-        // The kill goes by process group, never by the server's own lock: the call holds that lock
+        // The kill goes by the tree, never by the server's own lock: the call holds that lock
         // while it waits, and the wait is exactly what the stop has to end.
-        let group = {
+        let process = {
             let server = server
                 .lock()
                 .map_err(|_| anyhow!("MCP server `{name}` is poisoned"))?;
-            server.group()
+            server.process()
         };
-        let _hook = stop.on_stop(move || proc::signal_group(group, Signal::Kill));
+        let _hook = stop.on_stop(move || process.kill());
         let value = {
             let mut server = server
                 .lock()

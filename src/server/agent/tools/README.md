@@ -364,7 +364,7 @@ Every parse is one `rustfmt` run over stdin. The binary is looked for beside thi
 then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
 directory. Only a verdict rustfmt actually reached is remembered per edition and content; a timeout
 or a missing binary is not, since neither says anything about the text. Every child the gate starts
-leads a process group of its own and is killed with that group when its deadline passes or the turn
+leads a tree of its own and is killed with that tree when its deadline passes or the turn
 is stopped, so a formatter can never hold the call that started it.
 
 Anything that is not a `.rs` file is spliced without a parse and without a format: there is no
@@ -499,9 +499,9 @@ action once, on the caller's thread; `on_stop` registers an action and runs it a
 signal already fired; the returned `Hook` takes it off again when dropped. `reset` clears the flag
 at the start of a turn.
 
-A tool that blocks registers what stopping it means: `bash` TERMs its process group and KILLs it
+A tool that blocks registers what stopping it means: `bash` asks its tree to stop and kills it
 after `platform::proc`'s grace period; the gate kills the formatter or the compiler it started; `mcp`
-kills the group of the server a call waits on, and the next call starts that server again. A tool
+kills the tree of the server a call waits on, and the next call starts that server again. A tool
 that finishes in microseconds registers nothing, and the front door does not pretend otherwise.
 
 What a stop leaves behind depends on how far the call got:
@@ -556,7 +556,7 @@ child process per name, started lazily and kept until a rescan; a server spawns 
 working directory, so a `cwd` key in the file is not used. stdout is one JSON-RPC object per line,
 a reader thread dispatches by id, stderr is drained into a 20-line tail that only surfaces in
 errors; every call carries a deadline; a dead process fails every waiting call and is started again
-on the next one. Every server leads a process group of its own, and a stop kills that group: the wait
+on the next one. Every server leads a tree of its own, and a stop kills that tree: the wait
 ends on the same tick, and the failure a dead server gives is the call's answer. It uses threads and
 channels only — no async runtime enters this tree.
 
