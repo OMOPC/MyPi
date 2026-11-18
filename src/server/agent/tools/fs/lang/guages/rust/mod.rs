@@ -3,16 +3,19 @@
 use crate::server::agent::tools::fs::lang::Language;
 
 mod check;
+mod facts;
 mod format;
 mod relations;
 mod scan;
 mod table;
+mod view;
 
 pub(crate) static LANGUAGE: Language = Language {
     suffixes: table::SUFFIXES,
     table: table::table,
     shape: table::shape,
     relations: Some(&relations::RELATIONS),
+    hub: Some(&facts::HUB),
     source: true,
     format: Some(format::format),
     check: Some(check::CHECKER),

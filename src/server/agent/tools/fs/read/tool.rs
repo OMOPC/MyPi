@@ -5,12 +5,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, anyhow};
 
-use super::{dir, hub, items, sniff};
+use super::{dir, items, sniff};
 use crate::server::agent::request::contract::ItemOk;
 use crate::server::agent::request::message::ImagePart;
 use crate::server::agent::tools::contract::env::{Env, License};
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
+use crate::server::agent::tools::fs::lang::graph::{self, Loader};
 use crate::server::agent::tools::fs::lang::{self, Table};
 use crate::server::agent::tools::fs::splice::TOOL as SPLICE;
 use crate::server::agent::tools::spec::{Args, Item, Kind, Param, Tool, ToolProgress};
@@ -290,14 +291,16 @@ fn block(
     }
     text.push_str(&body.text);
 
-    if let Some(module) = hub::locate(path) {
-        let is_hub = module.hub.as_deref() == Some(path)
-            || whole.as_deref().is_some_and(hub::declares_modules);
-        if is_hub {
-            text.push_str(&hub::view(&module, batch, false));
-            env.seen.dirs.insert(module.dir.clone());
-        } else if env.seen.dirs.insert(module.dir.clone()) {
-            text.push_str(&hub::view(&module, batch, true));
+    if let Some(facts) = lang::hub(path)
+        && let Some(unit) = graph::unit(facts, path)
+    {
+        let loader = Loader::new();
+        let is_entry = unit.entry.as_deref() == Some(path);
+        if is_entry {
+            text.push_str(&sketch(facts, &loader, path, batch));
+            env.seen.dirs.insert(unit.place);
+        } else if env.seen.dirs.insert(unit.place) {
+            text.push_str(&sketch(facts, &loader, path, batch));
         }
     }
 
@@ -309,6 +312,25 @@ fn block(
         },
         Vec::new(),
     ))
+}
+
+// One file's neighbourhood, printed and bounded on its own.
+fn sketch(facts: &lang::Hub, loader: &Loader, path: &Path, batch: &BTreeSet<PathBuf>) -> String {
+    let Some(around) = graph::build(facts, loader, path) else {
+        return String::new();
+    };
+    let mut text = String::new();
+    for row in graph::render(facts, &around, loader, batch) {
+        if let Some(heading) = row.heading {
+            text.push_str(&heading);
+            text.push('\n');
+        }
+        text.push_str(&row.text);
+        text.push('\n');
+    }
+    let mut text = graph::parts::cut(text, 800, 256 * 1024);
+    text.push('\n');
+    text
 }
 
 /// How a file's lines are prefixed, if at all.

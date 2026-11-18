@@ -1,15 +1,35 @@
 // The sorter registry: a suffix names a language, and a language answers one line table.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::server::platform::stop::Stop;
 
+pub(crate) mod graph;
 mod guages;
 mod table;
 pub(crate) mod verdict;
 
+use graph::{Around, Decl, Domain, Loader, RawEdge, Unit};
 pub(crate) use table::{Line, Table};
 use verdict::{Check, Outcome};
+
+// What a language knows about its units and their edges. Only `edges` is required: with no edges
+// there is no graph, and the other slots degrade one at a time.
+pub(crate) struct Hub {
+    // What one file reaches, already resolved to landing files.
+    pub(crate) edges: fn(&Path, &str, &Loader) -> Vec<RawEdge>,
+    // The unit a file belongs to.
+    pub(crate) unit_of: Option<fn(&Path) -> Option<Unit>>,
+    // The units one unit holds, and how the parent writes each.
+    pub(crate) territory: Option<fn(&Unit, &Loader) -> Vec<Decl>>,
+    // What a file exposes, one printable signature per line.
+    pub(crate) interface: Option<fn(&Path, &str) -> Vec<String>>,
+    // Where to look for whoever points at a unit.
+    pub(crate) domain: Option<fn(&Path) -> Option<Domain>>,
+    // How to print one neighbourhood; the machine has a default.
+    pub(crate) view: Option<fn(&Around, &Loader, &BTreeSet<PathBuf>) -> Vec<Row>>,
+}
 
 /// One text's turn through the formatter a language names.
 pub(crate) type Format = fn(&str, &Path, &Stop) -> Outcome;
@@ -23,6 +43,8 @@ pub(crate) struct Language {
     /// The relations it can index: `A::b` members and a name's own declarations; `None` when it
     /// names nothing.
     pub(crate) relations: Option<&'static Relations>,
+    // What it knows about units, edges and neighbourhoods; `None` when it has no module view.
+    pub(crate) hub: Option<&'static Hub>,
     /// Whether its files are source: they take the source budget and are read whole.
     pub(crate) source: bool,
     pub(crate) format: Option<Format>,
@@ -77,6 +99,29 @@ pub(crate) fn owner(path: &Path) -> Option<&'static Language> {
         .iter()
         .copied()
         .find(|one| one.suffixes.contains(&suffix))
+}
+
+// The graph knowledge this path's language supplies, when it has any.
+pub(crate) fn hub(path: &Path) -> Option<&'static Hub> {
+    owner(path)?.hub
+}
+
+// The suffixes of the language a hub belongs to, for a walk that must not read foreign files.
+pub(crate) fn suffixes(hub: &Hub) -> Option<&'static [&'static str]> {
+    LANGUAGES
+        .iter()
+        .copied()
+        .find(|one| one.hub.is_some_and(|owned| std::ptr::eq(owned, hub)))
+        .map(|one| one.suffixes)
+}
+
+// Whether some language claims this directory as part of a source tree.
+pub(crate) fn tree(dir: &Path) -> bool {
+    LANGUAGES
+        .iter()
+        .filter_map(|one| one.hub)
+        .filter_map(|hub| hub.domain)
+        .any(|domain| domain(dir).is_some())
 }
 
 /// One file's line table: the sorter its suffix names, or every line as its own piece.

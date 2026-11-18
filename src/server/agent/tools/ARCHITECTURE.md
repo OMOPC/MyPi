@@ -160,7 +160,7 @@ Engine::run
 16. `splice` and `write` both read a file's formatter outcome and the language's own `Outcome`
     and `Check`; the answer borrows them there, never rebuilds them here.
 17. `lang::table` is the one place a file's structure is read: `change`, `skeleton`, `fault`,
-    `read`, `splice`, `grep` and `read::hub` all ask it, so a change to what counts as a piece
+    `read`, `splice`, `grep` and `lang::graph` all ask it, so a change to what counts as a piece
     reaches every one of them.
 18. `lang::shape` and a language's own relation index (`lang::relations`) are the decisions a
     consumer reads: a tool judges what a piece is through `shape`, and where a name is declared

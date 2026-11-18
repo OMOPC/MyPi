@@ -6,7 +6,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 
 | file | holds |
 |---|---|
-| `mod.rs` | the registry: the `Language` contract, the language list, the suffix lookup, and the questions a tool asks — the table, the piece's kind, the relations it indexes, the source flag, the formatter, the checker |
+| `mod.rs` | the registry: the `Language` contract, the language list, the suffix lookup, and the questions a tool asks — the table, the piece's kind, the relations it indexes, the graph facts it supplies, the source flag, the formatter, the checker |
+| `graph/` | the graph machine: units, edges, the upward walk, the printing parts and the default narration; it names no language |
 | `table.rs` | `Stamp`, `Line`, `Table`: one file's lines, each line's stamp, the line it names, its other end, the language that wrote it, and the queries over them |
 | `verdict.rs` | what a formatter and a checker answer: the formatted text, the text that did not parse, one unit's check, one diagnostic |
 | `guages/mod.rs` | declares the languages |
@@ -16,6 +17,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, relations, source flag, formatter and checker |
 | `guages/rust/table.rs` | the Rust sorter: head words, three key-line passes, head templates, what a piece is |
 | `guages/rust/relations.rs` | Rust's relation index: `A::b` as a module or type member, a lone name's declarations and impl blocks, and how it reads `::` and names |
+| `guages/rust/facts.rs` | Rust's graph facts: the unit a file belongs to, the units an entry declares, its exports, its edges with their forwarding resolved, and the crate root as the domain |
+| `guages/rust/view.rs` | Rust's narration: exports, down, out, up, and where the scan stopped |
 | `guages/markdown.rs` | the Markdown sorter: headings, fences, lists, quotes, HTML blocks, front matter, and how far each heading's section reaches |
 
 ## What it talks to
@@ -24,9 +27,9 @@ What is here, what each file holds, who talks to whom. Current state only.
   supplies the command line and reads the answer.
 - **Nothing else in this crate but `summary`** through its consumers: a sorter answers text, never
   I/O.
-- **Who calls it**: `read` (line numbers, budget, `hub/syntax`), `splice` (receipt anchors,
-  breadcrumbs, the formatter, the check), `edit`, `fault` (the check), `change`, `skeleton`, `grep`
-  (its scan, its outline, its three sections), `write` (the formatter, the check).
+- **Who calls it**: `read` (line numbers, budget, `lang::hub`, `lang::tree`), `splice` (receipt
+  anchors, breadcrumbs, the formatter, the check), `edit`, `fault` (the check), `change`,
+  `skeleton`, `grep` (its scan, its outline, its three sections), `write` (the formatter, the check).
 - **Knows nothing about**: the workspace, the compiler's own vocabulary, any tool's caps or prose.
 
 ## Inside

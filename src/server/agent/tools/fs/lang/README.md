@@ -15,6 +15,8 @@ text. An opening line and its closing line pair into "this piece runs from line 
 
 - the suffixes it answers to;
 - whether its pieces can index relations, and how: `A::b`, a lone name, and the symbol it reads;
+- whether it knows its units and edges (`Hub`): the unit a file belongs to, the units a unit
+  declares, what a file exposes, where to look for importers, and how to narrate the result;
 - whether its files are source, which decides how much of one a read shows;
 - whether its files are source, which decides how much of one a read shows;
 - whether it has a formatter, and how to run it on a text;

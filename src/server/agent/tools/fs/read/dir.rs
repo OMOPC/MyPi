@@ -5,7 +5,10 @@ use std::time::SystemTime;
 
 use anyhow::{Result, bail};
 
-use super::hub;
+use crate::server::agent::tools::fs::lang;
+use crate::server::agent::tools::fs::lang::graph::loader::entries_all;
+use crate::server::agent::tools::fs::lang::graph::parts::plural;
+use crate::server::agent::tools::workspace::canonicalize_lenient;
 use crate::server::platform::time;
 
 /// Direct files at or past this count fold into counts.
@@ -20,8 +23,8 @@ const LARGE: u64 = 4 * 1024 * 1024;
 /// One directory's listing. The root is special: `src/` becomes a section of its own. `docs` names
 /// the documents the user keeps current, which take no part in any level's verdict.
 pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool, docs: &[String]) -> Result<String> {
-    let root = hub::canonical(cwd);
-    let target = hub::canonical(path);
+    let root = canonicalize_lenient(cwd);
+    let target = canonicalize_lenient(path);
     let mut list = List::new();
     if target == root {
         if titled {
@@ -29,7 +32,7 @@ pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool, docs: &[String]) ->
         }
         let src = root.join("src");
         fill(&mut list, &root, 1, false, Some(&src), docs);
-        if hub::src_of(&src).is_some() {
+        if lang::tree(&src) {
             if !list.out.is_empty() {
                 list.out.push('\n');
             }
@@ -38,8 +41,8 @@ pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool, docs: &[String]) ->
         }
         return Ok(list.finish());
     }
-    if hub::src_of(&target).is_none() {
-        bail!("`read` lists directories at the session root and inside a crate's `src/` only");
+    if !lang::tree(&target) {
+        bail!("`read` lists directories at the session root and inside a source tree only");
     }
     if titled {
         list.line(format!("{}/  {}", shown(cwd, &target), counts(&target)));
@@ -132,10 +135,10 @@ fn expand_one(list: &mut List, dir: &Entry, depth: usize, docs: &[String]) {
 /// One level's entries with the level's own verdict applied: a level whose documents are all newer
 /// than everything beside them keeps no stamps and marks the documents instead.
 fn level(dir: &Path, skip: Option<&Path>, docs: &[String]) -> Vec<Entry> {
-    let mut rows: Vec<Entry> = hub::entries_all(dir)
+    let mut rows: Vec<Entry> = entries_all(dir)
         .into_iter()
-        .filter(|(_, path, _)| skip.is_none_or(|skip| skip != path.as_path()))
-        .map(|(name, path, is_dir)| row(name, path, is_dir, docs))
+        .filter(|entry| skip.is_none_or(|skip| skip != entry.path.as_path()))
+        .map(|entry| row(entry.name, entry.path, entry.dir, docs))
         .collect();
     let current = current_docs(&rows);
     for row in &mut rows {
@@ -275,14 +278,10 @@ fn facts(path: &Path) -> (Option<SystemTime>, String) {
 
 /// A directory's own entry counts, without opening what it holds.
 fn counts(dir: &Path) -> String {
-    let kids = hub::entries_all(dir);
-    let files = kids.iter().filter(|kid| !kid.2).count();
+    let kids = entries_all(dir);
+    let files = kids.iter().filter(|kid| !kid.dir).count();
     let dirs = kids.len() - files;
-    format!(
-        "{}, {}",
-        hub::plural(files, "file"),
-        hub::plural(dirs, "dir")
-    )
+    format!("{}, {}", plural(files, "file"), plural(dirs, "dir"))
 }
 
 fn shown(cwd: &Path, path: &Path) -> String {

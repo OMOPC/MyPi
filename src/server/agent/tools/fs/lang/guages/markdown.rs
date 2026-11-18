@@ -11,6 +11,7 @@ pub(crate) static LANGUAGE: Language = Language {
     table,
     shape,
     relations: None,
+    hub: None,
     source: false,
     format: None,
     check: None,

@@ -4,17 +4,18 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use super::hub;
 use super::tool::{MAX_BYTES_SOURCE as BYTES, MAX_LINES_SOURCE as LINES};
 use crate::server::agent::tools::contract::env::{Env, License};
+use crate::server::agent::tools::fs::lang::graph::loader::entries;
 use crate::server::agent::tools::fs::lang::{self, Line, Table};
+use crate::server::agent::tools::workspace::canonicalize_lenient;
 
 /// A file this big is not read for its pieces.
 const LARGE: u64 = 4 * 1024 * 1024;
 
 /// Every piece under `path` whose own text says `wanted`, whole, every line numbered.
 pub(crate) fn answer(env: &mut Env, path: &Path, wanted: &str) -> Result<String> {
-    let cwd = hub::canonical(&env.workspace.cwd());
+    let cwd = canonicalize_lenient(&env.workspace.cwd());
     let (text, seen) = render(path, &cwd, wanted)?;
     for (file, body) in &seen {
         stamp(env, file, body);
@@ -115,11 +116,11 @@ fn scope(path: &Path) -> Vec<PathBuf> {
 }
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-    for (_, path, is_dir) in hub::entries(dir) {
-        if is_dir {
-            walk(&path, out);
-        } else if lang::owner(&path).is_some() {
-            out.push(path);
+    for entry in entries(dir) {
+        if entry.dir {
+            walk(&entry.path, out);
+        } else if lang::owner(&entry.path).is_some() {
+            out.push(entry.path);
         }
     }
 }

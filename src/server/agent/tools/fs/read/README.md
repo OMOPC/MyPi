@@ -116,33 +116,34 @@ read.
 
 ### The module view
 
-A Rust file read inside a crate arrives with its module's context, because a module is edited as a
-whole far more often than a file is. The view follows the body, opens with
-`--- module a::b (src/a/b/) · primer ---`, and holds four parts:
+A file read inside a unit arrives with its neighbourhood, because a unit is edited as a whole far
+more often than one file is. The graph layer (`fs/lang/graph`) builds it from the language's facts:
+Rust's facts live in `lang/guages/rust/facts.rs`, its narration in `view.rs`. A language without
+facts has no view. The view follows the body, opens with `--- module a::b (src/a/b/) · primer ---`,
+and holds five parts:
 
-- `exports (N):` — the entry file's `pub use` statements, or its `pub` items when it forwards none.
-- `down (N):` — the modules the entry declares, one line each: label, size (files for a directory,
-  lines for a leaf), visibility, `hub` or `leaf`, its exports, and the modules of its own directory
-  it reaches into.
-- `up (N):` — the entry that declares this module, then every file outside the module that imports
-  it, with the line and the symbols it takes.
-- One `[scan: up→… | down→…]` line naming where each search stopped.
+- `exports (N):` — the entry's `pub` items and `pub use` statements, all of them; `none` only when
+  it has neither.
+- `down (N):` — the units the entry declares, one line each: label, size (files for a directory,
+  lines for a leaf), visibility, `hub` or `leaf` (whether it declares units of its own), its
+  exports, and the sibling units it reaches into.
+- `out (N):` — what this unit itself reaches: the line and the symbols, an external target marked
+  `(external)`. A `pub use` stays in `exports` and is not repeated here.
+- `up (N):` — the line that declares this unit, then every file outside it that imports it, with
+  its line, the symbols it takes, and `via` when a forwarding entry carried the name.
+- `[scan: up→… | down→… | N levels, M files]` — where each search stopped and how much it saw.
 
 The tag on the opening line says why the view is there: `primer` when it rode along on the first
-read in a module directory, `entry file` when the entry file itself was read. Each directory gets
-one primer per conversation, and a compaction clears that memory. A file this same call already
-answered shows `[body in this batch]` instead of its exports.
-
-A consumer writing a forwarded name is followed through the `pub use` on the way up, and the hit
-says `via src/a/b/mod.rs`. `pub use x::*` cannot be followed and is skipped; `include!`, `#[path]`
-and `cfg` are not followed either. A line over 400 characters ends with `[+N]`, and a list cut
-short ends with `[+N more]`.
+read in a unit, `entry file` when the entry file itself was read. Each unit gets one primer per
+conversation, and a compaction clears that memory. A file this same call already answered shows
+`[body in this batch]` instead of its exports.
 
 The view has its own 800-line and 256 KiB budget, apart from the body's: a body that fills its cap
 still comes with a whole view. The upward walk covers the next directory up and everything beside
-it, one whole level at a time, and stops at the crate root or when its 100 ms budget runs out. A
+it, one whole level at a time, and stops at the crate root or when its 300 ms budget runs out. A
 level it could not finish is dropped whole, because half a level reads as "nobody imports this".
-The downward side never walks: it reads the names the entry declares and nothing inside them.
+Past 200 importers the list folds by directory. The downward side never walks: it reads the names
+the entry declares and nothing inside them.
 
 ## 2. Design intent
 
