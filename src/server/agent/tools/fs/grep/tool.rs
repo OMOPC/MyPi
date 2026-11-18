@@ -11,6 +11,7 @@ use anyhow::Result;
 const QUERY: usize = 0;
 const REGEX: usize = 1;
 const SCOPE: usize = 2;
+const LAVISH: usize = 3;
 
 const PARAMS: &[Param] = &[
     Param::new(
@@ -25,6 +26,12 @@ const PARAMS: &[Param] = &[
         "`src/...` files or dirs, whatever suffix a sorter claims (defaults to whole `src/`; invalid \
          entries skipped).",
     ),
+    Param::df(
+        "lavish",
+        Kind::Flag,
+        "Draw a folded answer one tier richer: tier 3 as 2, tier 2 as 1",
+        "false",
+    ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
@@ -34,6 +41,7 @@ pub(crate) const TOOL: Tool = Tool {
             lookup.",
     fields: "Requires `query`; `regex` and `scope` are optional.\n\
              - `A::b` syntax: besides literal matches, also locates where type/trait/module `A` declares `b`.\n\
+             - `lavish`: a folded answer draws one tier richer.\n\
              - Output: 1-based line numbers + surrounding item scopes.",
     params: PARAMS,
     run,
@@ -44,6 +52,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let query = args.str(QUERY)?;
     anyhow::ensure!(!query.is_empty(), "`query` is empty");
     let regex = args.flag(REGEX)?;
+    let lavish = args.flag(LAVISH)?;
     let zone = scan::zone(&env.workspace.cwd())?;
     let matcher = if regex {
         scan::Matcher::pattern(&query)?
@@ -60,6 +69,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         &zone,
         env.grep,
         env.limits.lines,
+        lavish,
         &misses,
     );
     render::stamp(&mut env.seen, &files, &shown);

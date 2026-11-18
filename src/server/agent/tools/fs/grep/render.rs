@@ -16,23 +16,37 @@ pub(crate) fn answer(
     zone: &scan::Zone,
     caps: GrepLimits,
     budget: usize,
+    lavish: bool,
     misses: &[String],
 ) -> (String, BTreeSet<usize>) {
     let budget = budget.max(24);
     let total: usize = files.iter().map(|file| file.hits.len()).sum();
     let touched = files.iter().filter(|file| !file.hits.is_empty()).count();
-    let tier = if total <= caps.deep {
+    let counted = if total <= caps.deep {
         1
     } else if total <= caps.fold {
         2
     } else {
         3
     };
+    let tier = if lavish && counted > 1 {
+        counted - 1
+    } else {
+        counted
+    };
     let mut out = format!(
         "grep \"{query}\": {}, {}, {mode}, tier {tier}\n",
         plural(total, "hit"),
         plural(touched, "file"),
     );
+    if tier >= 2 {
+        let hint = if lavish {
+            "narrow the scope"
+        } else {
+            "go lavish, or narrow the scope"
+        };
+        out.push_str(&format!("[folded: {hint}]\n"));
+    }
 
     let mut shown: BTreeSet<usize> = BTreeSet::new();
     // The three sections ask a language's own relation index; a language that names none skips them.

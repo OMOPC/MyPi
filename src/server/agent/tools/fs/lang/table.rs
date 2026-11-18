@@ -206,19 +206,6 @@ impl Table {
             .collect()
     }
 
-    /// The pieces no other piece holds, in line order.
-    pub(crate) fn roots(&self) -> Vec<(usize, &Line)> {
-        let last = self.lines.len().saturating_sub(1);
-        self.items(0, last)
-            .into_iter()
-            .filter_map(|at| {
-                self.line(at)
-                    .filter(|line| line.label.is_some())
-                    .map(|line| (at, line))
-            })
-            .collect()
-    }
-
     /// The pieces this one directly holds, in line order.
     pub(crate) fn inner(&self, at: usize) -> Vec<(usize, &Line)> {
         let Some(end) = self.end(at) else {

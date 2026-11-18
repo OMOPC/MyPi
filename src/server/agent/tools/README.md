@@ -104,7 +104,7 @@ that tool needs (the tool checks them, not the schema).
 
 | tool | parameters, in index order |
 |---|---|
-| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`) |
+| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`), `lavish` (default false: a folded answer draws one tier richer) |
 | `read` | `files` always: one item per path, with its own `offset` (1-based, default 1), `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap) and `item` (a piece's own header: every piece under the path whose text carries it answers whole, every line numbered) |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
 | `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
@@ -288,69 +288,6 @@ parameters are the interesting part (`memo`, `todo`, `context`, `kairos`, `final
 server and tool for `mcp`, the first template and its answer name for `task`, the query for
 `search`, and for `web` the operation plus the argument it names: URL, selector or expression.
 A tool name the table no longer holds shows its clipped arguments.
-
-### grep
-
-`grep` answers one query over the crate's own `src/`. The crate is the nearest `Cargo.toml` above
-the session's directory, and only `.rs` and `.md` files under its `src/` are read: no ignore rules and no
-external binary, so the answer is the same on every platform. `target/` is out of reach by
-construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the root documents — is one
-`read` away and never searched. `scope` narrows the walk to named directories under `src/`, and the
-files of one answer are read in parallel. `query` stands for
-itself unless `regex` is on, when it is a pattern; a pattern that does not compile is refused with
-the engine's own position and a reminder that the switch is off by default.
-
-Structure comes from the language sorter, the same table `read`, `splice` and `edit` read: comments
-and literals blanked, braces paired, head words recognized. A header runs to its own `{` or `;` with
-`(`, `[` and angle brackets counted, so a wrapped signature, a `where` clause and nested generics
-stay inside one header, and `->` contributes no closing angle. Each line carries a stamp, the shape
-it reads by, and the line it names: `impl Display for Env` reads `impl a for b` and binds both
-`Display` and `Env`; `pub async fn send` reads `pub async fn` and binds `send`.
-
-A Markdown document is read by its own grammar: every heading is a piece whose section runs to the next
-heading of the same depth or shallower, the two lines of a fence are a piece, and a list, a quote, an
-HTML block and the front matter each carry the two lines that bound them. Nothing inside a document
-binds a name, so `A::b` and the three sections say nothing about it; its hits are drawn as a
-skeleton of headings.
-
-The three sections are a language's own relation index, not a fixed grammar: a language that
-indexes names answers them, one that names nothing takes no part. For Rust this index reads `::`
-as a module or type member, and a lone name as its declarations and impl blocks:
-
-- `[type]` — `A::b` where `A` is declared here: the `b` inside `impl A`, `impl Tr for A`, `trait
-  A`, `impl Tr for A` on a trait's behalf, and the variants or fields of `enum A` and `struct A`.
-  A name this crate does not declare says so in one line, and the hits still follow, so a
-  standard-library type never answers "nothing".
-- `[module]` — `A::b` where `A` is a `mod`: the item `b` the module's own files declare. The module
-  is found through its `mod a;` declaration, never by guessing a directory from the session's path.
-- `[x-ray]` — when the query is a lone `struct`, `enum` or `trait` name: its declaration, then
-  every `impl` block for it across the crate, each with its members' spans. It is a map, not a hit
-  list, and it has two caps of its own (`xrayImpls`, `xrayItems`) that take no share of the hit
-  caps.
-
-Hits are answered at the density their count allows, by `deepMax` and `foldMax`. Up to `deepMax`,
-each hit comes with its innermost item whole — or a six-line window when that item is longer than
-forty lines — under an `in:` breadcrumb of every item around it. An excerpt line carries its
-number only when it is a hit or a key line of the sorter's own table; every other line keeps the
-gutter blank, so a number means a line `splice` may start or end on. Up to `foldMax`, each file
-answers as its skeleton: one row per item, the hit lines under the item that holds them, and a
-file whose hits fall in more than one item answers as its whole top level with those items opened.
-Past that, only per-file counts and a line saying the query is too wide. `fileMax` caps one file's
-hits in one answer. Every cap that bites states what it left out; nothing is dropped silently.
-
-`scope` narrows the search to paths under the crate's `src/`, named from the crate root — every
-entry starts with `src/`. A directory contributes its `.rs` files; a file must be `.rs`. An entry
-that is missing, names no `.rs` file, or stands outside `src/` is skipped while the rest still run,
-and the answer ends with one `[scope]` line per such entry naming the reason.
-Every file whose lines an answer showed is stamped in `env.seen` — line count and content hash, the
-stamp `read` writes — so `splice` works on it without a second `read`.
-
-`grep` bounds its own text, so the front door does not measure it: what it answers is what the model
-reads, however long that is.
-
-What it does not read: anything a macro generates, the `impl`s a derive writes, `include!`,
-`#[path]`, and a type renamed by `use … as`. A hit inside such code is still a hit; only its
-breadcrumb is coarser.
 
 ### edit and splice
 

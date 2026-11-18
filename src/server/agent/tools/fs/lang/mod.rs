@@ -8,7 +8,7 @@ mod guages;
 mod table;
 pub(crate) mod verdict;
 
-pub(crate) use table::{Line, Stamp, Table};
+pub(crate) use table::{Line, Table};
 use verdict::{Check, Outcome};
 
 /// One text's turn through the formatter a language names.

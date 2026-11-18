@@ -21,10 +21,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `workspace.rs` | `Workspace`, the licensed zones, the per-path write lock, `write_atomic`, `canonicalize_lenient` |
 | `fs/mod.rs` | declares the fs family |
 | `fs/read/` | the `read` tool, directory listings and the module graph; see `fs/read/ARCHITECTURE.md` |
-| `fs/grep/{mod,tool}.rs` | the `grep` tool: one query over the crate's `src/`, its three parameters, its summary |
-| `fs/grep/scan.rs` | the range: nearest `Cargo.toml` above the cwd, the directories `scope` names, the files a sorter claims, read in parallel, the matcher, each file's hits, its line table |
-| `fs/grep/outline.rs` | the folded answer's skeleton: one row per item at its span, the hit lines under the item that holds them, a file's whole top level once its hits spread over several |
-| `fs/grep/render.rs` | the answer: the language's relation block painted row by row, hit tiers, every cap's own count line, the `[scope]` lines, and the stamps |
+| `fs/grep/` | the `grep` tool; see `fs/grep/README.md` |
 | `fs/write/{mod,tool}.rs` | `write`: the content through the formatter, the write whatever the formatter said, then the compiler's report unless the text does not parse |
 | `fs/edit/{mod,tool}.rs` | `edit`: one unique run of text, with `exact_text` and the one-line receipt |
 | `fs/splice/{mod,tool}.rs` | `splice`: whole lines by number, many ranges at once; the copy and cut macros filled from the snapshot before anything is applied; the batch's calls on one file merged into one write; every edit written except a cross-call overlap; the compiler's faults split onto the lines they hit; `mass_text` and `parse_range` for `final` |
