@@ -118,9 +118,7 @@ impl Edit {
 // line from its front and everything it sent must match there, in order; it may stop short of the
 // whole line, so `pub fn myfunc` confirms `pub fn myfunc() -> Result<()> {`.
 pub(crate) fn opens(line: &str, expect: &str) -> bool {
-    let line = summary::flat(line);
-    let expect = summary::flat(expect);
-    expect.is_empty() || line.starts_with(&expect)
+    summary::flat(line).starts_with(&summary::flat(expect))
 }
 
 // One call's ranges, measured against the snapshot it was written against. A range may be cut
@@ -261,12 +259,17 @@ pub(crate) fn parse_range(text: &str) -> Result<(usize, usize)> {
     Ok((number(from)?, number(to)?))
 }
 
-// Why an edit must be left out: one of its named lines no longer opens with what the model gave.
+// Why an edit must be left out: one of its named lines is not what the model's words say it is.
 pub(crate) fn drift(edit: &Edit, base: &[impl AsRef<str>]) -> Option<String> {
+    // A range a macro cuts carries no words of its own: the model wrote a macro, not an anchor.
+    if edit.cut {
+        return None;
+    }
     if let Some(msg) = miss_at(edit.start, &edit.expect_start, base) {
         return Some(msg);
     }
-    if edit.end > edit.start
+    // A one-line range names that line once: its `start` has confirmed it already.
+    if edit.end > edit.start + 1
         && let Some(msg) = miss_at(edit.end - 1, &edit.expect_end, base)
     {
         return Some(msg);
@@ -274,20 +277,32 @@ pub(crate) fn drift(edit: &Edit, base: &[impl AsRef<str>]) -> Option<String> {
     None
 }
 
-// The line one anchor names, refused: what it actually reads now, against what the model gave.
+// The line one anchor names, refused: what it actually reads, against what the model gave.
 fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String> {
-    if expect.is_empty() {
+    // A `start` past the last line appends, and there is no line to confirm.
+    let Some(actual) = base.get(idx).map(AsRef::as_ref) else {
         return None;
+    };
+    let shown: String = actual.trim().chars().take(120).collect();
+    if expect.is_empty() {
+        // A blank line has no words to give, so a bare number may name it and nothing else.
+        if shown.is_empty() {
+            return None;
+        }
+        return Some(format!(
+            "MISMATCH: line {} reads `{shown}`; name it as `{} {shown}`. Re-Read or Re-Grep, then \
+             resend the range",
+            idx + 1,
+            idx + 1
+        ));
     }
-    let actual = base.get(idx)?.as_ref();
     if opens(actual, expect) {
         return None;
     }
-    let shown: String = actual.trim().chars().take(120).collect();
-    let want = summary::flat(expect);
     Some(format!(
-        "MISMATCH: line {} starts with {shown} instead of {want}, Re-Read or Re-Grep to splice",
-        idx + 1
+        "MISMATCH: line {} reads `{shown}`, not `{}`. Re-Read or Re-Grep, then resend the range",
+        idx + 1,
+        summary::flat(expect)
     ))
 }
 

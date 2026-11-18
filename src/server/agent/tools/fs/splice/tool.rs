@@ -27,12 +27,16 @@ const EDIT_FIELDS: &[Param] = &[
     Param::new(
         "start",
         Kind::Axis,
-        "First line of the range, 1-based. Optionally a string \"N the words the line opens with\": the line must open with those words, or nothing is written for this range.",
+        "First line of the range, 1-based: `N the words that line opens with`, e.g. `12 pub fn \
+         run`. A bare `N` names a blank line and nothing else; on any other line it is refused and \
+         nothing is written.",
     ),
     Param::new(
         "end",
         Kind::Axis,
-        "Last line of the range, inclusive. `start - 1` inserts instead of replacing.",
+        "Last line of the range, inclusive, in the shape `start` reads: `N the words that line \
+         opens with`, checked when the range covers more than one line. `start - 1` inserts \
+         instead of replacing, and names no line.",
     ),
     Param::new(
         "new",
@@ -67,10 +71,9 @@ pub(crate) const TOOL: Tool = Tool {
             reported on the last write.",
     fields: "Requires `path` and non-overlapping `edits` (`{start, end, new}`). \
              Delete: `new: \"\"`. Insert before `start`: `end = start - 1`. \
-             Each of `start`/`end` is a line number, or \"N the words that line opens with\" to \
-             confirm it has not drifted; a bare number is the plain range. \
-             Same-file calls in one turn merge into one write against pre-turn line numbers.\n\
-             Macros in `new` (1-based inclusive, pre-turn snapshot, single-pass): \
+             `start` reads `N the words that line opens with`, e.g. `12 pub fn run`; a bare `N` \
+             the same, and its words are checked when the range covers more than one line; an \
+             insert (`start - 1`) names no line at all. \
              `@@COPY(a..b)@@` copies lines `a..b`; `@@CUT(a..b)@@` moves them (auto-deletes `a..b`).\n\
              `unfold` lifts the shared check's fold for every written file of the batch.",
     params: PARAMS,

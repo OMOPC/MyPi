@@ -107,7 +107,7 @@ that tool needs (the tool checks them, not the schema).
 | `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`), `lavish` (default false: the whole answer draws one tier denser, never a mixture) |
 | `read` | `files` always: one item per path, with its own `offset` (1-based, default 1), `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap) and `item` (a piece's own header: every piece under the path whose text carries it answers whole, every line numbered) |
 | `edit` | `path` always, `old` always (one unique run), `new` always |
-| `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
+| `splice` | `path` always, `edits` always: one item per range (`start`, `end`, `new`), plus `unfold`; the fields and their rules are in `fs/splice/README.md` |
 | `write` | `path` always, `content` always |
 | `cd` | `path` always |
 | `bash` | `command` always |
@@ -291,10 +291,9 @@ A tool name the table no longer holds shows its clipped arguments.
 
 ### edit and splice
 
-`edit` needs `old` (one unique run) and `new`. `splice` needs `edits`: one item per range, each
-with `start`, `end` and `new`; `new` may be empty to remove the range, and `end = start - 1`
-inserts instead of replacing. A field the table does not hold is refused, so `range` in an `edit`
-call and `old` in a `splice` call both fail on the name.
+`edit` needs `old` (one unique run) and `new`. `splice`'s own fields and rules are in
+`fs/splice/README.md`. A field the table does not hold is refused, so `range` in an `edit` call and
+`old` in a `splice` call both fail on the name.
 
 A session gets one of the two, because two ways of locating one change pull the model apart. A
 profile's `tools.yaml` may name either; naming both keeps `splice` and drops `edit`, with a notice.
@@ -326,146 +325,10 @@ overwrote /p/src/foo.rs (2311 bytes)
 replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.rs
 ```
 
-### splice
-
-The formatter and the checker are the file's language's own: a language names them, and one that
-names no formatter writes the text as it stands.
-
-A Rust file goes through rustfmt in one pass over the merged text. The formatter reports; it never
-withholds a change. When it agrees, its own layout is what lands. When it says the text does not
-parse, the merged text lands as it stands and the answer carries the parser's words. When it does
-not finish or cannot be run, the text lands as it stands, the answer says it was not formatted, and
-the type check still runs.
-
-`new` may name lines of the file instead of repeating them. `@@COPY(a..b)@@` stands for lines `a` to
-`b` of the file as it stands before the message, 1-based and inclusive; `@@CUT(a..b)@@` stands for
-the same lines and adds the change that removes them from where they were. Filling happens once,
-before any range is applied, so a token inside the copied lines is copied rather than followed. A
-macro may sit anywhere in `new`; a range a macro names may be cut once per call, and a change may not
-cut the range it replaces.
-
-The ranges are applied to one snapshot, from the bottom up, so the lines above keep their numbers
-while they are still being used. Two ranges of one call may not overlap; that is the model
-contradicting itself and the file is left alone. Every `splice` call on the same file in one message
-is one write: the calls are merged in arrival order, and a range that overlaps one from an earlier
-call is refused while the rest still land.
-
-Each change is wrapped in a marker comment before the formatter sees it, so the answer can say where
-that block ended up; the markers are stripped from what is written, and the blank lines they held
-open are folded back. The comment's word carries a fingerprint of the snapshot, so no line of the
-file can be read as one. A text the formatter could not parse was never formatted, so each change's
-landing is the one its own range puts it at.
-
-When the merged text does not parse, each change is tried on its own against the file as it was, so
-the answer can name the block the parser blames: a missing brace points below the change, never at
-it. That trial is a report only; nothing is filtered out by it.
-
-Every parse is one `rustfmt` run over stdin. The binary is looked for beside this executable first,
-then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
-directory. Only a verdict rustfmt actually reached is remembered per edition and content; a timeout
-or a missing binary is not, since neither says anything about the text. Every child the gate starts
-leads a process group of its own and is killed with that group when its deadline passes or the turn
-is stopped, so a formatter can never hold the call that started it.
-
-Anything that is not a `.rs` file is spliced without a parse and without a format: there is no
-formatter to call, and no line numbers are trusted beyond the ones `read` gave.
-
-`splice` refuses a file that changed on disk after `read` described it, and it refuses it first:
-the session remembers every file's line count and content hash, and the call's first act after
-reading the bytes is to compare them. A mismatch ends the call there — no range is parsed, nothing
-is formatted — and the model is sent back for a fresh read instead of writing a range at
-coordinates that moved.
-
-#### splice's answer
-
-The shape is `grep`'s: a verdict line, then one block per edit, each opening with `path:line`, an
-`in:` line naming the item it sits in, and numbered source. A block that stands there carries `+`;
-a deletion shows what it removed with `-`. Nothing else marks a block or separates two of them.
-
-The verdict is `OK`, `PARTLY FAILED` (with `, LINES SHIFTED` when a refused edit's lines moved),
-`FAILED, NOTHING WRITTEN`, `WRITTEN, NOT PARSED`, or `WRITTEN, UNFORMATTED`, then the file's length:
+### edit's memo
 
 ```text
-[Splice] OK · now 11 lines
-
-src/demo.rs:6-11
-  in: pub fn alpha() -> u8
-+   1|pub fn alpha() -> u8 {
-+   2|    1
-+   3|}
-+   4|pub fn beta() -> u8 {
-+   5|    2
-+   6|}
-src/demo.rs:3-5
--    |pub fn alpha() -> u8 {
--    |    1
--    |}
-+    |(nothing: the range is gone)
-```
-
-A written edit is named where it landed and shows the block that stands there now; the plus side
-counts inside the block. A deletion has no landing of its own: it is named by the range it took, and
-shows what left, unnumbered. A refused edit's lines are still in the file, so it is named where it
-now finds them, numbered where `read` would number it, and carries both halves; a range that cannot
-be found says so rather than printing a guess. Both sides fold in the middle past twelve rows, and a
-line is cut at 140 characters.
-
-A refusal carries its reason under the block. A block the parser blames carries the parser's words
-there; when no single block is to blame, one `[i]` line says what the whole text was refused for:
-
-```text
-[Splice] PARTLY FAILED, LINES SHIFTED · now 13 lines
-
-src/demo.rs:3-5
-  in: pub fn alpha
--   3|pub fn alpha() -> u8 {
--   5|}
-+   1|pub fn alpha() -> u16 {
-+   2|    1
-+   3|}
-  ! overlaps an earlier splice call on this file
-  ! line 3: mismatched types
-```
-
-A text that does not parse is written as it stands, and the answer says which edit the parser blames
-or, failing that, what it said:
-
-```text
-[Splice] WRITTEN, NOT PARSED · now 13 lines
-
-src/demo.rs:2
-+   1|pub fn broken( -> u8 {
-[i] the file does not parse: this file contains an unclosed delimiter
-```
-
-`WRITTEN, UNFORMATTED` is the same shape with a formatter that never answered:
-`[i] not formatted, written as it stands: rustfmt did not finish in 5 s, so it was killed`.
-
-A stop lands in one of two places, and the answer says which. Before the write, the formatter is
-killed and nothing reaches the file, so the call answers that the file is unchanged. After the write,
-the change stands and waits for the batch's audit: the answer is finished once the batch's last
-write has landed and the crate has been checked.
-
-A language that names a checker is checked in its own unit, whatever that unit is; a language that
-names none takes no part.
-
-The compiler answers once per batch, not per call, and every diagnostic lands once. One whose line
-falls on a written edit's own lines hangs under that edit; one in a file this batch wrote whole
-stands under that write as a seam; anything no written call can hold goes to the crate's list on
-the batch's last written answer that can still take lines — one line per diagnostic,
-`file:line: message | help: …`, capped at twelve unless a call set `unfold: true`, ending in a
-reminder to reach for `Grep`. The list's head counts what it holds:
-`[i] check · mypi 2 errors, 1 warn`. A crate with nothing to say is named once,
-`[i] check · mypi clean`; a crate whose faults all found a home gets no list at all.
-A file the parser refused says so before the list, and its check still runs: the compiler's
-faults are the reader's to weigh.
-
-### edit's and splice's memo
-
-```text
-edit:   { "atLine": 12, "scope": ["impl Greeter"], "excerpt": { "from": 8, "lines": [...] } }
-splice: { "segments": [ { "edit": 1, "state": "applied", "fromLine": 11, "atLine": 11,
-                          "old": "<lines that went>", "new": "<lines that took their place>" }, … ] }
+excerpt: { "atLine": 12, "scope": ["impl Greeter"], "excerpt": { "from": 8, "lines": [...] } }
 ```
 
 `edit`'s memo describes one change: `atLine` is the old-file line it starts on, `scope` the
@@ -481,17 +344,6 @@ The item is the nearest enclosing block that declares something; failing that, t
 starts after a blank line, a comment or an attribute; failing that, the nearest block. Blank lines
 never end an item, and an item's own closing brace belongs to it. The front end renders the excerpt,
 signs the changed lines, and paints the rest.
-
-`splice`'s memo is one segment per range, in the call's order: the lines it took and the lines that
-stand there now, numbered on both sides. A range left out carries the lines it takes as they now
-read, its block, and what stopped it; its `atLine` is the line the range must name on a retry.
-`@@CUT(a..b)@@` adds a segment of its own — the lines it removed, with an empty `new`, under the
-same edit number. Segments that are not neighbours are drawn apart, and the card folds what it does
-not need.
-
-`edit`'s new line numbers, counts and the shift after the change are the front end's arithmetic.
-`splice`'s are not: the formatter moved them, so the tool carries them in the memo.
-
 ### Stopping
 
 `Stop` lives in `platform::stop`: a flag plus a table of actions. `set` sets the flag and runs every

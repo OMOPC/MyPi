@@ -19,8 +19,8 @@ pub enum Kind {
     /// A line number, 1-based.
     Line,
 
-    /// A 1-based line number alone, or the number followed by the words the line opens with to
-    /// confirm it has not drifted; a bare number carries no drift check.
+    /// A 1-based line number and the words that line opens with; a bare number names a blank
+    /// line, and the tool that reads it decides whether that is enough.
     Axis,
     /// A boolean.
     Flag,
@@ -448,9 +448,8 @@ impl Item {
         Ok(n as usize)
     }
 
-    /// A 1-based line number, or that number with the words the line opens with: an integer reads
-    /// as the line alone, a string as `line + expected words`. The words come back trimmed, empty
-    /// for a bare number.
+    /// A 1-based line number and the words the line opens with: an integer reads as the line
+    /// alone, a string as `line + expected words`, trimmed, empty for a bare number.
     pub fn axis(&self, name: &str) -> Result<(usize, String)> {
         let one = |raw: &str| -> Result<(usize, String)> {
             let text = raw.trim();
@@ -459,7 +458,7 @@ impl Item {
                 None => (text, ""),
             };
             let line = head.parse::<usize>().map_err(|_| {
-                self.wrong(name, "a line number, or `line + the words it opens with`")
+                self.wrong(name, "a line number, then the words that line opens with")
             })?;
             anyhow::ensure!(line >= 1, "`{}` is 1-based", self.field_path(name));
             Ok((line, rest.to_string()))
@@ -470,7 +469,7 @@ impl Item {
                 _ => Err(self.wrong(name, "a positive line number")),
             },
             Value::String(text) => one(&text),
-            _ => Err(self.wrong(name, "a line number, or `line + the words it opens with`")),
+            _ => Err(self.wrong(name, "a line number, then the words that line opens with")),
         }
     }
 
