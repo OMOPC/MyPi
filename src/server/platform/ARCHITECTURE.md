@@ -75,10 +75,10 @@ Everything else in this folder is private.
 2. **`stamp::inject` has no caller.** The timestamp injection happens when a user message is written,
    and where exactly that is stays undecided until the instant-messaging mode gets its own design
    (`memo.md`); `config.server.platform.stamp.*` has no reader for the same reason.
-3. **Windows.** `env.rs` answers every directory with the current directory on a non-unix family.
-   `shell.rs` and `proc.rs` carry both families, but three places still assume unix: the zoneinfo
-   paths in `time.rs`, the transport worker's `kill -KILL`, and the absent parent-death guard for
-   launcher processes (`src/web/browser/process/launch.rs`). 第 16 条 lists the sites.
+3. **Windows.** `env.rs`, `shell.rs`, `proc.rs` and `time.rs` carry both families. Three places still
+   assume unix: the absent parent-death guard for launcher processes
+   (`src/web/browser/process/launch.rs`), the `Term` signal on the windows process tree, and the
+   browser paths. 第 16 条 lists the sites.
 4. **The shell backend is not selectable yet.** `Shell::resolve` exists; nothing reads a configured
    name, so every session takes the platform default. `Shell::default` is `bash` on unix and `pwsh`
    on windows, and the `niu` backend is reachable only through `resolve`.

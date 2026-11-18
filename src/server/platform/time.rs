@@ -61,7 +61,19 @@ fn load_zone(name: Option<&str>) -> Option<Zone> {
             return Some(zone);
         }
     }
+    system_zone()
+}
+
+// The machine's own zone: the zoneinfo file where there is one, the system call on windows.
+#[cfg(unix)]
+fn system_zone() -> Option<Zone> {
     parse_tzif(&std::fs::read("/etc/localtime").ok()?)
+}
+
+// Windows has no zoneinfo file; the offset in effect at startup becomes the process's zone.
+#[cfg(windows)]
+fn system_zone() -> Option<Zone> {
+    Some(Zone::fixed(win::current_offset()))
 }
 
 /// `UTC+8` / `GMT-5` / `UTC+8:30` → the seconds to add to UTC for local
@@ -281,4 +293,56 @@ pub fn age_seconds(stamp: &str) -> Option<u64> {
     let now = unix_now();
     let now_local = now + local_zone().offset_at(now) as i64;
     Some(now_local.saturating_sub(local).max(0) as u64)
+}
+
+#[cfg(windows)]
+mod win {
+    use std::mem::MaybeUninit;
+
+    const ID_INVALID: u32 = u32::MAX;
+    const ID_DAYLIGHT: u32 = 2;
+
+    #[repr(C)]
+    struct SystemTime {
+        _year: u16,
+        _month: u16,
+        _day_of_week: u16,
+        _day: u16,
+        _hour: u16,
+        _minute: u16,
+        _second: u16,
+        _milliseconds: u16,
+    }
+
+    #[repr(C)]
+    struct TimeZoneInformation {
+        bias: i32,
+        _standard_name: [u16; 32],
+        _standard_date: SystemTime,
+        standard_bias: i32,
+        _daylight_name: [u16; 32],
+        _daylight_date: SystemTime,
+        daylight_bias: i32,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetTimeZoneInformation(info: *mut TimeZoneInformation) -> u32;
+    }
+
+    // Windows measures the offset the other way: local = UTC - bias. A daylight answer adds its bias.
+    pub(super) fn current_offset() -> i32 {
+        let mut info = MaybeUninit::<TimeZoneInformation>::zeroed();
+        let id = unsafe { GetTimeZoneInformation(info.as_mut_ptr()) };
+        if id == ID_INVALID {
+            return 0;
+        }
+        let info = unsafe { info.assume_init() };
+        let extra = if id == ID_DAYLIGHT {
+            info.daylight_bias
+        } else {
+            info.standard_bias
+        };
+        (info.bias + extra).saturating_neg().saturating_mul(60)
+    }
 }

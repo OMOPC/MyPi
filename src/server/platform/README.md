@@ -59,10 +59,12 @@ not injected at all.
 
 ### The zone
 
-The zone is a transition table, not one offset: a long process across a DST switch still computes the
-right local time, because each moment looks up its own stretch. The table comes from the zoneinfo
-file the configuration names — a bare name is looked up under the system's zoneinfo directory, an
-absolute path is used as it is — and `/etc/localtime` is the fallback. `TZ` is not consulted.
+On unix the zone is a transition table, not one offset: a long process across a DST switch still
+computes the right local time, because each moment looks up its own stretch. The table comes from the
+zoneinfo file the configuration names — a bare name is looked up under the system's zoneinfo
+directory, an absolute path is used as it is — and `/etc/localtime` is the fallback. On windows the
+system reports the offset in effect at startup, and the process keeps that fixed offset for its
+lifetime. `TZ` is not consulted.
 
 ### The directories
 
@@ -107,8 +109,9 @@ offset, and the store treats a stamp as opaque text.
 
 **A bad zone name never fails the run.** The clock keeps ticking and only the label is wrong.
 
-**A transition table, not one offset.** Each moment looks up its own stretch, so a long process
-across a DST switch still computes the right local time.
+**A transition table on unix, one offset on windows.** On unix each moment looks up its own stretch,
+so a long process across a DST switch still computes the right local time. On windows the offset in
+effect at startup is kept: there is no zoneinfo table to read.
 
 **`TZ` is not consulted.** The zone is a configured value and the machine is the fallback.
 
@@ -132,10 +135,8 @@ current directory.
 
 ## 3. Open questions
 
-1. **Windows.** The crate has never been compiled there and no dependency has been checked for it, so
-   the promises above hold on unix only: the zone table's paths, the XDG directories, the transport's
-   process teardown and the browser paths are all unix-shaped (第 16 条). The shell and the process
-   tree carry both families, so the day windows matters the question has one place to ask.
+1. **Windows.** The shell, the process tree and the clock carry both families. The directory paths
+   still follow unix conventions, and the browser paths are unix-shaped (第 16 条).
 2. **Instant messaging has no caller.** The switch, the templates and the rendering exist;
    `stamp::inject` is public with no production call site, and the feature's shape is still open — the
    switch may end up named something other than "instant message".
