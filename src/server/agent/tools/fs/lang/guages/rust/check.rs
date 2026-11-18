@@ -18,14 +18,14 @@ pub(crate) const CHECKER: Checker = Checker {
 };
 
 /// The crate this file belongs to: the nearest directory above it that holds a manifest.
-fn unit(path: &Path) -> Option<PathBuf> {
+pub(super) fn unit(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .find(|dir| dir.join("Cargo.toml").is_file())
         .map(Path::to_path_buf)
 }
 
 /// The crate's own name, from the manifest's `[package] name`; the folder when unnamed.
-fn title(root: &Path) -> String {
+pub(super) fn title(root: &Path) -> String {
     let named = std::fs::read_to_string(root.join("Cargo.toml"))
         .ok()
         .and_then(|text| package_name(&text));
@@ -37,7 +37,7 @@ fn title(root: &Path) -> String {
 }
 
 /// A path as a diagnostic names it: relative to the crate root the compiler reports against.
-fn shown(root: &Path, path: &Path) -> String {
+pub(super) fn shown(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
         .to_string_lossy()
@@ -68,7 +68,7 @@ fn run(root: &Path, _touched: &[PathBuf], stop: &Stop) -> Check {
 }
 
 /// The errors and the warnings one `cargo check` reported, whatever file they sit in.
-fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
+pub(super) fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
     let mut errors: Vec<Fault> = Vec::new();
     let mut warns: Vec<Fault> = Vec::new();
     for line in out.lines() {
@@ -179,7 +179,7 @@ fn package_name(manifest: &str) -> Option<String> {
 }
 
 /// The `cargo` to run: the one beside this executable first, then whatever PATH holds.
-fn cargo() -> PathBuf {
+pub(super) fn cargo() -> PathBuf {
     static FOUND: LazyLock<PathBuf> = LazyLock::new(|| gate::beside("cargo"));
     FOUND.clone()
 }

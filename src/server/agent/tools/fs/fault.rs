@@ -4,12 +4,12 @@
 
 use std::path::{Path, PathBuf};
 
-use super::lang::verdict::{Check, Fault, Unparsed};
+use super::lang::verdict::{Check, Fault, Unparsed, Verdict};
 use super::skeleton;
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::output::ToolResult;
 use crate::server::agent::tools::fs::lang;
-use crate::server::agent::tools::fs::lang::Checker;
+use crate::server::agent::tools::fs::lang::{Checker, Tests};
 use crate::server::platform::stop::Stop;
 
 /// How many lines one error block may take.
@@ -38,14 +38,15 @@ pub(crate) fn settle(env: &mut Env, results: &mut [ToolResult]) {
         return;
     }
     if stop.is_stopped() {
-        let note = ["[i] not type-checked: the turn was stopped".to_string()];
+        let note = ["[i] not checked or tested: the turn was stopped".to_string()];
         for shell in &shells {
             append(results, &shell.call_id, &note);
         }
         return;
     }
     let checks = gather(&shells, &stop);
-    finish(&shells, &checks, results);
+    let tests = gather_tests(&shells, &checks, &stop);
+    finish(&shells, &checks, &tests, results);
 }
 
 /// One check per unit, in the order the writes named them: each unit's own checker, and the files
@@ -70,15 +71,105 @@ fn gather(shells: &[Shell], stop: &Stop) -> Vec<(PathBuf, Check, &'static Checke
         .collect()
 }
 
+/// One test run per unit whose writes declared a test, in the order the writes named them. A unit
+/// whose check found an error is not run: the same compile error twice reads as two mistakes.
+fn gather_tests(
+    shells: &[Shell],
+    checks: &[(PathBuf, Check, &'static Checker)],
+    stop: &Stop,
+) -> Vec<(PathBuf, &'static Tests, Verdict)> {
+    let mut units: Vec<(PathBuf, &'static Tests, Vec<PathBuf>, Vec<String>)> = Vec::new();
+    for shell in shells {
+        let Some(support) = lang::tests(&shell.file) else {
+            continue;
+        };
+        let Some(root) = (support.unit)(&shell.file) else {
+            continue;
+        };
+        let Ok(text) = std::fs::read_to_string(&shell.file) else {
+            continue;
+        };
+        let table = lang::table(&shell.file, &text);
+        let mut ranges: Vec<(usize, usize)> =
+            shell.slots.iter().filter_map(|slot| slot.landing).collect();
+        // A whole-file write has no landing: every test the file now declares is a target.
+        if ranges.is_empty() {
+            ranges.push((1, text.lines().count().max(1)));
+        }
+        let found = (support.find)(&text, &table, &ranges);
+        if found.is_empty() {
+            continue;
+        }
+        match units.iter_mut().find(|(held, ..)| *held == root) {
+            Some((_, _, files, names)) => {
+                files.push(shell.file.clone());
+                for name in found {
+                    if !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
+            }
+            None => units.push((root, support, vec![shell.file.clone()], found)),
+        }
+    }
+    units
+        .into_iter()
+        .map(|(root, support, files, names)| {
+            let broken = checks.iter().any(|(held, check, _)| {
+                *held == root && matches!(check, Check::Faults { faults, .. } if !faults.is_empty())
+            });
+            let verdict = match broken {
+                true => Verdict::Unchecked("check did not pass".to_string()),
+                false => (support.run)(&root, &files, &names, stop),
+            };
+            (root, support, verdict)
+        })
+        .collect()
+}
+
 /// The audit's pure half: every diagnostic lands once — under the edit whose lines it hit, under
 /// the write that replaced the whole file, or in the crate's own list.
 pub(crate) fn finish(
     shells: &[Shell],
     checks: &[(PathBuf, Check, &'static Checker)],
+    tests: &[(PathBuf, &'static Tests, Verdict)],
     results: &mut [ToolResult],
 ) {
     let unfold = shells.iter().any(|shell| shell.unfold);
     let mut report: Vec<String> = Vec::new();
+
+    // Tests first: their lines hang under the same edits, so the check's own lines stand above them.
+    let mut tested: Vec<String> = Vec::new();
+    for (root, support, verdict) in tests {
+        let name = (support.title)(root);
+        match verdict {
+            Verdict::Unchecked(why) => {
+                tested.push(format!("[i] test · {name} not run: {why}"));
+            }
+            Verdict::Passed { ran, note } => {
+                tested.push(format!("[i] test · {name} {ran} passed"));
+                if let Some(note) = note {
+                    tested.push(format!("[i] test · {name} {note}"));
+                }
+            }
+            Verdict::Failed {
+                faults,
+                summary: said,
+            } => {
+                let mut groups: Vec<(String, usize, Vec<String>)> = Vec::new();
+                let mut lones: Vec<Fault> = Vec::new();
+                for fault in faults {
+                    place(root, shells, fault, &mut groups, &mut lones);
+                }
+                groups.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+                for (call_id, at, lines) in &groups {
+                    insert(results, call_id, *at, lines);
+                }
+                tested.push(format!("[Test] {name}: {said}"));
+                tested.extend(listing(&lones, &[], unfold));
+            }
+        }
+    }
 
     for (root, check, checker) in checks {
         let name = (checker.title)(root);
@@ -120,6 +211,8 @@ pub(crate) fn finish(
             report.extend(listing(&lones.0, &lones.1, unfold));
         }
     }
+
+    report.extend(tested);
 
     // What the batch still owes the reader rides on the last written answer.
     if let Some(holder) = shells

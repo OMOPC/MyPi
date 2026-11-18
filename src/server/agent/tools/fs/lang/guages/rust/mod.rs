@@ -8,6 +8,7 @@ mod format;
 mod relations;
 mod scan;
 mod table;
+mod test;
 mod view;
 
 pub(crate) static LANGUAGE: Language = Language {
@@ -19,4 +20,5 @@ pub(crate) static LANGUAGE: Language = Language {
     source: true,
     format: Some(format::format),
     check: Some(check::CHECKER),
+    test: Some(test::TESTS),
 };

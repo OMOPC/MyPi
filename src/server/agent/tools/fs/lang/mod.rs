@@ -12,7 +12,7 @@ pub(crate) mod verdict;
 
 use graph::{Around, Decl, Domain, Loader, RawEdge, Unit};
 pub(crate) use table::{Line, Table};
-use verdict::{Check, Outcome};
+use verdict::{Check, Outcome, Verdict};
 
 // What a language knows about its units and their edges. Only `edges` is required: with no edges
 // there is no graph, and the other slots degrade one at a time.
@@ -49,6 +49,7 @@ pub(crate) struct Language {
     pub(crate) source: bool,
     pub(crate) format: Option<Format>,
     pub(crate) check: Option<Checker>,
+    pub(crate) test: Option<Tests>,
 }
 
 /// How one language indexes relations: given the whole crate's sources, it reads a query and
@@ -87,6 +88,18 @@ pub(crate) struct Checker {
     pub(crate) shown: fn(&Path, &Path) -> String,
     /// Check one unit, given the files this batch wrote into it.
     pub(crate) run: fn(&Path, &[PathBuf], &Stop) -> Check,
+}
+
+/// How one language finds the tests a batch just wrote and runs those alone.
+pub(crate) struct Tests {
+    /// The unit a file belongs to; `None` when no unit holds it.
+    pub(crate) unit: fn(&Path) -> Option<PathBuf>,
+    /// What a report calls that unit.
+    pub(crate) title: fn(&Path) -> String,
+    /// The tests this text declares inside these 1-based line ranges, by name.
+    pub(crate) find: fn(&str, &Table, &[(usize, usize)]) -> Vec<String>,
+    /// Run exactly these tests in that unit, given the files this batch wrote into it.
+    pub(crate) run: fn(&Path, &[PathBuf], &[String], &Stop) -> Verdict,
 }
 
 /// Every sorted language, in the order a suffix meets them.
@@ -145,6 +158,11 @@ pub(crate) fn format(path: &Path) -> Option<Format> {
 /// The checker this path's language names, if it names one.
 pub(crate) fn checker(path: &Path) -> Option<&'static Checker> {
     owner(path)?.check.as_ref()
+}
+
+/// The test support this path's language names, if it names one.
+pub(crate) fn tests(path: &Path) -> Option<&'static Tests> {
+    owner(path)?.test.as_ref()
 }
 
 /// The kind of piece this line opens, in its own language's word: `fn`, `impl`, `heading`, `fence`.

@@ -19,7 +19,8 @@ text. An opening line and its closing line pair into "this piece runs from line 
   declares, what a file exposes, where to look for importers, and how to narrate the result;
 - whether its files are source, which decides how much of one a read shows;
 - whether it has a formatter, and how to run it on a text;
-- whether it has a checker, and how to find and run the unit a file belongs to.
+- whether it has a checker, and how to find and run the unit a file belongs to;
+- whether it has tests, how to find the tests a change wrote, and how to run those alone.
 
 A **stamp** is one of four: open, close, single, plain. A **label** is the head's template with the
 names cut out (`fn`, `impl a for b`); an **exact** is the head's own text (`impl Display for Env`,
@@ -48,6 +49,10 @@ module, a package. The shared side groups the batch's writes by unit, runs the l
 once per unit after the last write, and hangs every diagnostic under the edit whose lines it hit. A
 language with no checker takes no part.
 
+**A batch tests only what it wrote.** The language names the tests a line range declares; the shared
+side asks the checker's own list for their full paths and runs those alone, and a name that list does
+not carry is reported, never counted as a pass.
+
 **The process machine belongs to no language.** Starting a child, its deadline, its process group
 and the turn's stop are `gate`'s; a language supplies the command line and reads what came back.
 
@@ -60,3 +65,4 @@ they should look: clipping, indentation, folding and prose stay in the tool that
 - A language is chosen by suffix alone: two languages sharing one suffix cannot be told apart.
 - A diagnostic reaches the write it belongs to by the name its checker gives that file; a checker
   that names files unlike its own `shown` cannot be placed.
+- A test's full path comes from the toolchain's own list, so a name two modules share runs in both.

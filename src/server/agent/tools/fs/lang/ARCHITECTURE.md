@@ -6,27 +6,28 @@ What is here, what each file holds, who talks to whom. Current state only.
 
 | file | holds |
 |---|---|
-| `mod.rs` | the registry: the `Language` contract, the language list, the suffix lookup, and the questions a tool asks — the table, the piece's kind, the relations it indexes, the graph facts it supplies, the source flag, the formatter, the checker |
+| `mod.rs` | the registry: the `Language` contract, the language list, the suffix lookup, and the questions a tool asks — the table, the piece's kind, the relations it indexes, the graph facts it supplies, the source flag, the formatter, the checker, the tests |
 | `graph/` | the graph machine: units, edges, the upward walk, the printing parts and the default narration; it names no language |
 | `table.rs` | `Stamp`, `Line`, `Table`: one file's lines, each line's stamp, the line it names, its other end, the language that wrote it, and the queries over them |
-| `verdict.rs` | what a formatter and a checker answer: the formatted text, the text that did not parse, one unit's check, one diagnostic |
+| `verdict.rs` | what a formatter, a checker and a test run answer: the formatted text, the text that did not parse, one unit's check, one diagnostic, the tests one unit ran |
 | `guages/mod.rs` | declares the languages |
-| `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, relations, graph facts, source flag, formatter and checker |
+| `guages/rust/mod.rs` | registers Rust: its suffixes, table, kinds, relations, graph facts, source flag, formatter, checker and tests |
 | `guages/rust/table.rs` | the Rust sorter: head words, three key-line passes, head templates, what a piece is |
 | `guages/rust/scan.rs` | Rust's own scan: a cursor and a line buffer Rust's delimiters drive, then the brace pairs and their closing lines |
 | `guages/rust/relations.rs` | Rust's relation index: `A::b` as a module or type member, a lone name's declarations and impl blocks, and how it reads `::` and names |
 | `guages/rust/facts.rs` | Rust's graph facts: the unit a file belongs to, the units an entry declares, its exports, its edges with their forwarding resolved, and the crate root as the domain |
 | `guages/rust/view.rs` | Rust's narration: exports, down, out, up, and where the scan stopped |
+| `guages/rust/test.rs` | Rust's test support: the tests a line range declares, the toolchain's own list of their full paths, and one run of those alone |
 | `guages/markdown.rs` | the Markdown sorter: headings, fences, lists, quotes, HTML blocks, front matter, and how far each heading's section reaches |
 
 ## What it talks to
 
-- **`gate`**: the process machine a formatter or a checker runs its child through; the language
-  supplies the command line and reads the answer.
+- **`gate`**: the process machine a formatter, a checker or a test run puts its child through; the
+  language supplies the command line and reads the answer.
 - **Nothing else in this crate but `summary`** through its consumers: a sorter answers text, never
   I/O.
 - **Who calls it**: `read` (line numbers, budget, `lang::hub`, `lang::tree`), `splice` (receipt
-  anchors, breadcrumbs, the formatter, the check), `edit`, `fault` (the check), `change`,
+  anchors, breadcrumbs, the formatter, the check), `edit`, `fault` (the check and the tests), `change`,
   `skeleton`, `grep` (its scan, its outline, its three sections), `write` (the formatter, the check).
 - **Knows nothing about**: the workspace, the compiler's own vocabulary, any tool's caps or prose.
 
@@ -52,6 +53,12 @@ lang::format(path)
   → owner(path)?.check       a language with no checker takes no part
   → fault::gather            one run per unit, with the files this batch wrote into it
   → rust::check::run         cargo check → its JSON → verdict::Check
+
+lang::tests(path)
+  → owner(path)?.test        a language with no tests takes no part
+  → fault::gather_tests      the names each write's line range covers, one unit at a time
+  → rust::test::find         the attributes above a `fn`, and the range they hold
+  → rust::test::run          cargo test --list → the full paths → --exact → verdict::Verdict
 ```
 
 ## Must stay in step
@@ -71,3 +78,5 @@ lang::format(path)
    the name `shown` gives that file, and by the line the checker reports, so the two must agree.
 5. `Table::plain` and `read`: a file with no sorter numbers every line, so a new sorter narrows
    what a tool shows and never widens it.
+6. `Tests::find` and a piece's span: a test's reach — its first attribute to its closing line — is
+   derived for the test alone and never written back into the table, so no other reader sees it.

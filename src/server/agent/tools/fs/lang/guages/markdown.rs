@@ -15,6 +15,7 @@ pub(crate) static LANGUAGE: Language = Language {
     source: false,
     format: None,
     check: None,
+    test: None,
 };
 
 /// One file's line table.

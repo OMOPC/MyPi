@@ -26,6 +26,19 @@ pub(crate) enum Outcome {
     Stopped,
 }
 
+/// What one unit's tests had to say about the tests a batch just wrote.
+#[derive(Debug)]
+pub(crate) enum Verdict {
+    /// Nothing was verified: no test was found, the tests do not compile, or the turn was stopped.
+    Unchecked(String),
+
+    /// Every test that ran passed; `note` says what the run could not answer for.
+    Passed { ran: usize, note: Option<String> },
+
+    /// At least one test failed, each with the file and line its panic named.
+    Failed { faults: Vec<Fault>, summary: String },
+}
+
 /// What a checker had to say about one unit after a batch wrote into it.
 #[derive(Debug)]
 pub(crate) enum Check {
