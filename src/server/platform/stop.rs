@@ -35,7 +35,7 @@ impl Stop {
         self.stopped.load(Ordering::Acquire)
     }
 
-    /// Set the flag, then run every registered action once on this thread.
+    // Set the flag, then run every registered action once, one thread each.
     pub fn set(&self) {
         let mut actions = self.lock();
         if self.stopped.swap(true, Ordering::AcqRel) {
@@ -44,7 +44,13 @@ impl Stop {
         let taken = std::mem::take(&mut *actions);
         drop(actions);
         for slot in taken {
-            (slot.action)();
+            let inline = slot.action.clone();
+            let spawned = std::thread::Builder::new()
+                .name(format!("mypi-stop-{}", slot.id))
+                .spawn(move || (slot.action)());
+            if spawned.is_err() {
+                inline();
+            }
         }
     }
 
