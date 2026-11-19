@@ -20,8 +20,8 @@ list, how a session enables one, the call's common path, and where each manual i
 | 3 | `edit` | `fs/edit/tool.rs` |
 | 4 | `splice` | `fs/splice/tool.rs` |
 | 5 | `write` | `fs/write/tool.rs` |
-| 6 | `cd` | `shell/cd/tool.rs` |
-| 7 | `bash` | `shell/bash/tool.rs` |
+| 6 | `cd` | `cd/tool.rs` |
+| 7 | `shell` | `shell/tool.rs` |
 | 8 | `alias` | `shell/alias/tool.rs` |
 | 9 | `kairos` | `kairos/tool.rs` |
 | 10 | `task` | `subagent/task.rs` |
@@ -166,7 +166,7 @@ re-exported at the `tools` root; callers write the group they mean.
 |---|---|
 | `contract::call` | `Batch`, `Cwd` |
 | `contract::output` | `ToolResult`, `ToolOutput`, `Effect`, `MemoOp`, `AliasOp` |
-| `contract::env` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp`, `Answer` |
+| `contract::env` | `Env`, `Defaults`, `Limits`, `ShellEnv`, `Paths`, `Seen`, `Stamp`, `Answer` |
 | `contract::view` | `Source`, `Export`, `Child`, `Draft`, `MemoRead`, `MemoScope`, `MemoReadOp`, `MemoVersion`, `MemoView`, and the history shapes `CallRecord`, `BlockPair`, `Direction` |
 | `contract::job` | `JobSpec`, `Schedule`, `JobHost`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink` |
 
@@ -176,7 +176,7 @@ re-exported at the `tools` root; callers write the group they mean.
 Env {
   workspace: Workspace,      // the session's shared cwd handle
   limits: Limits,            // lines, bytes
-  bash: BashEnv,             // timeout, shell
+  shell: ShellEnv,           // backend, timeout
   stop: Arc<Stop>,           // the session's stop signal; see Stopping
   session: i64,
   batch_len: usize,
@@ -216,7 +216,7 @@ Workspace { shared }
   refused; `must_exist` adds the file checks.
 - `with_write(path, f)` takes a process-wide write lock keyed by that path; `write_atomic` writes a
   temp file beside the target and renames it into place. `read` takes no lock.
-- `bash` takes no lock.
+- `shell` takes no lock.
 
 Where a session may stand, and the rule `cd` answers, is in `shell/README.md`.
 
@@ -227,7 +227,7 @@ action once, on the caller's thread; `on_stop` registers an action and runs it a
 signal already fired; the returned `Hook` takes it off again when dropped. `reset` clears the flag
 at the start of a turn.
 
-A tool that blocks registers what stopping it means: `bash` TERMs its process group and KILLs it
+A tool that blocks registers what stopping it means: `shell` TERMs its process group and KILLs it
 after `platform::proc`'s grace period; the gate kills the formatter or the compiler it started; `mcp`
 kills the group of the server a call waits on, and the next call starts that server again. A tool
 that finishes in microseconds registers nothing, and the front door does not pretend otherwise.
@@ -244,7 +244,7 @@ A reply cut short mid-stream keeps no calls at all: the model never finished ask
 existed. Once its arguments arrive whole a call belongs to the turn, and every one of them answers —
 the ones that ran with what they produced, the ones the stop kept from running with the fact that
 they never ran. A stop ends the work, never the record of it. A call's own deadline is not a stop:
-`bash` reports `timed out after Ns` through `ToolOutput::failure`.
+`shell` reports `timed out after Ns` through `ToolOutput::failure`.
 
 `final submit` is not a stop either: its result carries `stop`, and the turn settles as `finished`.
 
@@ -269,7 +269,7 @@ The field each one takes, and its own rules, are in `fs/edit/README.md` and
 6. One call runs at a time inside a session; different sessions run concurrently.
 7. A tool starts no job and writes no session row; it describes both and the loop acts.
 8. The session's list is the whole gate; a tool adds no condition of its own.
-9. A stop is one `Stop`, and only a tool that blocks registers what stopping it means: `bash`, the
+9. A stop is one `Stop`, and only a tool that blocks registers what stopping it means: `shell`, the
    gate, and `mcp`.
 10. A call whose arguments arrived whole answers, whether or not it ran.
 
@@ -282,7 +282,8 @@ The field each one takes, and its own rules, are in `fs/edit/README.md` and
 | `edit` | `fs/edit/README.md` |
 | `splice` | `fs/splice/README.md` |
 | `write` | `fs/write/README.md` |
-| `cd`, `bash`, `alias` | `shell/README.md` |
+| `cd` | `cd/README.md` |
+| `shell`, `alias` | `shell/README.md` |
 | `kairos` | `kairos/README.md` |
 | `task`, `final` | `subagent/README.md` |
 | `mcp` | `mcp/README.md` |

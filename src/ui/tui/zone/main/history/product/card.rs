@@ -10,7 +10,6 @@ mod state;
 mod tool;
 
 pub(crate) mod alias;
-pub(crate) mod bash;
 pub(crate) mod context;
 pub(crate) mod draft;
 pub(crate) mod edit;
@@ -22,6 +21,7 @@ pub(crate) mod mcp;
 pub(crate) mod memo;
 pub(crate) mod partial;
 pub(crate) mod search;
+pub(crate) mod shell;
 pub(crate) mod task;
 pub(crate) mod todo;
 pub(crate) mod tree;

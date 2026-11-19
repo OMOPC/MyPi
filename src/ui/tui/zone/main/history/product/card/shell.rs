@@ -1,4 +1,4 @@
-//! bash: the command, then its output.
+//! shell: the command, then its output.
 
 use super::super::super::prefetch::color::code;
 use super::super::super::row::{Lead, Row, Run};
@@ -6,15 +6,15 @@ use super::frame::wrap_rows;
 use super::{ToolBlock, ToolRenderer, partial};
 use crate::ui::tui::theme::fixed;
 
-pub(crate) struct Bash;
+pub(crate) struct Shell;
 
-impl ToolRenderer for Bash {
+impl ToolRenderer for Shell {
     fn call_body(&self, b: &ToolBlock<'_>) -> Vec<Row> {
-        wrap_rows(bash_call(b.args), b.inner_width())
+        wrap_rows(shell_call(b.args), b.inner_width())
     }
 }
 
-fn bash_call(args: &str) -> Vec<Row> {
+fn shell_call(args: &str) -> Vec<Row> {
     let cmd = partial::text(args, "command").unwrap_or_default();
     if cmd.trim().is_empty() {
         return Vec::new();

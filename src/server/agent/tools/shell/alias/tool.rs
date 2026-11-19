@@ -3,7 +3,7 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
-use super::super::bash::{guard, segment};
+use super::super::{guard, segment};
 use crate::server::agent::request::contract::ItemOk;
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::{AliasOp, Effect, ToolOutput};
@@ -44,7 +44,7 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "alias",
-    about: "Maintain shell aliases for this session. `bash` and `kairos` pick them up; nothing \
+    about: "Maintain shell aliases for this session. `shell` and `kairos` pick them up; nothing \
             else does.",
     fields: "type is always needed. type=add: aliases, one item per alias with name and command. \
             type=del: names. type=list: nothing else.",
@@ -211,7 +211,7 @@ fn list(env: &Env, args: &Args) -> Result<ToolOutput> {
 /// The classifier's verdict on a command that will later be run as written: a blocked command is
 /// never stored, a warning is.
 fn vet(env: &Env, command: &str) -> Result<Option<String>> {
-    if !env.bash.shell.guarded() {
+    if !env.shell.backend.guarded() {
         return Ok(None);
     }
     let cwd = env.workspace.cwd();

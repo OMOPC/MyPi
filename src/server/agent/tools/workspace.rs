@@ -1,4 +1,4 @@
-//! Zones and paths: what the file tools, `bash` and `cd` may touch. One criterion: the session
+//! Zones and paths: what the file tools, `shell` and `cd` may touch. One criterion: the session
 //! workspace plus the system temp dir (rationale in `src/server/agent/README.md`).
 
 use anyhow::{Context as _, Result, anyhow};
@@ -157,7 +157,7 @@ pub fn launch_dir(raw: &str) -> std::path::PathBuf {
 }
 
 /// A directory a session can enter: the path when it exists and `may_stand_in` allows it.
-/// Otherwise the temp dir — a session never holds a directory `bash` cannot chdir into.
+/// Otherwise the temp dir — a session never holds a directory `shell` cannot chdir into.
 pub fn standing_dir(dir: &std::path::Path) -> std::path::PathBuf {
     let real = canonicalize_lenient(dir);
     if real.is_dir() && may_stand_in(&real).is_ok() {
@@ -193,7 +193,7 @@ pub fn may_stand_in(real: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-/// The zones **file tools** may touch: the session workspace plus the system temp dir. `bash`'s
+/// The zones **file tools** may touch: the session workspace plus the system temp dir. `shell`'s
 /// delete rule reads the same two, so "inside" has one definition.
 fn licensed_zones(root: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut zones = vec![canonicalize_lenient(root)];

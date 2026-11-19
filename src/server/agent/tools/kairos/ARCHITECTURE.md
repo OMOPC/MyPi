@@ -15,12 +15,12 @@
 
 - Depends on `contract::job` for `JobSpec`, `JobHost` and the receipt shapes; the scheduler, the
   pool and the wakes live in `loop/job`.
-- Depends on `shell/bash` for `admit` and the guard, so a job only exists for a command that
+- Depends on `shell` for `admit` and the guard, so a job only exists for a command that
   already passed.
 - Depends on `Source::jobs` for the session's `JobHost`; the loop attaches it when it books the
   session.
 - Answers through the engine and the registry like every tool.
-- Kept in step with `shell/bash`: every kairos command goes through `admit`, and the guard runs
+- Kept in step with `shell`: every kairos command goes through `admit`, and the guard runs
   once on the final text.
 
 ## Must stay in step

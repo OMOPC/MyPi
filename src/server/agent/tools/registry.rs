@@ -3,12 +3,13 @@
 
 use std::collections::BTreeSet;
 
+use super::cd;
 use super::fs::{edit, grep, read, splice, write};
 use super::kairos::tool;
 use super::mcp;
 use super::memo::{context, memo as memo_tool, todo};
 use super::search;
-use super::shell::{alias, bash as bash_tool, cd};
+use super::shell::{alias, tool as shell_tool};
 use super::spec::Tool;
 use super::subagent;
 use crate::server::agent::request::message::ToolDef;
@@ -23,7 +24,7 @@ pub const TOOLS: &[Tool] = &[
     splice::TOOL,
     write::TOOL,
     cd::TOOL,
-    bash_tool::TOOL,
+    shell_tool::TOOL,
     alias::TOOL,
     tool::TOOL,
     subagent::TASK,

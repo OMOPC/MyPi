@@ -112,9 +112,9 @@ impl Loop {
                 impls: grep.impls,
                 members: grep.members,
             },
-            bash: crate::server::agent::tools::contract::env::BashEnv {
+            shell: crate::server::agent::tools::contract::env::ShellEnv {
                 timeout: cfg.bash_timeout(),
-                shell: crate::server::platform::shell::Shell::native(),
+backend: crate::server::platform::shell::Shell::native(),
             },
             aliases: cfg.aliases(),
             models: cfg
@@ -288,7 +288,7 @@ pub(crate) fn bind(inner: &Arc<Inner>, birth: Birth) -> Result<Arc<Handle>> {
         birth.session,
     )?);
     // The handle's directory is one every tool can enter: a row whose directory has since gone
-    // lands in the temp dir instead of failing every `bash` call.
+    // lands in the temp dir instead of failing every `shell` call.
     let cwd: Cwd = Arc::new(std::sync::RwLock::new(
         crate::server::agent::tools::workspace::standing_dir(&birth.cwd),
     ));

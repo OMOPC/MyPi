@@ -18,7 +18,7 @@ impl ToolRenderer for Context {
             _ => format!(
                 "query {} in the scope of {}, top {}, {}",
                 listing(b.args, "anchor"),
-                defaulted(b.args, "tool", "bash"),
+                defaulted(b.args, "tool", "shell"),
                 defaulted(b.args, "limit", "3"),
                 defaulted(b.args, "direction", "after"),
             ),

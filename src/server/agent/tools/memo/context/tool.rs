@@ -44,7 +44,7 @@ const PARAMS: &[Param] = &[
         "tool",
         Kind::Text,
         "One tool name, or `all` for every kind.",
-        "bash",
+        "shell",
     ),
     Param::new("ids", Kind::Numbers, "Block ids, as `query` reports them."),
 ];

@@ -44,7 +44,7 @@ fully-ticked list stays until the next `set`; nothing clears itself.
 | `anchor` | a `#<ref>` hash or a block id |
 | `direction` | `before` or `after`, default `after` |
 | `limit` | default 3 |
-| `tool` | a name or `all`, default `bash` |
+| `tool` | a name or `all`, default `shell` |
 | `ids` | the blocks `show` names |
 
 `query` needs `anchor` and `direction`; `tool` is one name or `all`. `anchor` takes a `#<ref>` (the

@@ -55,7 +55,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     if let Some(parent) = p.parent() {
         anyhow::ensure!(
             parent.is_dir(),
-            "parent directory does not exist: {} (create it with bash mkdir -p first)",
+            "parent directory does not exist: {} (create it with shell mkdir -p first)",
             parent.display()
         );
     }

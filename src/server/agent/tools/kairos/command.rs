@@ -8,7 +8,7 @@ use anyhow::{Result, bail};
 
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::job::{Exit, JobCtx, JobOutcome, JobRunner, OutputSink};
-use crate::server::agent::tools::shell::bash::{admit, shell};
+use crate::server::agent::tools::shell::{admit, runner};
 use crate::server::platform::shell::Shell;
 
 #[derive(Debug, Clone)]
@@ -41,7 +41,7 @@ impl Command {
             output.out(&format!("[warn: {ids}]\n"))?;
         }
         let mut progress = |_| {};
-        shell::run_to(
+        runner::run_to(
             shell,
             &self.cwd,
             &self.cmd,

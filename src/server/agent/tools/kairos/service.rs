@@ -98,7 +98,7 @@ fn start_one(env: &Env, jobs: &dyn JobHost, item: &Item, op: &str) -> Result<Val
             let content = item.text("content")?;
             let command = Command::prepare(env, &content)?;
             let runner: Arc<dyn JobRunner> =
-                Arc::new(CommandRunner::new(command, env.bash.shell.clone()));
+                Arc::new(CommandRunner::new(command, env.shell.backend.clone()));
             JobSpec {
                 runner,
                 schedule,

@@ -16,7 +16,7 @@ pub(crate) struct Admitted {
 
 /// Alias expansion, `#<ref>` rewriting, then the guard on the final text.
 pub(crate) fn admit(env: &Env, raw: &str) -> Result<Admitted> {
-    let shell = &env.bash.shell;
+    let shell = &env.shell.backend;
     let cmd = expand_alias(raw, &env.aliases);
     let cmd = rewrite_refs(&cmd, env.export.as_ref(), shell)?;
     if !shell.guarded() {
@@ -111,7 +111,7 @@ fn resolve(word: &str, export: &dyn Export) -> Option<std::path::PathBuf> {
         Ok(path) => Some(path),
         Err(e) => {
             log::warn(
-                "bash",
+                "shell",
                 format!("the artifact reference #{word} did not resolve: {e:#}"),
             );
             None

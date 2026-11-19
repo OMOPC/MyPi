@@ -1,8 +1,8 @@
-//! The `bash` tool: raw text through the gate, then one shell line.
+//! The `shell` tool: raw text through the gate, then one shell line.
 
 use anyhow::Result;
 
-use super::{admit, shell};
+use super::{admit, runner};
 use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -18,8 +18,8 @@ const PARAMS: &[Param] = &[Param::new(
 )];
 
 pub(crate) const TOOL: Tool = Tool {
-    name: "bash",
-    about: "Run non-interactive shell commands (bash/zsh on unix, pwsh on windows). Blocks the \
+    name: "shell",
+    about: "Run non-interactive shell commands (bash/zsh on unix, pwsh/niu on windows). Blocks the \
             rest of this message until it exits: long work → `kairos`. Search with `rg`/`fd`; \
             files → `read`/`edit`/`write`.",
     fields: "command is the only field; its lines run in order.",
@@ -35,11 +35,11 @@ fn run(env: &mut Env, args: &Args, progress: &mut dyn FnMut(ToolProgress)) -> Re
     let admitted = admit::admit(env, raw)?;
 
     let cwd = env.workspace.cwd();
-    let (text, exit) = shell::run(
-        &env.bash.shell,
+    let (text, exit) = runner::run(
+        &env.shell.backend,
         &cwd,
         &admitted.cmd,
-        env.bash.timeout,
+        env.shell.timeout,
         &env.stop,
         progress,
     )?;

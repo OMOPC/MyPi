@@ -83,7 +83,7 @@ pub(crate) fn run_to(
         ),
     ] {
         let tx = tx.clone();
-        named("mypi-bash-read", move || {
+        named("mypi-shell-read", move || {
             use std::io::Read as _;
             let mut rdr = std::io::BufReader::new(pipe);
             let mut raw = [0u8; 8192];
@@ -121,7 +121,7 @@ pub(crate) fn run_to(
     // Waiter thread: the only place blocked on the child's exit.
     let tx_wait = tx.clone();
     let waiter = process.clone();
-    named("mypi-bash-wait", move || {
+    named("mypi-shell-wait", move || {
         let r = waiter.wait();
         let _ = tx_wait.send(Msg::Exited(r));
     });
@@ -130,7 +130,7 @@ pub(crate) fn run_to(
     // Deadline: the same escalation, on the shared condvar instead of a sleeping thread.
     let timer = escalate.clone();
     let timer_flag = flag.clone();
-    named("mypi-bash-deadline", move || {
+    named("mypi-shell-deadline", move || {
         timer_flag.wait_for(timeout);
         if !timer_flag.is_done() {
             timer();
@@ -186,7 +186,7 @@ pub(crate) fn run_to(
     let killed = flag.is_armed();
     let out = status
         .expect("loop only exits with a status")
-        .with_context(|| "waiting for bash failed")?;
+        .with_context(|| "waiting for the shell failed")?;
     let canceled = killed && stop.is_stopped();
     let exit = Exit {
         code: out.code(),
@@ -201,12 +201,12 @@ pub(crate) fn run_to(
     Ok(exit)
 }
 
-// Spawn with a name: these threads live as long as one bash command, and an unnamed pool is unreadable in `top -H`. A name that fails is not worth failing the command over.
+// Spawn with a name: these threads live as long as one shell command, and an unnamed pool is unreadable in `top -H`. A name that fails is not worth failing the command over.
 fn named(name: &str, f: impl FnOnce() + Send + 'static) {
     let _ = std::thread::Builder::new().name(name.into()).spawn(f);
 }
 
-// The bash tool's original string result, byte for byte.
+// The shell tool's original string result, byte for byte.
 #[derive(Default)]
 struct StringSink {
     stdout: String,
@@ -243,7 +243,7 @@ impl OutputSink for StringSink {
     }
 }
 
-// Why a bash command died without a clean exit. One flag, one bell: arming is one-way, and `done` says the command is over so the deadline thread stops waiting.
+// Why a shell command died without a clean exit. One flag, one bell: arming is one-way, and `done` says the command is over so the deadline thread stops waiting.
 #[derive(Default)]
 struct StopFlag {
     armed: std::sync::atomic::AtomicBool,

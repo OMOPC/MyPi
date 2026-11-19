@@ -235,7 +235,7 @@ pub(crate) fn error_body(text: &str) -> Vec<Row> {
 }
 
 /// The call as JSON, its intent left to the header, or as written when it does not parse.
-pub(crate) fn default_call(name: &str, args: &str) -> Vec<Row> {
+pub(crate) fn default_call(_name: &str, args: &str) -> Vec<Row> {
     let value = call_args(args).filter(|v| match v {
         Value::Object(object) => object.keys().any(|key| key != "intent"),
         _ => true,
@@ -251,17 +251,7 @@ pub(crate) fn default_call(name: &str, args: &str) -> Vec<Row> {
                 .map(|l| code::line(l, Some("json")))
                 .collect()
         }
-        None => {
-            let lang = language_for_tool(name);
-            args.lines().map(|l| code::line(l, lang)).collect()
-        }
-    }
-}
-
-fn language_for_tool(tool: &str) -> Option<&'static str> {
-    match tool {
-        "bash" => Some("bash"),
-        _ => None,
+        None => args.lines().map(|l| code::line(l, None)).collect(),
     }
 }
 

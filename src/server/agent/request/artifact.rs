@@ -47,7 +47,7 @@ pub fn resolve(
 /// The line appended to the visible part, so the model can fetch the rest.
 pub fn citation(reference: &str, content: &str) -> String {
     format!(
-        "\n\n[truncated: {} lines, {} bytes; full text is #{reference} — name #{reference} in a bash command to read it]",
+        "\n\n[truncated: {} lines, {} bytes; full text is #{reference} — name #{reference} in a shell command to read it]",
         content.lines().count(),
         content.len()
     )

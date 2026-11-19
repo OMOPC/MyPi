@@ -342,7 +342,7 @@ impl App {
             return;
         }
         let Some(target) = draft_dir(&self.cwd, &path) else {
-            // A directory that is not there would open a session every `bash` call fails in.
+            // A directory that is not there would open a session every `shell` call fails in.
             let frame = Frame::new(
                 "local",
                 "cwd",

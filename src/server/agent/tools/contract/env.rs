@@ -18,7 +18,7 @@ pub struct Env {
     pub limits: Limits,
     /// What `grep` expands and what it folds.
     pub grep: GrepLimits,
-    pub bash: BashEnv,
+    pub shell: ShellEnv,
     /// The session's stop signal; a tool that blocks registers what stopping it means.
     pub stop: Arc<crate::server::platform::stop::Stop>,
     pub session: i64,
@@ -245,7 +245,7 @@ pub fn roster(models: &Models, own: &str) -> ModelNames {
 pub struct Defaults {
     pub limits: Limits,
     pub grep: GrepLimits,
-    pub bash: BashEnv,
+    pub shell: ShellEnv,
     pub aliases: BTreeMap<String, String>,
     pub models: Models,
     pub default_budget: u32,
@@ -272,7 +272,7 @@ impl Defaults {
             workspace: Workspace::new(cwd),
             limits: self.limits,
             grep: self.grep,
-            bash: self.bash.clone(),
+            shell: self.shell.clone(),
             stop,
             session,
             batch_len: 0,
@@ -296,11 +296,11 @@ impl Defaults {
     }
 }
 
-/// What `bash` runs with.
+/// What `shell` runs with.
 #[derive(Clone)]
-pub struct BashEnv {
+pub struct ShellEnv {
     pub timeout: Duration,
-    pub shell: crate::server::platform::shell::Shell,
+    pub backend: crate::server::platform::shell::Shell,
 }
 
 /// The one folder a sub-session reads from that is not the project's own: the user's templates.

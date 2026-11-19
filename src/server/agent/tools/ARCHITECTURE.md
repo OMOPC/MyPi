@@ -10,7 +10,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `contract/mod.rs` | declares the six contract groups |
 | `contract/call.rs` | `Batch`, `Cwd` |
 | `contract/output.rs` | `ToolResult`, `ToolOutput`, `Effect`, `MemoOp`, `AliasOp` |
-| `contract/env.rs` | `Env`, `Defaults`, `Limits`, `BashEnv`, `Paths`, `Seen`, `Stamp`, the model table (`Models`, `ModelFacts`) and the child roster derived from it (`roster`) |
+| `contract/env.rs` | `Env`, `Defaults`, `Limits`, `ShellEnv`, `Paths`, `Seen`, `Stamp`, the model table (`Models`, `ModelFacts`) and the child roster derived from it (`roster`) |
 | `contract/halt.rs` | the one sentence a stopped turn leaves: `INTERRUPTED`, and the answer a tool gives when nothing was written |
 | `contract/view.rs` | the `Source`, `Export`, `Child`, `Draft`, `MemoRead` ports, the history shapes, and `MemoScope`, `MemoReadOp`, `MemoVersion`, `MemoView` |
 | `contract/job.rs` | the job vocabulary a tool shares with the loop: `JobSpec`, `Schedule`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink`, and the `JobHost` port |
@@ -37,7 +37,8 @@ Each area's own files and relations are in its architecture document.
 | `fs/splice/` | `splice` | `fs/splice/README.md`, `fs/splice/ARCHITECTURE.md` |
 | `fs/write/` | `write` | `fs/write/README.md`, `fs/write/ARCHITECTURE.md` |
 | `fs/lang/` | the line table every file tool reads | `fs/lang/README.md`, `fs/lang/ARCHITECTURE.md` |
-| `shell/` | `bash`, `cd`, `alias` | `shell/README.md`, `shell/ARCHITECTURE.md` |
+| `cd/` | `cd` | `cd/README.md`, `cd/ARCHITECTURE.md` |
+| `shell/` | `shell`, `alias` | `shell/README.md`, `shell/ARCHITECTURE.md` |
 | `kairos/` | `kairos` | `kairos/README.md`, `kairos/ARCHITECTURE.md` |
 | `mcp/` | `mcp` | `mcp/README.md`, `mcp/ARCHITECTURE.md` |
 | `memo/` | `memo`, `todo`, `context` | `memo/README.md`, `memo/ARCHITECTURE.md` |
@@ -84,7 +85,7 @@ Engine::run
   session's own, and a model switch rebuilds it.
 - A `JobHost` and a sub-session's `Child` reach a tool through `Source`; the loop attaches both when
   it books a session and takes both off when it drops one. A job is only ever created by the loop.
-- The guard is used in two places — the `bash` tool and `alias add` — and judges the expanded
+- The guard is used in two places — the `shell` tool and `alias add` — and judges the expanded
   command in both.
 - The MCP bridge is built by `Source::mcp(session, cwd)` on the session's first `mcp` call, from the
   table for its cwd; a later move rescans it. A broken table fails that call, not the turn. An empty
