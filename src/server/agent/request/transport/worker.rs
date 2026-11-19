@@ -55,8 +55,10 @@ pub const WORKER_ENV: &str = "MYPI_HTTP_WORKER";
 
 /// One session's worker: the child that owns its sockets, made on demand and stopped on demand.
 pub struct SessionWorker {
-    /// The worker that owns the sockets, made on demand and taken on stop.
-    slot: Mutex<Option<SharedWorker>>,
+    /// The worker that owns the sockets, made on demand and taken on stop. Its process is kept
+    /// beside it: a stop must never wait for the worker's own lock, which the request that has to
+    /// be interrupted holds while it reads.
+    slot: Mutex<Option<(SharedWorker, crate::server::platform::proc::Process)>>,
 }
 
 impl SessionWorker {
@@ -70,43 +72,40 @@ impl SessionWorker {
     pub fn request(&self) -> Option<SharedWorker> {
         let mut slot = self.slot.lock().ok()?;
         if slot.is_none() {
-            *slot = Some(HttpWorker::spawn().ok()?);
+            let worker = HttpWorker::spawn().ok()?;
+            let process = worker.lock().ok()?.process.clone();
+            *slot = Some((worker, process));
         }
-        slot.clone()
+        slot.as_ref().map(|(worker, _)| worker.clone())
     }
 
     /// Stop the child that owns the sockets. A later request spawns its own.
     pub fn kill(&self) {
         let old = self.slot.lock().ok().and_then(|mut slot| slot.take());
-        let Some(worker) = old else {
+        let Some((_, process)) = old else {
             crate::server::platform::log::info("worker", "no child to stop");
             return;
         };
-        let pid = HttpWorker::pid(&worker).unwrap_or(0);
-        crate::server::platform::log::info("worker", format!("stopped the child on {pid}"));
-        if let Ok(worker) = worker.lock() {
-            worker.process.stop();
-        }
+        crate::server::platform::log::info(
+            "worker",
+            format!("stopped the child on {}", process.id()),
+        );
+        process.stop();
     }
 }
 
 impl Drop for SessionWorker {
     fn drop(&mut self) {
         let old = self.slot.lock().ok().and_then(|mut slot| slot.take());
-        let Some(worker) = old else {
+        let Some((_, process)) = old else {
             return;
         };
-        if let Ok(worker) = worker.lock() {
-            worker.process.stop();
-            let _ = worker.process.wait_timeout(Duration::from_millis(50));
-        }
+        process.stop();
+        let _ = process.wait_timeout(Duration::from_millis(50));
     }
 }
 
 impl HttpWorker {
-    pub fn pid(slot: &SharedWorker) -> Option<u32> {
-        slot.lock().ok().map(|w| w.process.id()).filter(|p| *p != 0)
-    }
     pub fn spawn() -> Result<SharedWorker> {
         let exe = std::env::current_exe().context("cannot locate the mypi executable")?;
         let mut cmd = Command::new(exe);
