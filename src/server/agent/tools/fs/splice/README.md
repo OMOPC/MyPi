@@ -114,8 +114,9 @@ it. That trial is a report only; nothing is filtered out by it.
 ### The batch's audit
 
 A written `.rs` file hands its shell and its landing places to `fs/fault.rs`, which checks the crate
-once per batch and hangs every diagnostic under the block whose lines it hit. What no written call
-can hold goes to the crate's list on the batch's last written answer that can still take lines;
+once per batch and hangs every diagnostic under the block whose lines it hit. A test failure is
+listed above a check warning on the same block. What no written call can hold goes to the crate's
+list on the batch's last written answer that can still take lines;
 `unfold: true` lifts that list's fold. A file the parser refused still reaches the checker.
 
 ### The answer

@@ -69,6 +69,10 @@ as before when it is not UTF-8.
 A file no sorter claims is streamed: only the window is held, so its whole text never lands in
 memory, and for the same reason it grants no write licence — `splice` cannot write it.
 
+A file a sorter claims is read whole only up to 4 MiB; past that it is streamed the same way, with
+every line numbered, and it too grants no write licence. Any file past 16 MiB is refused outright,
+since one line of it could still fill memory.
+
 ### A directory's entries
 
 A directory answers one level: `name  N lines` for a file, `name/  K files, F dirs` for a directory.

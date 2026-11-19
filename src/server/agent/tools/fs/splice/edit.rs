@@ -8,8 +8,7 @@ use crate::server::agent::tools::fs::lang::Table;
 use crate::server::agent::tools::spec::Item;
 use crate::server::agent::tools::summary;
 
-// One change's landing place: its first and last line, both 1-based, `last < first` when it left
-// nothing there; `None` when the formatter's output could not be walked back to it.
+// One change's landing place: its first and last line, both 1-based, `last < first` when it left nothing there; `None` when the formatter's output could not be walked back to it.
 pub(crate) type Place = Option<(usize, usize)>;
 
 // One change, measured in the snapshot it was written against.
@@ -38,9 +37,7 @@ pub(crate) struct Edit {
 }
 
 impl Edit {
-    // One `edits[k]` of one call, read against a snapshot of `base` lines. A `@@COPY(a..b)@@` in
-    // `new` becomes the snapshot's own lines; a `@@CUT(a..b)@@` does the same and adds the change
-    // that takes those lines away.
+    // One `edits[k]` of one call, read against a snapshot of `base` lines. A `@@COPY(a..b)@@` in `new` becomes the snapshot's own lines; a `@@CUT(a..b)@@` does the same and adds the change that takes those lines away.
     pub(crate) fn read(item: &Item, index: usize, base: &[&str]) -> Result<Vec<Self>> {
         let total = base.len();
         let (start, expect_start) = item.axis("start")?;
@@ -73,7 +70,7 @@ impl Edit {
         }];
         for (first, last) in cuts {
             anyhow::ensure!(
-                !(first < end && start - 1 < last),
+                !(first <= end && start <= last),
                 "`{}.new` cuts {first}..{last}, which its own range already takes; a cut belongs \
                  to another edit",
                 item.label()
@@ -91,8 +88,7 @@ impl Edit {
         Ok(out)
     }
 
-    // The same change with a comment around its block, so the formatter's output can be walked
-    // back to it. `tag` names this run and `at` its position in the list handed to the formatter.
+    // The same change with a comment around its block, so the formatter's output can be walked back to it. `tag` names this run and `at` its position in the list handed to the formatter.
     pub(crate) fn marked(&self, tag: &str, at: usize) -> Self {
         let mut out = self.clone();
         let mut block = Vec::with_capacity(self.block.len() + 2);
@@ -109,32 +105,26 @@ impl Edit {
     }
 }
 
-// Whether `line` opens with the words `expect`, compared as a flat prefix: the model walks the
-// line from its front and everything it sent must match there, in order; it may stop short of the
-// whole line, so `pub fn myfunc` confirms `pub fn myfunc() -> Result<()> {`.
+// Whether `line` opens with the words `expect`, compared as a flat prefix: the model walks the line from its front and everything it sent must match there, in order; it may stop short of the whole line, so `pub fn myfunc` confirms `pub fn myfunc() -> Result<()> {`.
 pub(crate) fn opens(line: &str, expect: &str) -> bool {
     summary::flat(line).starts_with(&summary::flat(expect))
 }
 
-// One call's items read against the snapshot: each item's ranges, or why that item alone was left
-// out. A range may be cut once per call: two macros cutting into one another is the model
-// contradicting itself.
+// One call's items read against the snapshot: each item's ranges, or why that item alone was left out. A range may be cut once per call: two macros cutting into one another is the model contradicting itself.
 pub(crate) fn call_edits(items: &[Item], base: &[&str]) -> Vec<Result<Vec<Edit>>> {
     let mut cuts: Vec<(usize, usize)> = Vec::new();
     items
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            let list =
-                Edit::read(item, index + 1, base).map_err(|why| anyhow!("MISMATCH: {why:#}"))?;
+            let list = Edit::read(item, index + 1, base)?;
             let clash = list.iter().filter(|edit| edit.cut).any(|edit| {
                 cuts.iter()
                     .any(|(first, last)| edit.start < *last && *first < edit.end)
             });
             anyhow::ensure!(
                 !clash,
-                "MISMATCH: two `CUT` macros of this call cut overlapping lines; a range may be cut \
-                 once"
+                "two `CUT` macros of this call cut overlapping lines; a range may be cut once"
             );
             cuts.extend(
                 list.iter()
@@ -147,10 +137,7 @@ pub(crate) fn call_edits(items: &[Item], base: &[&str]) -> Vec<Result<Vec<Edit>>
 }
 
 // A `new` string with its macros filled in, and the 0-based ranges it wants cut away.
-//
-// `@@COPY(a..b)@@` and `@@CUT(a..b)@@` name lines of the snapshot, 1-based inclusive, and are
-// filled with those lines as they stand. Filling is one pass: a token inside the copied lines is
-// copied, never followed.
+// `@@COPY(a..b)@@` and `@@CUT(a..b)@@` name lines of the snapshot, 1-based inclusive, and are filled with those lines as they stand. Filling is one pass: a token inside the copied lines is copied, never followed.
 fn rewritten(new: &str, base: &[&str], item: &Item) -> Result<(String, Vec<(usize, usize)>)> {
     let label = item.label();
     let mut text = String::with_capacity(new.len());
@@ -211,8 +198,7 @@ pub(crate) enum Why {
     Mismatch(String),
 }
 
-// Whether two changes fight over the same lines. A point (an insertion) collides with the range
-// that holds it strictly inside, and with another point on the same line.
+// Whether two changes fight over the same lines. A point (an insertion) collides with the range that holds it strictly inside, and with another point on the same line.
 pub(crate) fn collide(a: &Edit, b: &Edit) -> bool {
     match (a.start == a.end, b.start == b.end) {
         (true, true) => a.start == b.start,
@@ -222,8 +208,7 @@ pub(crate) fn collide(a: &Edit, b: &Edit) -> bool {
     }
 }
 
-// The snapshot with every change in place, applied from the bottom up so the lines above keep
-// their numbers while they are still being used.
+// The snapshot with every change in place, applied from the bottom up so the lines above keep their numbers while they are still being used.
 pub(crate) fn spliced(text: &str, edits: &[&Edit]) -> String {
     let mut out: Vec<String> = text.lines().map(str::to_string).collect();
     let mut ordered: Vec<&&Edit> = edits.iter().collect();
@@ -239,14 +224,16 @@ pub(crate) fn spliced(text: &str, edits: &[&Edit]) -> String {
     joined
 }
 
-// Where each change lands when nothing but the changes themselves moves the lines: the ranges are
-// ascending, so each one's own shift is the sum of the deltas above it.
+// Each change's shift sums the deltas above it; places are written back in handed-over order.
 pub(crate) fn shifted(edits: &[Edit]) -> Vec<Place> {
+    let mut order: Vec<usize> = (0..edits.len()).collect();
+    order.sort_by_key(|at| (edits[*at].start, edits[*at].start != edits[*at].end));
+    let mut out = vec![None; edits.len()];
     let mut shift: isize = 0;
-    let mut out = Vec::with_capacity(edits.len());
-    for edit in edits {
+    for at in order {
+        let edit = &edits[at];
         let first = (edit.start as isize + shift).max(0) as usize + 1;
-        out.push(Some((first, first + edit.block.len() - 1)));
+        out[at] = Some((first, first + edit.block.len() - 1));
         shift += edit.block.len() as isize - (edit.end - edit.start) as isize;
     }
     out
@@ -286,9 +273,16 @@ pub(crate) fn drift(edit: &Edit, base: &[impl AsRef<str>]) -> Option<String> {
 
 // The line one anchor names, refused: what it actually reads, against what the model gave.
 fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String> {
-    // A `start` past the last line appends, and there is no line to confirm.
+    // A bare number one past the last line appends; with words, there is no line to confirm.
     let Some(actual) = base.get(idx).map(AsRef::as_ref) else {
-        return None;
+        if expect.is_empty() {
+            return None;
+        }
+        return Some(format!(
+            "MISMATCH: line {} does not exist: the file has {} lines",
+            idx + 1,
+            base.len()
+        ));
     };
     let shown: String = actual.trim().chars().take(120).collect();
     if expect.is_empty() {
@@ -312,9 +306,7 @@ fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String>
     ))
 }
 
-// Which edits may run and which are refused: the kept positions, then each refused one with its
-// reason. A later edit that fights an accepted one loses, whichever call sent it; the rest of the
-// batch lands.
+// Which edits may run and which are refused: the kept positions, then each refused one with its reason. A later edit that fights an accepted one loses, whichever call sent it; the rest of the batch lands.
 pub(crate) fn settle_overlaps(edits: &[Edit], base: &[&str]) -> (Vec<usize>, Vec<(usize, Why)>) {
     let mut kept: Vec<usize> = Vec::new();
     let mut dropped: Vec<(usize, Why)> = Vec::new();
