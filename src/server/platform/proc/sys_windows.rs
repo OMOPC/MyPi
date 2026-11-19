@@ -105,31 +105,60 @@ pub fn prepare(cmd: &mut Command, _follow: Follow) {
     cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
 }
 
-// Let the leader run; every thread it has so far is resumed.
-pub fn resume(pid: u32) {
+// Let the leader run; every thread it has so far is resumed, or the caller is told why not.
+pub fn resume(pid: u32) -> Result<(), String> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
     if snapshot == -1 {
-        return;
+        return Err(format!(
+            "CreateToolhelp32Snapshot: {}",
+            std::io::Error::last_os_error()
+        ));
     }
+    let outcome = resume_threads(snapshot, pid);
+    // SAFETY: the snapshot came from the call above and is closed exactly once here.
+    unsafe {
+        CloseHandle(snapshot as *mut c_void);
+    }
+    outcome
+}
+
+fn resume_threads(snapshot: isize, pid: u32) -> Result<(), String> {
+    // SAFETY: the snapshot stays open for the whole walk; every handle is checked and closed.
     unsafe {
         let mut entry = MaybeUninit::<ThreadEntry32>::zeroed();
         let entry = entry.as_mut_ptr();
         (*entry).size = size_of::<ThreadEntry32>() as u32;
-        if Thread32First(snapshot, entry) != 0 {
-            loop {
-                if (*entry).owner_process_id == pid {
-                    let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, (*entry).thread_id);
-                    if thread != 0 {
-                        ResumeThread(thread);
-                        CloseHandle(thread as *mut c_void);
-                    }
+        if Thread32First(snapshot, entry) == 0 {
+            return Err(format!(
+                "Thread32First: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        let mut found = false;
+        loop {
+            if (*entry).owner_process_id == pid {
+                found = true;
+                let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, (*entry).thread_id);
+                if thread == 0 {
+                    return Err(format!("OpenThread: {}", std::io::Error::last_os_error()));
                 }
-                if Thread32Next(snapshot, entry) == 0 {
-                    break;
+                let resumed = ResumeThread(thread);
+                let failure =
+                    (resumed == u32::MAX).then(|| std::io::Error::last_os_error().to_string());
+                CloseHandle(thread as *mut c_void);
+                if let Some(reason) = failure {
+                    return Err(format!("ResumeThread: {reason}"));
                 }
             }
+            if Thread32Next(snapshot, entry) == 0 {
+                break;
+            }
         }
-        CloseHandle(snapshot as *mut c_void);
+        if found {
+            Ok(())
+        } else {
+            Err(format!("no thread of pid={pid} to resume"))
+        }
     }
 }
 

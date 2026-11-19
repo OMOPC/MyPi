@@ -75,7 +75,9 @@ impl Group {
 }
 
 // Unix needs no second step: the fork thread finishes the child's setup before it execs.
-pub fn resume(_pid: u32) {}
+pub fn resume(_pid: u32) -> Result<(), String> {
+    Ok(())
+}
 
 // Unix has no handle to close: the group disappears with its members.
 pub fn stop(process: &Process) {
@@ -89,6 +91,8 @@ pub fn stop(process: &Process) {
             return;
         }
         phase.phase = Phase::Requesting;
+        // Written before the wait so the reaper never records "none" for a polite stop.
+        phase.grace = Grace::Within;
     }
     inner.group.request_stop();
     let within = match inner.exit.wait_timeout(GRACE) {

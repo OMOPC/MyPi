@@ -324,8 +324,6 @@ fn create(mut cmd: Command, origin: Origin, follow: Follow) -> io::Result<Proces
         stderr: child.stderr.take(),
     };
     let group = sys::Group::attach(pid, follow);
-    // The leader was born suspended so that its job existed before its first instruction.
-    sys::resume(pid);
     let backoff = group.backed_off();
     if backoff {
         log::warn(
@@ -343,6 +341,12 @@ fn create(mut cmd: Command, origin: Origin, follow: Follow) -> io::Result<Proces
         stop_phase: Mutex::new(StopPhase::default()),
         stop_failed: AtomicBool::new(false),
     });
+    // The leader was born suspended so that its job existed before its first instruction.
+    if let Err(reason) = sys::resume(pid) {
+        log::error("proc", format!("pid={pid} resume failed: {reason}"));
+        Process(inner).stop();
+        return Err(io::Error::other(reason));
+    }
     let container = if backoff { "backoff" } else { sys::CONTAINER };
     log::info(
         "proc",
@@ -368,8 +372,6 @@ fn spawn_reaper(inner: Arc<Inner>, mut child: Child) -> io::Result<()> {
         .spawn(move || {
             let status = child.wait();
             let reclaimed = inner.group.reclaim();
-            let phase = *lock(&inner.stop_phase);
-            let method = method_of(phase, reclaimed);
             let failed = inner.stop_failed.load(Ordering::SeqCst);
             let code = status
                 .as_ref()
@@ -378,6 +380,9 @@ fn spawn_reaper(inner: Arc<Inner>, mut child: Child) -> io::Result<()> {
                 .map(|code| code.to_string())
                 .unwrap_or_else(|| "none".to_string());
             inner.exit.publish(status);
+            // Read after publishing: the stop side writes the final grace when its wait returns.
+            let phase = *lock(&inner.stop_phase);
+            let method = method_of(phase, reclaimed);
             log::info(
                 "proc",
                 format!(
