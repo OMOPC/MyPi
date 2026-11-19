@@ -1,22 +1,40 @@
 # rust
 
 Rust's own declarations, registered in `mod.rs`: its suffixes, line table, graph facts, formatter,
-checker, tests, and relation index.
+checker, tests and relation index.
 
-## Relations
+## 1. Design / Schema
 
-`relations.rs` answers `A::b` and a lone name. It prints three sections, in this order:
+- Suffixes: `.rs`.
+- The line table reads Rust's pieces: declarations, `use` runs, attributes and comments, closing
+  braces, and block heads inside long functions.
+- Relations: `A::b` as a type or module member, and a lone name's declarations.
+- Graph facts: the unit a file belongs to, the units an entry declares, exports, edges and the source domain.
+- Formatter: `rustfmt`, with the edition from the nearest `Cargo.toml`.
+- Checker: `cargo check` over the unit a file belongs to.
+- Tests: the tests a written line range declares, run alone.
+
+### Relations output
+
+The relation index prints three sections, in this order:
 
 - `[type] A::b` — a type member, or why no crate-defined `A` declares `b`;
 - `[module] A::b` — a module member, or why no module `A` holds `b`;
 - `[x-ray] A` — the declarations of `A` and the `impl` blocks that carry its members.
 
-Two limits belong to this file alone, because only Rust knows what an `impl` block is:
+At most 12 members are listed per block, and at most 8 `impl` blocks per type's x-ray.
 
-| constant | value | what it caps |
-|---|---|---|
-| `MEMBERS` | 12 | members one block lists |
-| `IMPLS` | 8 | `impl` blocks one type's x-ray lists |
+## 2. Design intent
 
-The tool that asks for these rows never sees the limits: `Relations::scan` takes only the sources,
-the root and the query, so a new language needs no change outside its own file.
+- Rust knows what an `impl` block is, so the relation limits live here, not in the tool.
+- A formatter, checker and test run are the language's own; the shared side only schedules them.
+- The graph facts speak files; the machine above speaks units.
+
+## 3. Unresolved
+
+- A macro-generated item is not seen; only the text is read.
+- A test whose full path the toolchain does not list cannot be run by name.
+
+## 4. Config fields
+
+None. Rust reads no key of its own; the toolchain is found from the file's own tree.

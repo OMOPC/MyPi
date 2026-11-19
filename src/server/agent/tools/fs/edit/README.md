@@ -13,12 +13,12 @@ several times is refused. `new` is whatever stands in its place. `unfold` lifts 
 fold for every written file of the batch.
 
 `edit` takes no array: its payload is large enough that a batch would move the same bytes into one
-argument. One call is one path in, one read, one atomic write. The file must already be in
-`env.seen`: a path this conversation has not read is refused, and so is one whose last write did
-not land clean. A refusal takes the licence away, so the next attempt must read or grep the file
-first.
+argument. One call is one path in, one read, one atomic write. The file must already have been read
+in this conversation: a path this conversation has not read is refused, and so is one whose last
+write did not land clean. A refusal takes the licence away, so the next attempt must read or grep
+the file first.
 
-A session gets either `edit` or `splice`, never both; the rule is in `../../README.md`.
+A session gets either `edit` or `splice`, never both; the rule is in `../../../README.md`.
 
 ### The answer
 

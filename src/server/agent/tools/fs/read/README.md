@@ -45,7 +45,6 @@ A Markdown file numbers what its grammar makes structural: every heading line, t
 fenced block, a list's first and last line (and, when items nest, each outer item's own line), a
 quote's first and last line, an HTML block's two tag lines, and the front matter's pair of `---`.
 
-
 `edit` locates a change by text, so a session with `edit` and without `splice` gets no numbers at
 all: the body is the file, ready to be copied into `old`.
 
@@ -122,10 +121,10 @@ did. A file whose moment cannot be read leaves its level unjudged, which stamps 
 ### Item mode
 
 An item that names `item` turns its path into a scope: every piece under it whose own header equals
-that text answers whole, every line numbered, in line order. What is matched is a piece's `exact` —
-the header as the file writes it, up to its `{` (`impl Shout for Dumb`) — and the match is equality,
-not containment. Runs of whitespace collapse on both sides; nothing else is normalized. Copying the
-header from the first line of an earlier answer is the way to name one: it prints the `exact` itself.
+that text answers whole, every line numbered, in line order. What is matched is the header as the
+file writes it, up to its `{` (`impl Shout for Dumb`) — and the match is equality, not containment.
+Runs of whitespace collapse on both sides; nothing else is normalized. Copying the header from the
+first line of an earlier answer is the way to name one: it prints that header itself.
 
 A piece's own line and its span follow in parentheses: `fn walk(&self) (impl List)  2..5`. A
 directory scopes every file a language reads under it, and each answer's file is named above its
@@ -134,14 +133,13 @@ first piece: `==> src/a/b.rs`.
 `offset` and `limit` belong to the body read: `item` replaces the window, so both are ignored, and
 the header says so in one line when the call stated either. The answer is not budgeted — equality
 bounds how many pieces can share one header — so nothing is ever folded away here. Every file it
-drew from is stamped in `env.seen`, as a body read stamps one, so `splice` needs no second read.
+drew from is stamped as read, as a body read stamps one, so `splice` needs no second read.
 
 ### The module view
 
 A file read inside a unit arrives with its neighbourhood, because a unit is edited as a whole far
-more often than one file is. The graph layer (`fs/lang/graph`) builds it from the language's facts:
-Rust's facts live in `lang/guages/rust/facts.rs`, its narration in `view.rs`. A language without
-facts has no view. The view follows the body, opens with `--- module a::b (src/a/b/) · primer ---`,
+more often than one file is. The graph layer builds it from the language's own facts; a language
+without facts has no view. The view follows the body, opens with `--- module a::b (src/a/b/) · primer ---`,
 and holds five parts:
 
 - `exports (N):` — the entry's `pub` items and `pub use` statements, all of them; `none` only when

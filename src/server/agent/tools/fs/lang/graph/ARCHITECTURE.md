@@ -6,42 +6,25 @@ What is here, what each file holds, who talks to whom. Current state only.
 
 | file | holds |
 |---|---|
-| `mod.rs` | the types (`Unit`, `Decl`, `Child`, `Edge`, `Around`, `Boundary`, `RawEdge`, `Domain`, `Size`), and the two doors: `unit` and `build`/`render` |
-| `loader.rs` | the one read-only disk door: `Loader` with a per-call cache, plus filtered and unfiltered directory entries and the one text door under the 4 MiB cap |
-| `index.rs` | turning facts into a neighbourhood: unit lookup, child expansion, size, incoming/outgoing, declared-by |
-| `walk.rs` | the upward search: the deadline, whole-level drops, the boundary |
-| `parts.rs` | the printing parts: relative paths, plurals, clipping, headings, node/edge/boundary lines, grouped importers |
-| `view.rs` | the default narration, for a language with no `view` of its own |
+| `mod.rs` | module declarations and the entries' re-exports |
+| `types.rs` | the shared shapes: units, declarations, edges, children and one neighbourhood |
+| `entry.rs` | the doors: the unit a file belongs to, its neighbourhood and the rows a view reads |
+| `loader.rs` | the one read-only disk door: a per-call cache, filtered directory entries and the text cap |
+| `index.rs` | turning facts into a neighbourhood: unit lookup, child expansion, size, incoming/outgoing and declared-by |
+| `walk.rs` | the upward search: the deadline, whole-level drops and the boundary |
+| `parts.rs` | the printing parts: relative paths, plurals, clipping, headings, node/edge/boundary lines and grouped importers |
+| `view.rs` | the default narration, for a language with no view of its own |
 
 ## What it talks to
 
-- **`lang::Hub`**: the facts, as function pointers. This layer never names a language.
-- **`lang::suffixes(hub)`**: the suffixes a walk may read, so foreign files are never parsed.
-- **`lang::Row`**: the row shape every narration answers.
-- **`read`**: the only consumer today; it decides when to build, keeps the one-primer-per-unit
-  memory, stamps the file it read.
-- **Who calls it**: `read::tool` through `lang::hub`.
-
-## Inside
-
-```text
-graph::unit(facts, file)          the unit without building anything
-graph::build(facts, loader, file) the neighbourhood
-  → index::build
-      → facts.unit_of / domain
-      → facts.territory          children, with line and tags
-      → facts.interface          per unit text
-      → facts.edges              per unit text, landing files already resolved
-      → walk::scan               incoming edges, plus the boundary
-graph::render(facts, around, loader, batch)
-  → facts.view, or view::default_view
-```
+- **The language's module facts**: as callbacks. This layer never names a language.
+- **The language's suffixes**: the suffixes a walk may read, so foreign files are never parsed.
+- **The row shape every narration answers.**
+- **`read`**: the only consumer today; it decides when to build, keeps the per-unit primer memory and stamps the file it read.
+- **Who calls it**: `read` through the language's module facts.
 
 ## Must stay in step
 
-1. `Boundary` fields and a language's scan line: `stop`, `complete` and `no_above` are the three
-   facts a view needs to say why a walk ended.
-2. `Edge.to` and `Edge.to_file`: incoming matching uses the unit, child dependencies use the file.
-   Collapsing one into the other loses either the unit count or the sibling names.
-3. `walk`'s suffix filter and `lang::suffixes`: a language that answers for a pointer but is not in
-   `LANGUAGES` would walk every file.
+1. The boundary's fields and a language's scan line: the fields a view needs to say why a walk ended must stay in one answer.
+2. A unit and the fine file it lands on: incoming matching uses the unit, child dependencies use the file. Collapsing one into the other loses either the unit count or the sibling names.
+3. The walk's suffix filter and the registry's suffixes: a language that answers for a pointer but is not in the language list would walk every file.

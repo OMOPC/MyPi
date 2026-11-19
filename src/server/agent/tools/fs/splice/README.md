@@ -96,28 +96,22 @@ Both are the file's language's own; a language that names no formatter writes th
 | one whose formatter does not finish or cannot run | the text lands as it stands and the answer says it was not formatted |
 | one without a formatter | the text is spliced from its lines and nothing else |
 
-Each change is wrapped in a marker comment before the formatter sees it, so the answer can say
-where that block ended up; the markers are stripped from what is written, and the blank lines they
-held open are folded back. A comment's word carries a fingerprint of the snapshot, so no line of the
-file can be read as one. A landing the markers cannot be walked back to falls to the position the
-plain splice would give it.
+The formatter's output decides where each block lands. A landing the formatter's output cannot be
+walked back to falls to the position the plain splice would give it.
 
-Every parse is one `rustfmt` run over stdin: the binary is looked for beside this executable first,
-then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
-directory. A verdict the formatter reached is remembered per edition and content; a timeout or a
-missing binary is not, since neither says anything about the text.
+Every parse is one `rustfmt` run. Its edition comes from the nearest `Cargo.toml` above the file. A
+timeout or a missing binary says nothing about the text, so the text lands as it stands.
 
-When the merged text does not parse, each change is tried on its own against the file as it was, so
-the answer can name the block the parser blames: a missing brace points below the change, never at
-it. That trial is a report only; nothing is filtered out by it.
+When the merged text does not parse, the answer names the block the parser blames: a missing brace
+points below the change, never at it. Nothing is filtered out by that report.
 
 ### The batch's audit
 
-A written `.rs` file hands its shell and its landing places to `fs/fault.rs`, which checks the crate
-once per batch and hangs every diagnostic under the block whose lines it hit. A test failure is
-listed above a check warning on the same block. What no written call can hold goes to the crate's
-list on the batch's last written answer that can still take lines;
-`unfold: true` lifts that list's fold. A file the parser refused still reaches the checker.
+A written `.rs` file joins the batch's audit, which checks the crate once per batch and hangs every
+diagnostic under the block whose lines it hit. A test failure is listed above a check warning on the
+same block. What no written call can hold goes to the crate's list on the batch's last written
+answer that can still take lines; `unfold: true` lifts that list's fold. A file the parser refused
+still reaches the checker.
 
 ### The answer
 
