@@ -97,8 +97,10 @@ impl Inner {
 
     fn cancel_all(&self) {
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cancels = Vec::new();
         for task in st.tasks.values_mut() {
             task.cancel.set();
+            cancels.push(task.cancel.clone());
             task.wake_on_done = false;
             task.state = TaskState::Canceled;
             if let Some(output) = task.output.take() {
@@ -110,6 +112,10 @@ impl Inner {
         st.running = 0;
         st.pending_wakes.clear();
         drop(st);
+        // The stop actions run on threads of their own; the directory must outlive them.
+        for cancel in &cancels {
+            cancel.settle();
+        }
         self.dir.cleanup();
         scheduler::ring(&self.bell);
     }
