@@ -105,18 +105,22 @@ impl Shell {
         matches!(self.kind, Kind::Bash | Kind::Zsh)
     }
 
-    // One command line, ready to spawn: the program plus its own one-shot argument shape.
+// One command line, ready to spawn: the program, its own one-shot argument shape, and the encoding it must emit.
     pub fn command(&self, line: &str) -> Command {
         let mut cmd = Command::new(&self.program);
         match self.kind {
-            Kind::Bash | Kind::Zsh | Kind::Niu => {
-                cmd.arg("-c");
+            Kind::Bash | Kind::Zsh => {
+                cmd.arg("-c").arg(line);
+                cmd.env("LC_ALL", utf8_locale());
+            }
+            Kind::Niu => {
+                cmd.arg("-c").arg(line);
             }
             Kind::Pwsh => {
-                cmd.args(["-NoProfile", "-NonInteractive", "-Command"]);
+                cmd.args(["-NoProfile", "-NonInteractive", "-Command"])
+                    .arg(pwsh_line(line));
             }
         }
-        cmd.arg(line);
         cmd
     }
 
@@ -128,6 +132,19 @@ impl Shell {
             Kind::Pwsh => pwsh_quote(&text),
         }
     }
+}
+
+// The UTF-8 locale forced on unix: Linux has C.UTF-8, macOS accepts UTF-8.
+fn utf8_locale() -> &'static str {
+    match os::current().name {
+        "macos" => "UTF-8",
+        _ => "C.UTF-8",
+    }
+}
+
+// Ask pwsh for UTF-8 on the pipe first; a failed setting never refuses the command.
+fn pwsh_line(line: &str) -> String {
+    format!("try {{ [Console]::OutputEncoding = [Text.Encoding]::UTF8 }} catch {{}}; {line}")
 }
 
 // Single-quoted for a POSIX shell; a quote closes, escapes and reopens.

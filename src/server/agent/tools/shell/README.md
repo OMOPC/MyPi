@@ -12,7 +12,7 @@
 | `admit.rs` | `admit`: aliases → `#ref` → guard, and the line it hands the runner |
 | `segment.rs` | the separator set and the segment heads; the guard and the alias expansion share both |
 | `guard.rs` | the command classifier: `normalize`, `classify`, `Verdict`, `RuleHit` |
-| `runner.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag` |
+| `runner.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; folds `\r\n` as it reads |
 | `alias/tool.rs` | `alias` add/list/remove; the config layer is read-only here |
 
 ### One command
@@ -31,11 +31,12 @@ the guard, a backslash before a newline is a continuation, and `expand_alias` re
 of every segment once.
 
 The command itself runs in the session's shell (`Env.shell.backend`): `bash` or `zsh` on unix,
-`pwsh` or `niu` (niubash) on windows. `platform::shell` builds the command line and writes the quoted path a
-`#<ref>` becomes; `platform::proc` starts it as a tree of its own and stops it as a whole; the
-platform picks the ladder. A stop arrives through the `Stop` the runner registered after the spawn;
-the tool thread itself only receives, so nothing wakes it on a timer. Stdin is the null device: a
-command that prompts reads EOF, never the terminal the front end owns.
+`pwsh` or `niu` (niubash) on windows. `platform::shell` builds the command line, sets the encoding
+the backend must emit, and writes the quoted path a `#<ref>` becomes; `platform::proc` starts it as
+a tree of its own and stops it as a whole; the platform picks the ladder. A stop arrives through the
+`Stop` the runner registered after the spawn; the tool thread itself only receives, so nothing wakes
+it on a timer. Stdin is the null device: a command that prompts reads EOF, never the terminal the
+front end owns.
 
 ### shell
 

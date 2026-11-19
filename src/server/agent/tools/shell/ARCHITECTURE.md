@@ -9,13 +9,14 @@
 | `admit.rs` | `admit`: aliases → `#ref` → guard, and the line it hands the runner |
 | `segment.rs` | the separator set and the segment heads; the guard and the alias expansion share both |
 | `guard.rs` | the command classifier: `normalize`, `classify`, `Verdict`, `RuleHit` |
-| `runner.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc` |
+| `runner.rs` | one command line: `run`, `run_to`, `OutputSink`, `Exit`, `StopFlag`; registers the stop action, spawns and signals through `platform::proc`, folds `\r\n` as it reads |
 | `alias/{mod,tool}.rs` | `alias` add/list/remove; the config layer is read-only here |
 
 ## Relations
 
-- Depends on `platform::shell` for the session's shell and the one-shot argument shape, on
-  `platform::proc` for the process group, and on `platform::stop` for the stop action.
+- Depends on `platform::shell` for the session's shell, the one-shot argument shape and the
+  encoding it sets, on `platform::proc` for the process group, and on `platform::stop` for the
+  stop action.
 - Depends on `contract::env` for `ShellEnv` (backend, timeout) and `Aliases`.
 - `admit` and `guard` are shared with `kairos`: every job command goes through the same admission
   and the same classifier.

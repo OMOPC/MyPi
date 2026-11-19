@@ -18,7 +18,7 @@ Shell { kind: Bash | Zsh | Pwsh | Niu, program }
 
 Shell::native()                      this platform's default: bash on unix, pwsh on windows
 Shell::resolve(name)                 a configured name → the backend; a foreign shell is refused
-Shell::command(line)                 the program plus its one-shot shape: `-c`, or `-NoProfile -NonInteractive -Command`
+Shell::command(line)                 the program, its one-shot shape, and the UTF-8 setup the backend needs
 Shell::path_token(path)              the one quoted token naming a stored text as a file
 Shell::guarded()                     unix shells only
 ```

@@ -97,6 +97,7 @@ pub(crate) fn run_to(
                     Ok(n) => {
                         // Lossy per read, keeping the trailing partial line back: a multi-byte character or escape split across reads must not be emitted half-formed.
                         pending.push_str(&String::from_utf8_lossy(&raw[..n]));
+                        fold_crlf(&mut pending);
                         while let Some(i) = pending.find('\n') {
                             batch.extend(pending.drain(..=i));
                             if batch.len() >= CHUNK {
@@ -277,5 +278,12 @@ impl StopFlag {
             .bell
             .wait_timeout_while(guard, timeout, |_| !self.is_armed() && !self.is_done())
             .unwrap_or_else(|e| e.into_inner());
+    }
+}
+
+// Fold CRLF in place; a lone CR stays, because a progress bar uses it to return to column zero.
+fn fold_crlf(text: &mut String) {
+    if text.contains("\r\n") {
+        *text = text.replace("\r\n", "\n");
     }
 }
