@@ -60,11 +60,11 @@ splice::TOOL
    coordinates, so a changed walk-back changes both.
 4. `Built` and `tool.rs`'s audit block: the checked file, its landing places and the per-call slots
    are built together, and `fs/fault` reads them as they are.
-7. `receipt`'s footer tags and `fs::fault`'s report lines: one family, `[i] …` and `[+N …]`, since
+5. `receipt`'s footer tags and `fs::fault`'s report lines: one family, `[i] …` and `[+N …]`, since
    both land in the same footer and the model reads them as one paragraph.
-8. `Run` and `env.seen`: the authorisation is granted only for a clean `OK`, so `Built::clean` and
+6. `Run` and `env.seen`: the authorisation is granted only for a clean `OK`, so `Built::clean` and
    the answer's verdict must agree on what that means.
-5. `mass_text` / `parse_range` and `subagent/final`: they are the only other consumer of the
+7. `mass_text` / `parse_range` and `subagent/final`: they are the only other consumer of the
    whole-line write, and they carry no anchor words at all.
-6. `TOOL.name` and `fs/read`'s `Numbers`: a Rust body carries line numbers only while `splice` is
+8. `TOOL.name` and `fs/read`'s `Numbers`: a Rust body carries line numbers only while `splice` is
    in the session's list.
