@@ -3,7 +3,7 @@
 use std::io;
 use std::process::Command;
 
-use super::{Follow, Grace, Inner, KILL_LIMIT, Phase, Process, GRACE, lock};
+use super::{Follow, GRACE, Grace, Inner, KILL_LIMIT, Phase, Process, lock};
 
 unsafe extern "C" {
     fn setsid() -> i32;
@@ -74,6 +74,9 @@ impl Group {
     }
 }
 
+// Unix needs no second step: the fork thread finishes the child's setup before it execs.
+pub fn resume(_pid: u32) {}
+
 // Unix has no handle to close: the group disappears with its members.
 pub fn stop(process: &Process) {
     let inner: &Inner = &process.0;
@@ -94,7 +97,11 @@ pub fn stop(process: &Process) {
     };
     {
         let mut phase = lock(&inner.stop_phase);
-        phase.grace = if within { Grace::Within } else { Grace::Ignored };
+        phase.grace = if within {
+            Grace::Within
+        } else {
+            Grace::Ignored
+        };
         phase.phase = Phase::Terminating;
     }
     if !within {

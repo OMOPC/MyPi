@@ -13,9 +13,8 @@ use crate::server::platform::log;
 #[cfg(unix)]
 const GRACE: Duration = Duration::from_secs(2);
 
-// How long the killer waits for the group to disappear after SIGKILL.
-#[cfg(unix)]
-const KILL_LIMIT: Duration = Duration::from_millis(50);
+// How long the killer waits for the tree to disappear after the last signal.
+pub(crate) const KILL_LIMIT: Duration = Duration::from_millis(50);
 
 // How many creations may queue behind the single fork thread.
 const QUEUE: usize = 32;
@@ -28,8 +27,6 @@ pub enum Origin {
     Browser,
     Mcp,
     Frontend,
-    Maintainer,
-    Teardown,
 }
 
 impl Origin {
@@ -40,8 +37,6 @@ impl Origin {
             Origin::Browser => "browser",
             Origin::Mcp => "mcp",
             Origin::Frontend => "frontend",
-            Origin::Maintainer => "maintainer",
-            Origin::Teardown => "teardown",
         }
     }
 }
@@ -329,9 +324,14 @@ fn create(mut cmd: Command, origin: Origin, follow: Follow) -> io::Result<Proces
         stderr: child.stderr.take(),
     };
     let group = sys::Group::attach(pid, follow);
+    // The leader was born suspended so that its job existed before its first instruction.
+    sys::resume(pid);
     let backoff = group.backed_off();
     if backoff {
-        log::warn("proc", format!("pid={pid} single-process stop, tree guarantee lost"));
+        log::warn(
+            "proc",
+            format!("pid={pid} single-process stop, tree guarantee lost"),
+        );
     }
     let inner = Arc::new(Inner {
         pid,

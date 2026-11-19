@@ -9,6 +9,9 @@ use super::{Follow, Grace, Inner, Phase, Process, lock};
 use crate::server::platform::log;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const CREATE_SUSPENDED: u32 = 0x0000_0004;
+const TH32CS_SNAPTHREAD: u32 = 0x0000_0004;
+const THREAD_SUSPEND_RESUME: u32 = 0x0002;
 const PROCESS_SET_QUOTA: u32 = 0x0100;
 const PROCESS_TERMINATE: u32 = 0x0001;
 const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
@@ -75,14 +78,59 @@ unsafe extern "system" {
     fn TerminateJobObject(job: isize, exit_code: u32) -> i32;
     fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
     fn CloseHandle(handle: *mut c_void) -> i32;
+    fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> isize;
+    fn Thread32First(snapshot: isize, entry: *mut ThreadEntry32) -> i32;
+    fn Thread32Next(snapshot: isize, entry: *mut ThreadEntry32) -> i32;
+    fn OpenThread(access: u32, inherit: i32, id: u32) -> isize;
+    fn ResumeThread(thread: isize) -> u32;
+}
+
+#[repr(C)]
+struct ThreadEntry32 {
+    size: u32,
+    usage: u32,
+    thread_id: u32,
+    owner_process_id: u32,
+    base_priority: i32,
+    delta_priority: i32,
+    flags: u32,
 }
 
 pub const CONTAINER: &str = "job";
 
-// No console window for a child started from a process that has none.
+// No console window for a child started from a process that has none. The leader is born
+// suspended: it is put in its job before its first instruction, so nothing it starts can escape.
 pub fn prepare(cmd: &mut Command, _follow: Follow) {
     use std::os::windows::process::CommandExt as _;
-    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
+}
+
+// Let the leader run; every thread it has so far is resumed.
+pub fn resume(pid: u32) {
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+    if snapshot == -1 {
+        return;
+    }
+    unsafe {
+        let mut entry = MaybeUninit::<ThreadEntry32>::zeroed();
+        let entry = entry.as_mut_ptr();
+        (*entry).size = size_of::<ThreadEntry32>() as u32;
+        if Thread32First(snapshot, entry) != 0 {
+            loop {
+                if (*entry).owner_process_id == pid {
+                    let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, (*entry).thread_id);
+                    if thread != 0 {
+                        ResumeThread(thread);
+                        CloseHandle(thread as *mut c_void);
+                    }
+                }
+                if Thread32Next(snapshot, entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snapshot as *mut c_void);
+    }
 }
 
 pub struct Group {
