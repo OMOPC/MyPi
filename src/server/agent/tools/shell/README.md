@@ -31,21 +31,12 @@ the guard, a backslash before a newline is a continuation, and `expand_alias` re
 of every segment once.
 
 The command itself runs in the session's shell (`Env.shell.backend`): `bash` or `zsh` on unix,
-<<<<<<< HEAD
-`pwsh` or `niu` (niubash) on windows. `platform::shell` picks the backend, builds the command line,
-sets the encoding the backend must emit, and writes the quoted path a `#<ref>` becomes;
-`platform::proc` starts it as a tree of its own and stops it as a whole; the platform picks the
-ladder. A stop arrives through the `Stop` the runner registered after the spawn; the tool thread
-itself only receives, so nothing wakes it on a timer. Stdin is the null device: a command that
-prompts reads EOF, never the terminal the front end owns.
-=======
 `pwsh` or `niu` on windows. `platform::shell` picks the backend, builds the command line, sets how
 each backend emits UTF-8, and writes the quoted path a `#<ref>` becomes; `platform::proc`
 starts it as a tree of its own and stops it as a whole; the platform picks the ladder. A stop
 arrives through the `Stop` the runner registered after the spawn; the tool thread itself only
 receives, so nothing wakes it on a timer. Stdin is the null device: a command that prompts reads
 EOF, never the terminal the front end owns.
->>>>>>> 474ce9b (docs: 按 AI.md 规范统一本 PR 的注释与文档口径)
 
 ### shell
 
@@ -95,8 +86,8 @@ and refuses an array. `list` answers JSON, and the same value rides along as the
 
 | key | meaning |
 |---|---|
-| `config.server.agent.tools.shell` | backend: `auto`, `bash`, `zsh`, `pwsh` or `niu`; default `auto`; a named one must be on `PATH` |
+| `config.server.agent.tools.shell` | backend: `bash`, `zsh`, `pwsh` or `niu`; detected once at first start and written here; a named one must be on `PATH` |
 | `config.server.agent.tools.shellTimeout` | one shell command's deadline; default 600 s |
 | `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
 
-The shell program itself comes from `Env.shell.backend`; the loop fills it when it books a session.
+The backend is detected once at first start and written back here; every later start reads the name.

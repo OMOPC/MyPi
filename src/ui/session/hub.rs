@@ -15,6 +15,9 @@ use super::structure::{Structure, Turn};
 // The configuration key that sizes the content window.
 const BUDGET_KEY: &str = "config.ui.session.preloadCache";
 
+// The configuration key that names the backend the shell tool runs.
+const SHELL_KEY: &str = "config.server.agent.tools.shell";
+
 pub struct Session {
     client: Client,
     // The session this connection follows.
@@ -39,10 +42,11 @@ impl Session {
             outbox: Vec::new(),
             shut: false,
         };
-        session.client.queue(
-            Frame::new("call", "config", json!({"key": BUDGET_KEY})),
-            true,
-        );
+        for key in [BUDGET_KEY, SHELL_KEY] {
+            session
+                .client
+                .queue(Frame::new("call", "config", json!({"key": key})), true);
+        }
         Ok(session)
     }
 

@@ -470,6 +470,17 @@ fn read_config(zone: &mut HistoryZone, content: &Value) {
                 zone.run.clear();
             }
         }
+        "config.server.agent.tools.shell" => {
+            if let Some(name) = content.get("value").and_then(Value::as_str) {
+                zone.shell = match name {
+                    "bash" | "zsh" | "niu" => Some("sh"),
+                    "pwsh" => Some("powershell"),
+                    _ => None,
+                };
+                zone.local.drop_products();
+                zone.run.clear();
+            }
+        }
         "config.ui.tui.zone.main.history.focusLine" => {
             if let Some(n) = number {
                 zone.focus_line = usize::try_from(n).unwrap_or(usize::MAX);

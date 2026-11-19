@@ -76,6 +76,7 @@ pub fn node(block: &Block, paired: Option<&Block>, opts: &Opts, width: usize) ->
             expanded: opts.tool,
             budget: opts.fold,
             width,
+            shell: opts.shell,
         },
         outcome.is_none_or(|o| o.ok.is_none()),
         opts.fold,

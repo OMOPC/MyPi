@@ -50,6 +50,8 @@ pub(crate) struct ToolBlock<'a> {
     // Rows a head or a tail may take before it folds.
     pub budget: usize,
     pub width: usize,
+    // The highlight language the shell backend speaks; `None` = no highlight.
+    pub shell: Option<&'static str>,
 }
 
 impl ToolBlock<'_> {

@@ -18,6 +18,7 @@
   backend emits UTF-8, on `platform::proc` for the process group, and on `platform::stop` for the
   stop action.
 - Depends on `contract::env` for `ShellEnv` (timeout, backend) and `Aliases`.
+- The chosen backend is detected once at first start and written back to `config.server.agent.tools.shell`; later starts read the name instead of probing.
 - `admit` and `guard` are shared with `kairos`: every job command goes through the same admission
   and the same classifier.
 - `alias add` runs the guard on the command it stores, so the same classifier has two callers.

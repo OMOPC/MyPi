@@ -90,14 +90,30 @@ impl Config {
         }
     }
 
-    // The shell backend this session runs its command lines on.
+    // The shell backend this session runs its command lines on; the first unanswered start detects one and writes it here.
     pub fn shell(&self) -> anyhow::Result<crate::server::platform::shell::Shell> {
         let effective = self.effective(None);
         let name = effective
             .values
             .get(KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL)
             .and_then(Value::as_text);
-        crate::server::platform::shell::Shell::resolve(name)
+        let name = name.map(str::trim).unwrap_or_default();
+        if !name.is_empty() && name != "auto" {
+            return crate::server::platform::shell::Shell::resolve(name);
+        }
+        let shell = crate::server::platform::shell::Shell::detect()?;
+        write::write_key(
+            &self.shell_target(),
+            &["config", "server", "agent", "tools", "shell"],
+            shell.name(),
+        )?;
+        if let Ok(mut cache) = self.inner.cache.lock() {
+            cache.clear();
+        }
+        if let Ok(mut cache) = self.inner.scoped.lock() {
+            cache.clear();
+        }
+        Ok(shell)
     }
 
     // One shell command's wall-clock cap.
@@ -417,11 +433,21 @@ impl Config {
     }
 
     fn write_target(&self) -> PathBuf {
+        self.layer_target("server.api", "defaultModel")
+    }
+
+    // Where a detected shell lands: the layer that already holds the key, else the global file.
+    fn shell_target(&self) -> PathBuf {
+        self.layer_target("server.agent.tools", "shell")
+    }
+
+    // The file one key is written to: the layer that already holds it, else the global one.
+    fn layer_target(&self, section: &str, leaf: &str) -> PathBuf {
         let has = |layer: &Option<(PathBuf, Mapping)>| {
             layer
                 .as_ref()
-                .and_then(|(_, m)| child(m, "server.api"))
-                .and_then(|m| m.get("defaultModel"))
+                .and_then(|(_, m)| child(m, section))
+                .and_then(|m| m.get(leaf))
                 .is_some()
         };
         if has(&self.inner.layers.project)

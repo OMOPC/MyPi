@@ -52,7 +52,7 @@ pub struct Shell {
 }
 
 impl Shell {
-    // This platform's order when the configuration says `auto`: `$SHELL`, bash, zsh on unix; pwsh, niu on windows.
+    // This platform's probe order: `$SHELL`, bash, zsh on unix; pwsh, niu on windows.
     pub fn detect() -> Result<Self> {
         match os::current().family {
             Family::Unix => detect_unix(),
@@ -60,36 +60,32 @@ impl Shell {
         }
     }
 
-    // A configured name -> the backend; `auto` and an empty value probe the platform.
-    pub fn resolve(name: Option<&str>) -> Result<Self> {
-        match name.map(str::trim).filter(|n| !n.is_empty()) {
-            None | Some("auto") => Self::detect(),
-            Some(name) => {
-                let kind = match name {
-                    "bash" => Kind::Bash,
-                    "zsh" => Kind::Zsh,
-                    "pwsh" => Kind::Pwsh,
-                    "niu" => Kind::Niu,
-                    other => bail!(
-                        "unknown shell `{other}`; this build knows auto, {}",
-                        names().join(", ")
-                    ),
-                };
-                if !kind.available() {
-                    bail!(
-                        "`{name}` does not run on {}; this platform offers {}",
-                        os::current().name,
-                        names().join(", ")
-                    );
-                }
-                let Some(program) = find_on_path(kind.name()) else {
-                    bail!(
-                        "no `{name}` on PATH; install it, or name another backend in config.server.agent.tools.shell"
-                    );
-                };
-                Ok(Self { kind, program })
-            }
+    // A configured name -> the backend; only a concrete name is accepted.
+    pub fn resolve(name: &str) -> Result<Self> {
+        let name = name.trim();
+        let kind = match name {
+            "bash" => Kind::Bash,
+            "zsh" => Kind::Zsh,
+            "pwsh" => Kind::Pwsh,
+            "niu" => Kind::Niu,
+            other => bail!(
+                "unknown shell `{other}`; this build knows {}",
+                names().join(", ")
+            ),
+        };
+        if !kind.available() {
+            bail!(
+                "`{name}` does not run on {}; this platform offers {}",
+                os::current().name,
+                names().join(", ")
+            );
         }
+        let Some(program) = find_on_path(kind.name()) else {
+            bail!(
+                "no `{name}` on PATH; install it, or name another backend in config.server.agent.tools.shell"
+            );
+        };
+        Ok(Self { kind, program })
     }
 
     pub fn kind(&self) -> Kind {

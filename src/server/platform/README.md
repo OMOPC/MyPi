@@ -16,15 +16,15 @@ and stopped (`proc.rs`), what a session means by "stop" (`stop.rs`), and what ha
 ```text
 Shell { kind: Bash | Zsh | Pwsh | Niu, program }
 
-Shell::detect()                      this platform's order for `auto`: `$SHELL` when it names bash or zsh, then bash, zsh on unix; pwsh, niu on windows
-Shell::resolve(name)                 a configured name → the backend; `auto` and an empty value probe; a foreign or missing shell is refused
+Shell::detect()                      probe order: `$SHELL` when it names bash or zsh, then bash, zsh on unix; pwsh, niu on windows
+Shell::resolve(name)                 a configured name → the backend; only a concrete name; a foreign or missing shell is refused
 Shell::command(line)                 the program, its one-shot shape, and the UTF-8 setup the backend needs
 Shell::path_token(path)              the one quoted token naming a stored text as a file
 Shell::guarded()                     unix shells only
 ```
 
 The backend is a value, not a trait: the tool receives a resolved `Shell` and never asks which
-system it is on. `names()` lists what this build runs; `auto` probes them in the platform's order.
+system it is on. `names()` lists what this build runs; configuration names one of them.
 
 ### The process tree
 

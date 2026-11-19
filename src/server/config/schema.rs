@@ -17,7 +17,7 @@ keys! {
     KEY_CONFIG_SERVER_AGENT_LOOP_REQUEST_MAX_RETRIES = "config", "server.agent.loop.request", "maxRetries", Int, DefaultValue::Int(10), "Attempts after the first before a request fails.", true;
     KEY_CONFIG_SERVER_AGENT_LOOP_REQUEST_RETRY_INTERVAL = "config", "server.agent.loop.request", "retryInterval", Int, DefaultValue::Int(30), "Seconds between retry attempts.", true;
     KEY_CONFIG_SERVER_AGENT_LOOP_REQUEST_RETRY_TIMEOUT = "config", "server.agent.loop.request", "retryTimeout", Int, DefaultValue::Int(120), "Seconds one attempt waits for the response head.", true;
-    KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL = "config", "server.agent.tools", "shell", Text, DefaultValue::Text("auto"), "Shell that runs one command line: auto, bash, zsh, pwsh or niu.", true;
+    KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL = "config", "server.agent.tools", "shell", Text, DefaultValue::Null, "Shell that runs one command line: bash, zsh, pwsh or niu; detected once at first start and written here.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL_TIMEOUT = "config", "server.agent.tools", "shellTimeout", Int, DefaultValue::Int(600), "Cap on one shell command, in seconds.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES = "config", "server.agent.tools", "outputMaxLines", Int, DefaultValue::Int(120), "Lines of one tool result kept inline.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES = "config", "server.agent.tools", "outputMaxBytes", Int, DefaultValue::Int(32768), "Bytes of one tool result kept inline.", true;

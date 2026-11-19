@@ -200,6 +200,8 @@ pub struct HistoryZone {
     pub(super) overscan: usize,
     pub(super) placeholder: String,
     pub(super) cwd: String,
+    // The highlight language the shell backend speaks; `None` until the config answers.
+    pub(super) shell: Option<&'static str>,
     /// The structural window as it last stood.
     pub(super) structure: Turns,
     /// The language the banners and the numbers read in.
@@ -257,6 +259,7 @@ impl Default for HistoryZone {
             overscan: DEFAULT_OVERSCAN,
             placeholder: "thinking…".to_string(),
             cwd: String::new(),
+            shell: None,
             structure: Turns::default(),
             lang: Lang::default(),
             compacting: None,
@@ -292,6 +295,7 @@ impl HistoryZone {
             cwd,
             fold,
             lang,
+            shell,
             ..
         } = self;
         let opts = Opts {
@@ -301,6 +305,7 @@ impl HistoryZone {
             cwd: cwd.as_str(),
             fold: *fold,
             lang: *lang,
+            shell: *shell,
         };
         f(local, run, range, &opts)
     }
