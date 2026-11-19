@@ -269,13 +269,7 @@ impl Group {
 
 impl Drop for Group {
     fn drop(&mut self) {
-        let job = self.job.swap(0, Ordering::SeqCst);
-        if job != 0 {
-            // SAFETY: the last owner closes the job; for a following tree the limit kills the rest.
-            unsafe {
-                CloseHandle(job as *mut c_void);
-            }
-        }
+        // The job handle is closed by stop/reclaim or by the system at exit; closing it here would trip KILL_ON_JOB_CLOSE.
     }
 }
 
