@@ -45,7 +45,7 @@ keys! {
     KEY_CONFIG_SERVER_PLATFORM_STAMP_ENABLED = "config", "server.platform.stamp", "enabled", Bool, DefaultValue::Bool(false), "Inject timestamps into new user messages.", true;
     KEY_CONFIG_SERVER_PLATFORM_STAMP_PREFIX = "config", "server.platform.stamp", "prefix", Text, DefaultValue::Text("Last Time You Replied: {last}\n"), "Template placed before the user's text.", true;
     KEY_CONFIG_SERVER_PLATFORM_STAMP_SUFFIX = "config", "server.platform.stamp", "suffix", Text, DefaultValue::Text("\nSent From {now}"), "Template placed after the user's text.", true;
-    KEY_CONFIG_SERVER_PLATFORM_IPC = "config", "server.platform", "ipc", Text, DefaultValue::Text("os"), "Cross-process endpoint: os, unix or pipe.", true;
+    KEY_CONFIG_SERVER_PLATFORM_IPC = "config", "server.platform", "ipc", Text, DefaultValue::Text("os"), "Cross-process endpoint: os, or unix/pipe on the matching platform.", true;
     KEY_CONFIG_SERVER_PRUNE_ON_REWIND = "config", "server", "pruneOnRewind", Bool, DefaultValue::Bool(true), "On a rewind, drop what follows; only true is built.", true;
     KEY_CONFIG_UI_SESSION_PRELOAD_CACHE = "config", "ui.session", "preloadCache", Int, DefaultValue::Int(128), "Blocks kept in the session content cache.", true;
     KEY_CONFIG_UI_PLACEHOLDER_EMPTY_REPLY = "config", "ui.placeholder", "emptyReply", Text, DefaultValue::Text("SYSTEM: (no reply body — empty response)"), "Words for an assistant reply that arrived empty.", true;

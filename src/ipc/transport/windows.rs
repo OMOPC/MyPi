@@ -333,7 +333,7 @@ pub fn connect(name: &str) -> io::Result<Stream> {
 }
 
 impl Stream {
-    // Close both directions: a blocked read wakes on the stop event, and a read that starts later sees the flag.
+    // Wake a blocked read; later operations see the flag; a write in flight finishes or fails.
     pub fn shutdown(&self) {
         self.closed.store(true, Ordering::SeqCst);
         unsafe { SetEvent(self.stop.0) };

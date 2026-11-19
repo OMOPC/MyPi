@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use serde_yaml::Mapping;
 
+use crate::ipc::endpoint::Kind;
+
 use super::super::model::ModelsConfig;
 use super::super::notice::{ConfigNotice, warn};
 use super::super::registry::{self, Value};
@@ -13,11 +15,6 @@ use super::super::schema::{
     KEY_CONFIG_SERVER_REQUEST_STREAMING, KEY_CONFIG_SERVER_STORAGE_BATCH_TOOLS, STREAMING,
 };
 use super::aliases;
-
-#[cfg(unix)]
-const LOCAL_IPC_KINDS: &[&str] = &["os", "unix"];
-#[cfg(windows)]
-const LOCAL_IPC_KINDS: &[&str] = &["os", "pipe"];
 
 pub(super) fn walk_unknown(
     map: &Mapping,
@@ -101,11 +98,11 @@ pub(super) fn check(
         );
     }
     if let Some(Value::Text(kind)) = values.get(KEY_CONFIG_SERVER_PLATFORM_IPC)
-        && !LOCAL_IPC_KINDS.contains(&kind.as_str())
+        && Kind::from_name(kind).is_none()
     {
         panic!(
             "config.server.platform.ipc: `{kind}` is not one of {}",
-            LOCAL_IPC_KINDS.join(", ")
+            Kind::NAMES.join(", ")
         );
     }
     if let Some(Value::Text(address)) = values.get(KEY_CONFIG_SERVER_API_DEFAULT_MODEL).cloned()

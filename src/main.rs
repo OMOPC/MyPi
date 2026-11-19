@@ -100,19 +100,19 @@ fn run_server(db: &Path) -> anyhow::Result<()> {
 
 // The endpoint kind this process asks for.
 fn ipc_kind(cfg: &Config) -> Kind {
-    match cfg
+    let value = cfg
         .get(KEY_CONFIG_SERVER_PLATFORM_IPC, None)
-        .ok()
-        .and_then(|value| value.as_text().map(str::to_string))
-        .as_deref()
-    {
-        Some("os") | None => Kind::of_this_system(),
-        Some("unix") => Kind::Unix,
-        Some("pipe") => Kind::Pipe,
-        Some(other) => {
-            panic!("config.server.platform.ipc: `{other}` is not a known endpoint kind")
-        }
-    }
+        .expect("config.server.platform.ipc must be readable");
+    let name = value
+        .as_text()
+        .expect("config.server.platform.ipc must be text");
+    let Some(kind) = Kind::from_name(name) else {
+        panic!(
+            "config.server.platform.ipc: `{name}` is not one of {}",
+            Kind::NAMES.join(", ")
+        )
+    };
+    kind
 }
 
 // The time zone by name; an unset key leaves the system's.

@@ -1,11 +1,11 @@
-//! Where one database's server listens, and how a front end finds it.
+// Where one database's server listens, and how a front end finds it.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// Which connection mechanism this platform uses.
+// Which connection mechanism this platform uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Unix,
@@ -13,6 +13,12 @@ pub enum Kind {
 }
 
 impl Kind {
+    // The config names this platform accepts.
+    #[cfg(unix)]
+    pub const NAMES: &[&str] = &["os", "unix"];
+    #[cfg(windows)]
+    pub const NAMES: &[&str] = &["os", "pipe"];
+
     pub fn of_this_system() -> Kind {
         if cfg!(windows) {
             Kind::Pipe
@@ -20,9 +26,21 @@ impl Kind {
             Kind::Unix
         }
     }
+
+    // Parse a config name; None for a name this platform does not accept.
+    pub fn from_name(name: &str) -> Option<Kind> {
+        match name {
+            "os" => Some(Kind::of_this_system()),
+            #[cfg(unix)]
+            "unix" => Some(Kind::Unix),
+            #[cfg(windows)]
+            "pipe" => Some(Kind::Pipe),
+            _ => None,
+        }
+    }
 }
 
-/// One database's endpoint.
+// One database's endpoint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Endpoint {
@@ -31,7 +49,7 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    /// The endpoint this database would use on this system.
+    // The endpoint this database would use on this system.
     pub fn for_db(db: &Path, kind: Kind) -> Endpoint {
         let id = fingerprint(db);
         match kind {
@@ -44,19 +62,19 @@ impl Endpoint {
         }
     }
 
-    /// The file that tells a front end where this database's server is.
+    // The file that tells a front end where this database's server is.
     pub fn file_path(db: &Path) -> PathBuf {
         runtime_dir().join(format!("mypi-{}.endpoint", fingerprint(db)))
     }
 }
 
-/// Read the endpoint file.
+// Read the endpoint file.
 pub fn read(file: &Path) -> std::io::Result<Endpoint> {
     let text = std::fs::read_to_string(file)?;
     serde_json::from_str(&text).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
-/// Write the endpoint file atomically, user-only where the platform has modes.
+// Write the endpoint file atomically, user-only where the platform has modes.
 pub fn write(file: &Path, endpoint: &Endpoint) -> std::io::Result<()> {
     let text = serde_json::to_string(endpoint)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -73,12 +91,12 @@ pub fn write(file: &Path, endpoint: &Endpoint) -> std::io::Result<()> {
     std::fs::rename(&tmp, file)
 }
 
-/// Remove the endpoint file. A missing file is the outcome we wanted.
+// Remove the endpoint file. A missing file is the outcome we wanted.
 pub fn remove(file: &Path) {
     let _ = std::fs::remove_file(file);
 }
 
-/// A short, stable name for one database path.
+// A short, stable name for one database path.
 pub fn fingerprint(db: &Path) -> String {
     let mut hasher = DefaultHasher::new();
     #[cfg(windows)]
@@ -88,7 +106,7 @@ pub fn fingerprint(db: &Path) -> String {
     format!("{:012x}", hasher.finish())
 }
 
-/// Where endpoint files live on this platform.
+// Where endpoint files live on this platform.
 pub fn runtime_dir() -> PathBuf {
     let dir = platform_dir();
     let _ = std::fs::create_dir_all(&dir);
