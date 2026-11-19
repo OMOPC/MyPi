@@ -32,7 +32,7 @@ pub(crate) fn listing(path: &Path, cwd: &Path, docs: &[String]) -> Result<(Strin
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            list.line(format!("{name}/  {}", counts(&tree)));
+            list.line(&format!("{name}/  {}", counts(&tree)));
             fill(&mut list, &tree, 1, true, None, docs);
         }
         return Ok((counts(&root), list.finish()));
@@ -54,8 +54,8 @@ impl List {
         List { out: String::new() }
     }
 
-    fn line(&mut self, text: String) {
-        self.out.push_str(&text);
+    fn line(&mut self, text: &str) {
+        self.out.push_str(text);
         self.out.push('\n');
     }
 
@@ -76,11 +76,11 @@ fn fill(
     let pad = "  ".repeat(depth);
     for row in level(dir, skip, docs) {
         if !row.dir {
-            list.line(format!("{pad}{}  {}", row.label(), row.size));
+            list.line(&format!("{pad}{}  {}", row.label(), row.size));
         } else if expand {
             expand_one(list, &row, depth, docs);
         } else {
-            list.line(format!("{pad}{}/  {}", row.name, counts(&row.path)));
+            list.line(&format!("{pad}{}/  {}", row.name, counts(&row.path)));
         }
     }
 }
@@ -92,7 +92,7 @@ fn expand_one(list: &mut List, dir: &Entry, depth: usize, docs: &[String]) {
     let dirs: Vec<&Entry> = rows.iter().filter(|row| row.dir).collect();
     let pad = "  ".repeat(depth);
     let folded = files.len() >= FOLD_AT;
-    list.line(format!(
+    list.line(&format!(
         "{pad}{}/  {} files, {} dirs",
         dir.name,
         files.len(),
@@ -103,10 +103,10 @@ fn expand_one(list: &mut List, dir: &Entry, depth: usize, docs: &[String]) {
     }
     let inner = "  ".repeat(depth + 1);
     for file in files {
-        list.line(format!("{inner}{}  {}", file.label(), file.size));
+        list.line(&format!("{inner}{}  {}", file.label(), file.size));
     }
     for child in dirs {
-        list.line(format!("{inner}{}/  {}", child.name, counts(&child.path)));
+        list.line(&format!("{inner}{}/  {}", child.name, counts(&child.path)));
     }
 }
 
@@ -226,7 +226,7 @@ fn classify(path: &Path, docs: &[String]) -> Kind {
     if docs.iter().any(|doc| doc == stem) {
         return Kind::Pinned;
     }
-    let mut letters = stem.chars().filter(|c| c.is_ascii_alphabetic());
+    let mut letters = stem.chars().filter(char::is_ascii_alphabetic);
     let head = letters.next().is_some_and(|c| c.is_ascii_uppercase());
     let rest = letters.all(|c| c.is_ascii_uppercase());
     if head && rest { Kind::Doc } else { Kind::Plain }
@@ -234,6 +234,7 @@ fn classify(path: &Path, docs: &[String]) -> Kind {
 
 // A file's stamp and size from one look at its metadata.
 // Blocking: one file at a time, up to MAX_BYTES read per file, so a wide directory stalls the listing.
+#[allow(clippy::naive_bytecount)]
 fn facts(path: &Path) -> (Option<SystemTime>, String) {
     use std::io::Read as _;
 

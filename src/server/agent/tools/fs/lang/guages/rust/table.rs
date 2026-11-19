@@ -56,9 +56,10 @@ fn pieces(raw: &[&str], code: &[String], ends: &[Option<usize>], table: &mut Tab
         };
         let header = header_text(raw, at, open);
         let (label, exact) = names_of(kind, &header);
-        let close = match body {
-            true => ends.get(open).copied().flatten().unwrap_or(open),
-            false => open,
+        let close = if body {
+            ends.get(open).copied().flatten().unwrap_or(open)
+        } else {
+            open
         };
         table.span(at, close, Some(label), exact);
     }
@@ -150,7 +151,7 @@ fn span(code: &[String], start: usize) -> Option<(usize, bool)> {
                 ']' => square -= 1,
                 '<' => angle += 1,
                 '>' => {
-                    if !matches!(chars.get(k.wrapping_sub(1)), Some('-') | Some('=')) {
+                    if !matches!(chars.get(k.wrapping_sub(1)), Some('-' | '=')) {
                         angle -= 1;
                     }
                 }
@@ -258,7 +259,7 @@ fn bracket_delta(code: &str) -> i32 {
 fn control_head(line: &str) -> bool {
     let line = line.trim();
     // A line may close the block above and open the next one: `} else if cond {`.
-    let head = line.strip_prefix('}').map(str::trim_start).unwrap_or(line);
+    let head = line.strip_prefix('}').map_or(line, str::trim_start);
     if control_word(head) {
         return true;
     }

@@ -1,4 +1,6 @@
 // The `write` tool: overwrite a whole file. The batch's audit type-checks it after the batch's last write; this call only formats, writes, and hands the file's shell to the audit.
+use std::fmt::Write as _;
+
 use anyhow::Result;
 
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
@@ -99,7 +101,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     }
     if let Some(why) = &undecided {
         text.push('\n');
-        text.push_str(&format!("[i] not formatted, written as it stands: {why}"));
+        let _ = write!(text, "[i] not formatted, written as it stands: {why}");
     }
 
     // The compiler answers for the file as it now stands, after the batch's last write; the seam stands under this answer at its end. A file whose language names a checker joins the batch's check.

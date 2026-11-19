@@ -1,6 +1,7 @@
 // The `read` tool: files by line numbers, directories by name.
 
 use std::collections::BTreeSet;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, anyhow};
@@ -131,7 +132,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                 if !out.is_empty() {
                     out.push('\n');
                 }
-                out.push_str(&format!("{}[error: {e:#}]", header(&path)));
+                let _ = write!(out, "{}[error: {e:#}]", header(&path));
                 outcomes.push(ItemOk::failed(format!("{e:#}")));
             }
         }
@@ -173,7 +174,7 @@ pub(super) fn header(raw: &str) -> String {
 }
 
 // A body under its own header.
-pub(super) fn titled(raw: &str, text: String) -> String {
+pub(super) fn titled(raw: &str, text: &str) -> String {
     format!("{}{text}", header(raw))
 }
 
@@ -225,7 +226,7 @@ fn block(
 
     if path.is_dir() {
         let (counts, body) = dir::listing(path, &env.workspace.cwd(), &env.persistent_docs)?;
-        return Ok((titled(&format!("{raw}  {counts}"), body), Vec::new()));
+        return Ok((titled(&format!("{raw}  {counts}"), &body), Vec::new()));
     }
 
     if let Some(image) = image(env, path)? {
@@ -243,36 +244,34 @@ fn block(
     } else {
         None
     };
-    let body = match &whole {
-        Some(text) => {
-            let lines: Vec<&str> = text.lines().collect();
-            let total = lines.len();
-            let table = lang::table(path, text);
-            let numbers = match splice {
-                true => Numbers::Table(&table),
-                false => Numbers::None,
-            };
-            assemble(
-                offset,
-                total,
-                limit,
-                lines.into_iter().skip(offset.saturating_sub(1)),
-                &numbers,
-                max_bytes,
-            )
-        }
-        None => {
-            let streamed = streamed(path, offset, limit, max_bytes)?;
-            let numbers = if splice { Numbers::All } else { Numbers::None };
-            assemble(
-                offset,
-                streamed.total,
-                limit,
-                streamed.lines.iter().map(String::as_str),
-                &numbers,
-                max_bytes,
-            )
-        }
+    let body = if let Some(text) = &whole {
+        let lines: Vec<&str> = text.lines().collect();
+        let total = lines.len();
+        let table = lang::table(path, text);
+        let numbers = if splice {
+            Numbers::Table(&table)
+        } else {
+            Numbers::None
+        };
+        assemble(
+            offset,
+            total,
+            limit,
+            lines.into_iter().skip(offset.saturating_sub(1)),
+            &numbers,
+            max_bytes,
+        )
+    } else {
+        let streamed = streamed(path, offset, limit, max_bytes)?;
+        let numbers = if splice { Numbers::All } else { Numbers::None };
+        assemble(
+            offset,
+            streamed.total,
+            limit,
+            streamed.lines.iter().map(String::as_str),
+            &numbers,
+            max_bytes,
+        )
     };
 
     if let Some(text) = &whole {
@@ -300,14 +299,12 @@ fn block(
         text.push('\n');
     }
 
-    Ok((titled(&raw, text), Vec::new()))
+    Ok((titled(&raw, &text), Vec::new()))
 }
 
 // One file's neighbourhood, printed and bounded on its own.
 fn sketch(facts: &lang::Hub, loader: &Loader, path: &Path, batch: &BTreeSet<PathBuf>) -> String {
-    let Some(around) = graph::build(facts, loader, path) else {
-        return String::new();
-    };
+    let around = graph::build(facts, loader, path);
     let mut text = String::new();
     for row in graph::render(facts, &around, loader, batch) {
         if let Some(heading) = row.heading {

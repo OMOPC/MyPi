@@ -18,8 +18,8 @@ pub(crate) fn unit(facts: &Hub, file: &Path) -> Option<Unit> {
     (facts.unit_of?)(file)
 }
 
-// One unit's neighbourhood, or `None` when the file has no language that knows one.
-pub(crate) fn build(facts: &Hub, loader: &Loader, file: &Path) -> Option<Around> {
+// One unit's neighbourhood.
+pub(crate) fn build(facts: &Hub, loader: &Loader, file: &Path) -> Around {
     index::build(facts, loader, file)
 }
 

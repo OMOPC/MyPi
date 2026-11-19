@@ -145,9 +145,10 @@ fn run(root: &Path, files: &[PathBuf], names: &[String], stop: &Stop) -> Verdict
     if !summary.is_empty() {
         return Verdict::Unchecked(summary);
     }
-    Verdict::Unchecked(match why.is_empty() {
-        true => "nothing ran".to_string(),
-        false => why.join("; "),
+    Verdict::Unchecked(if why.is_empty() {
+        "nothing ran".to_string()
+    } else {
+        why.join("; ")
     })
 }
 
@@ -358,12 +359,13 @@ fn target_of(root: &Path, file: &Path) -> Vec<String> {
         .to_string_lossy()
         .replace('\\', "/");
     if let Some(rest) = rel.strip_prefix("tests/") {
-        return match rest.contains('/') {
-            true => vec!["--tests".to_string()],
-            false => vec![
+        return if rest.contains('/') {
+            vec!["--tests".to_string()]
+        } else {
+            vec![
                 "--test".to_string(),
                 rest.trim_end_matches(".rs").to_string(),
-            ],
+            ]
         };
     }
     if rel == "src/main.rs" || rel.starts_with("src/bin/") {
@@ -372,9 +374,10 @@ fn target_of(root: &Path, file: &Path) -> Vec<String> {
     if rel.starts_with("examples/") {
         return vec!["--examples".to_string()];
     }
-    match root.join("src/lib.rs").is_file() {
-        true => vec!["--lib".to_string()],
-        false => vec!["--bins".to_string()],
+    if root.join("src/lib.rs").is_file() {
+        vec!["--lib".to_string()]
+    } else {
+        vec!["--bins".to_string()]
     }
 }
 

@@ -39,7 +39,7 @@ impl Loader {
     }
 
     // One directory's entries, junk skipped, directories first, names case-insensitive.
-    pub(crate) fn entries(&self, dir: &Path) -> Vec<Entry> {
+    pub(crate) fn entries(dir: &Path) -> Vec<Entry> {
         entries(dir)
     }
 }
@@ -74,7 +74,7 @@ fn entries_where(dir: &Path, all: bool) -> Vec<Entry> {
         return Vec::new();
     };
     let mut out: Vec<Entry> = read
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
             if !all && junk(&name) {

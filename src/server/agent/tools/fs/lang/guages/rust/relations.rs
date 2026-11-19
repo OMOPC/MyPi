@@ -19,45 +19,42 @@ fn scan(sources: &[Source], root: &Path, query: &str) -> Relation {
     if let Some((a, b)) = two_segments(query) {
         let mut rows = Vec::new();
         let mine = type_rows(sources, root, &a, &b, MEMBERS, &mut used);
-        match mine.is_empty() {
-            true => rows.push(Row {
+        if mine.is_empty() {
+            rows.push(Row {
                 heading: None,
                 text: format!(
                     "[type] {a}::{b}: no `{a}` in this crate declares `{b}`; this is not a \
                      crate-defined type member"
                 ),
-            }),
-            false => {
-                rows.push(Row {
-                    heading: Some(format!("[type] {a}::{b}")),
-                    text: String::new(),
-                });
-                rows.extend(mine);
-            }
+            });
+        } else {
+            rows.push(Row {
+                heading: Some(format!("[type] {a}::{b}")),
+                text: String::new(),
+            });
+            rows.extend(mine);
         }
         rows.push(Row {
             heading: None,
             text: String::new(),
         });
         let (module, known) = module_rows(sources, root, &a, &b, &mut used);
-        match module.is_empty() {
-            true => {
-                let text = match known {
-                    true => format!("[module] {a}::{b}: module `{a}` declares no `{b}`"),
-                    false => format!("[module] {a}::{b}: no module `{a}` in this crate"),
-                };
-                rows.push(Row {
-                    heading: None,
-                    text,
-                });
-            }
-            false => {
-                rows.push(Row {
-                    heading: Some(format!("[module] {a}::{b}")),
-                    text: String::new(),
-                });
-                rows.extend(module);
-            }
+        if module.is_empty() {
+            let text = if known {
+                format!("[module] {a}::{b}: module `{a}` declares no `{b}`")
+            } else {
+                format!("[module] {a}::{b}: no module `{a}` in this crate")
+            };
+            rows.push(Row {
+                heading: None,
+                text,
+            });
+        } else {
+            rows.push(Row {
+                heading: Some(format!("[module] {a}::{b}")),
+                text: String::new(),
+            });
+            rows.extend(module);
         }
         return Relation { rows, used };
     }
@@ -176,7 +173,7 @@ fn module_rows(
                 let inside = roots
                     .iter()
                     .any(|root| target.path == *root || target.path.starts_with(root));
-                if !inside && !(inline && other == at) {
+                if !inside && (!inline || other != at) {
                     continue;
                 }
                 let label = parts::rel(root, target.path);
@@ -380,7 +377,6 @@ fn binds(table: &Table, line: &Line, word: &str) -> bool {
             let (target, trait_name) = impl_names(exact);
             target.as_deref() == Some(word) || trait_name.as_deref() == Some(word)
         }
-        "macro_rules!" => after_word(exact, kind).and_then(bare_name).as_deref() == Some(word),
         _ => after_word(exact, kind).and_then(bare_name).as_deref() == Some(word),
     }
 }
@@ -464,7 +460,7 @@ fn skip_angle(text: &str) -> Option<&str> {
         match c {
             '<' => depth += 1,
             '>' => {
-                if !matches!(chars.get(k.wrapping_sub(1)), Some('-') | Some('=')) {
+                if !matches!(chars.get(k.wrapping_sub(1)), Some('-' | '=')) {
                     depth -= 1;
                 }
                 if depth == 0 {

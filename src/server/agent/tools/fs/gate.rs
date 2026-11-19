@@ -74,8 +74,7 @@ pub(crate) fn run(
             break None;
         }
         let wait = deadline
-            .map(|at| at.saturating_duration_since(now))
-            .unwrap_or(TICK)
+            .map_or(TICK, |at| at.saturating_duration_since(now))
             .min(TICK);
         match process.wait_timeout(wait) {
             Err(e) => {

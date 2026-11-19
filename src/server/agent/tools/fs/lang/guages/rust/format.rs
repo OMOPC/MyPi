@@ -35,11 +35,11 @@ pub(crate) fn format(text: &str, path: &Path, stop: &Stop) -> Outcome {
 
 // The crate's edition, from the nearest `Cargo.toml` above the file. Read once per directory.
 fn edition(path: &Path) -> String {
+    static EDITIONS: LazyLock<Mutex<HashMap<PathBuf, String>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
     let Some(dir) = path.parent() else {
         return DEFAULT_EDITION.to_string();
     };
-    static EDITIONS: LazyLock<Mutex<HashMap<PathBuf, String>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
     if let Some(held) = lock(&EDITIONS).get(dir) {
         return held.clone();
     }
@@ -176,7 +176,8 @@ fn weigh(outcome: &Outcome) -> usize {
 
 // A lock that survives a panicking holder: the state behind it is a cache, never a promise.
 fn lock<T>(held: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    held.lock().unwrap_or_else(|e| e.into_inner())
+    held.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 // A text's content hash.

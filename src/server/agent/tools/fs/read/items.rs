@@ -68,9 +68,10 @@ fn render(path: &Path, cwd: &Path, wanted: &str) -> Result<(String, Vec<(PathBuf
 
 // The files the call looks through: the one it named, or every sorted file under the directory.
 fn scope(path: &Path) -> Vec<PathBuf> {
-    match path.is_dir() {
-        true => lang::files(path),
-        false => vec![path.to_path_buf()],
+    if path.is_dir() {
+        lang::files(path)
+    } else {
+        vec![path.to_path_buf()]
     }
 }
 
@@ -87,12 +88,11 @@ fn block(raw: &[&str], table: &Table, at: usize, width: usize) -> String {
         None => format!("{exact}  {}..{}\n", at + 1, end + 1),
     };
     for (index, line) in raw.iter().enumerate().take(end + 1).skip(at) {
-        match line.trim().is_empty() {
-            true => out.push('\n'),
-            false => {
-                out.push_str(&skeleton::numbered(width, Some(index + 1), line));
-                out.push('\n');
-            }
+        if line.trim().is_empty() {
+            out.push('\n');
+        } else {
+            out.push_str(&skeleton::numbered(width, Some(index + 1), line));
+            out.push('\n');
         }
     }
     out
@@ -117,11 +117,12 @@ fn says(line: &Line, needle: &str) -> bool {
 // What an answer with nothing in it owes the model.
 fn empty(path: &Path, needle: &str, cwd: &Path) -> String {
     let named = parts::rel(cwd, path);
-    match path.is_file() && lang::owner(path).is_none() {
-        true => format!("[item] {named}: no sorter reads this file\n"),
-        false => format!(
+    if path.is_file() && lang::owner(path).is_none() {
+        format!("[item] {named}: no sorter reads this file\n")
+    } else {
+        format!(
             "[item] no piece under {named} opens with the header `{needle}`; copy the piece's own \
              line from an earlier answer, it is not cut short\n"
-        ),
+        )
     }
 }

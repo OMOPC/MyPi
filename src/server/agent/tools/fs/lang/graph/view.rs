@@ -65,7 +65,7 @@ pub(crate) fn default_view(
             text: format!(
                 "  {}:{}",
                 parts::rel(base, decl.unit.entry.as_deref().unwrap_or(&decl.unit.place)),
-                decl.line.map(|line| line + 1).unwrap_or(0)
+                decl.line.map_or(0, |line| line + 1)
             ),
         });
     }

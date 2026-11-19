@@ -66,9 +66,8 @@ fn front(raw: &[&str], table: &mut Table) -> usize {
 // The fence this line opens: its mark, and how many marks it runs.
 fn fence(line: &str) -> Option<(char, usize)> {
     let text = line.trim_start();
-    let mark = match text.chars().next() {
-        Some(mark @ ('`' | '~')) => mark,
-        _ => return None,
+    let Some(mark @ ('`' | '~')) = text.chars().next() else {
+        return None;
     };
     let run = text.chars().take_while(|one| *one == mark).count();
     (run >= 3).then_some((mark, run))
@@ -84,15 +83,12 @@ fn closes(line: &str, mark: char, run: usize) -> bool {
 // A fenced block: its two fence lines are key, and nothing inside it is read as structure.
 fn fenced(raw: &[&str], table: &mut Table, open: usize, mark: char, run: usize) -> usize {
     let info = info(raw[open], mark);
-    match (open + 1..raw.len()).find(|at| closes(raw[*at], mark, run)) {
-        Some(close) => {
-            table.span(open, close, Some("fence".to_string()), info);
-            close + 1
-        }
-        None => {
-            table.span(open, open, Some("fence".to_string()), info);
-            open + 1
-        }
+    if let Some(close) = (open + 1..raw.len()).find(|at| closes(raw[*at], mark, run)) {
+        table.span(open, close, Some("fence".to_string()), info);
+        close + 1
+    } else {
+        table.span(open, open, Some("fence".to_string()), info);
+        open + 1
     }
 }
 
@@ -157,15 +153,14 @@ fn block(raw: &[&str], table: &mut Table, open: usize, tag: &str) -> usize {
 fn marker(line: &str) -> bool {
     let text = line.trim_start();
     let mut rest = text.chars();
-    let first = match rest.next() {
-        Some(one) => one,
-        None => return false,
+    let Some(first) = rest.next() else {
+        return false;
     };
     let after = if first.is_ascii_digit() {
-        let digits = text.chars().take_while(|one| one.is_ascii_digit()).count();
+        let digits = text.chars().take_while(char::is_ascii_digit).count();
         let mut tail = text[digits..].chars();
         match tail.next() {
-            Some('.') | Some(')') => tail.next(),
+            Some('.' | ')') => tail.next(),
             _ => return false,
         }
     } else if matches!(first, '-' | '*' | '+') {
@@ -173,7 +168,7 @@ fn marker(line: &str) -> bool {
     } else {
         return false;
     };
-    matches!(after, Some(' ') | Some('\t'))
+    matches!(after, Some(' ' | '\t'))
 }
 
 // One list: its first and its last line are key, and outer item lines that stand alone when items nest.

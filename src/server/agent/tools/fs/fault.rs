@@ -1,6 +1,7 @@
 // The batch's shared audit: one check per written unit, run by its own language after the last write. A fault on a written edit hangs under it; the unit's report rides on the last written answer.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use super::change;
@@ -119,9 +120,10 @@ fn gather_tests(
             let broken = checks.iter().any(|(held, check, _)| {
                 *held == root && matches!(check, Check::Faults { faults, .. } if !faults.is_empty())
             });
-            let verdict = match broken {
-                true => Verdict::Unchecked("check did not pass".to_string()),
-                false => (support.run)(&root, &files, &names, stop),
+            let verdict = if broken {
+                Verdict::Unchecked("check did not pass".to_string())
+            } else {
+                (support.run)(&root, &files, &names, stop)
             };
             (root, support, verdict)
         })
@@ -261,7 +263,7 @@ fn place(
         return;
     }
     if let Some(shell) = mine().rev().find(|shell| shell.seam) {
-        let at = shell.slots.first().map(|slot| slot.insert_at).unwrap_or(0);
+        let at = shell.slots.first().map_or(0, |slot| slot.insert_at);
         group(groups, &shell.call_id, at, seam_block(root, fault, covered));
         return;
     }
@@ -298,7 +300,7 @@ fn listing(faults: &[Fault], warns: &[Fault], unfold: bool) -> Vec<String> {
 fn one(fault: &Fault) -> String {
     let mut line = format!("  {}:{}: {}", fault.file, fault.line, fault.message);
     if !fault.helps.is_empty() {
-        line.push_str(&format!(" | help: {}", fault.helps.join("; ")));
+        let _ = write!(line, " | help: {}", fault.helps.join("; "));
     }
     line
 }
@@ -307,7 +309,7 @@ fn one(fault: &Fault) -> String {
 fn hanging(fault: &Fault) -> String {
     let mut line = format!("  ! line {}: {}", fault.line, fault.message);
     if !fault.helps.is_empty() {
-        line.push_str(&format!(" | help: {}", fault.helps.join("; ")));
+        let _ = write!(line, " | help: {}", fault.helps.join("; "));
     }
     line
 }

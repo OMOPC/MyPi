@@ -1,6 +1,7 @@
 // The answer: the relation's own sections, the items, and the stamps.
 
 use std::collections::BTreeSet;
+use std::fmt::Write as _;
 
 use crate::server::agent::tools::contract::env::{GrepLimits, Seen};
 use crate::server::agent::tools::fs::lang::graph::parts;
@@ -13,7 +14,7 @@ use super::scan;
 const LEDGER_MAX: usize = 500;
 
 // One answered call's text, and the files whose lines it showed.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::similar_names)]
 pub(crate) fn answer(
     query: &str,
     mode: &str,
@@ -47,14 +48,15 @@ pub(crate) fn answer(
         parts::plural(touched, "file"),
     );
     if scope.is_empty() {
-        out.push_str(&format!("==> {}/\n", parts::rel(&zone.root, &zone.tree)));
+        let _ = writeln!(out, "==> {}/", parts::rel(&zone.root, &zone.tree));
     } else {
-        out.push_str(&format!(
-            "==> {}, {} used: {}\n",
+        let _ = writeln!(
+            out,
+            "==> {}, {} used: {}",
             parts::plural(scope.len(), "path"),
             scope.len() - misses.len(),
             scope.join(" ")
-        ));
+        );
     }
 
     let mut shown: BTreeSet<usize> = BTreeSet::new();
@@ -109,7 +111,7 @@ fn footer(tier: usize, lavish: bool, omitted: usize, misses: &[String]) -> Strin
         out.push_str(hint);
     }
     if omitted > 0 {
-        out.push_str(&format!("[+{omitted} more files]\n"));
+        let _ = writeln!(out, "[+{omitted} more files]");
     }
     for miss in misses {
         out.push_str(miss);
@@ -160,7 +162,7 @@ fn draw(
 fn whole(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
     let mut out = String::new();
     for item in &file.items {
-        out.push_str(&format!("{label}:{}\n", item.open + 1));
+        let _ = writeln!(out, "{label}:{}", item.open + 1);
         let above: Vec<String> = file
             .table
             .around(item.open)
@@ -173,7 +175,7 @@ fn whole(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
             })
             .collect();
         if !above.is_empty() {
-            out.push_str(&format!("  in: {}\n", above.join(" > ")));
+            let _ = writeln!(out, "  in: {}", above.join(" > "));
         }
         for (index, text) in raw.iter().enumerate().take(item.close + 1).skip(item.open) {
             let mark = (item.hits.contains(&index) || file.table.key(index)).then_some(index + 1);
@@ -222,7 +224,7 @@ fn census(
     rows.sort_by_key(|row| std::cmp::Reverse(row.2));
     let mut out = String::new();
     for (at, path, count) in rows.iter().take(room) {
-        out.push_str(&format!("  {path}  {}\n", parts::plural(*count, "item")));
+        let _ = writeln!(out, "  {path}  {}", parts::plural(*count, "item"));
         shown.insert(*at);
     }
     (out, rows.len().saturating_sub(room))

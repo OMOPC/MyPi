@@ -257,6 +257,8 @@ impl Built {
     }
 
     // One answer per call of the batch: its own edits, its own verdict, and where the audit's check lines will hang.
+    // `spots` are line places, `slots` are audit insertion points.
+    #[allow(clippy::similar_names)]
     fn answers(&self, plans: &[Plan], path: &Path, shown: &str) -> Vec<(Answer, Vec<Slot>)> {
         let lines: Vec<&str> = self.shown.lines().collect();
         let base = change::lines_of(&self.base);
@@ -322,7 +324,7 @@ impl Built {
                     }
                 }
                 let (text, memo, marks) = receipt::build(
-                    receipt::Sheet {
+                    &receipt::Sheet {
                         path: shown,
                         lines: self.shown.lines().count(),
                         word: &self.word,
@@ -371,8 +373,7 @@ impl Built {
             let shift = written
                 .iter()
                 .rfind(|(_, end, _)| *end <= edit.start)
-                .map(|(_, _, shift)| *shift)
-                .unwrap_or(0);
+                .map_or(0, |(_, _, shift)| *shift);
             let first = (edit.start as isize + shift).max(0) as usize + 1;
             let last = (edit.end as isize + shift).max(0) as usize;
             out[*index] = (first, last);

@@ -57,8 +57,10 @@ pub(crate) struct Sheet<'a> {
 }
 
 // The answer's text, the memo a front end draws from, and where each edit's audit lines hang.
-pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row]) -> (String, Value, Vec<usize>) {
-    let Sheet { path, lines, word } = sheet;
+pub(crate) fn build(sheet: &Sheet<'_>, rows: &[Row]) -> (String, Value, Vec<usize>) {
+    let path = sheet.path;
+    let lines = sheet.lines;
+    let word = sheet.word;
     let width = skeleton::width(lines);
     let landed = rows
         .iter()
@@ -97,10 +99,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row]) -> (String, Value, Vec<usize
             }
             State::Overlap => out.push("OVERLAP".to_string()),
             State::Mismatch { sent, now, why } => {
-                let word = match sent == now {
-                    true => "UNCHANGED",
-                    false => "SHIFTED",
-                };
+                let word = if sent == now { "UNCHANGED" } else { "SHIFTED" };
                 out.push(format!(
                     "{word}, the edit scope you requested earlier is now {}; reread or regrep to \
                      issue another splice",
@@ -156,9 +155,10 @@ fn head(path: &str, word: &Word, landed: usize, total: usize) -> String {
 
 // `first-last`, or the one line when both are the same.
 fn span(first: usize, last: usize) -> String {
-    match last > first {
-        true => format!("{first}-{last}"),
-        false => first.to_string(),
+    if last > first {
+        format!("{first}-{last}")
+    } else {
+        first.to_string()
     }
 }
 
@@ -169,12 +169,12 @@ fn side(lines: &[String], first: usize, sign: char, width: usize) -> Vec<String>
         .enumerate()
         .map(|(at, line)| (first + at, line.as_str()))
         .collect();
-    fold(rows, width, sign)
+    fold(&rows, width, sign)
 }
 
 // A side of the diff, its middle folded away once it grows past what one answer may take.
-fn fold(rows: Vec<(usize, &str)>, width: usize, sign: char) -> Vec<String> {
-    let draw = |at: usize, text: &str| format!("{sign} {at:>width$}|{text}", width = width);
+fn fold(rows: &[(usize, &str)], width: usize, sign: char) -> Vec<String> {
+    let draw = |at: usize, text: &str| format!("{sign} {at:>width$}|{text}");
     if rows.len() <= SIDE {
         return rows.iter().map(|(at, text)| draw(*at, text)).collect();
     }
@@ -250,9 +250,10 @@ pub(crate) fn row(edit: &Edit, fate: &Fate, lines: &[&str], base: &[String], tab
     let from = edit.start + 1;
     let Some(why) = &fate.why else {
         let (first, last) = fate.at;
-        let item = match edit.cut {
-            true => None,
-            false => item_of(table, first),
+        let item = if edit.cut {
+            None
+        } else {
+            item_of(table, first)
         };
         return Row {
             index: edit.index,

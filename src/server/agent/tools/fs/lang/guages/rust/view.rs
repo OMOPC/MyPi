@@ -1,6 +1,7 @@
 // Rust's narration of one neighbourhood: exports, down, out, up, and where the scan stopped.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use super::facts::{declares_modules, strip_attrs};
@@ -102,11 +103,10 @@ fn row(text: String) -> Row {
 fn child_line(around: &Around, child: &Child, batch: &BTreeSet<PathBuf>) -> String {
     let label = match child.unit.place.strip_prefix(&around.unit.place) {
         Ok(rest) => {
-            let first = rest
-                .components()
-                .next()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .unwrap_or_else(|| child.unit.name.clone());
+            let first = rest.components().next().map_or_else(
+                || child.unit.name.clone(),
+                |c| c.as_os_str().to_string_lossy().into_owned(),
+            );
             if child.unit.place.is_dir() {
                 format!("{first}/")
             } else {
@@ -137,7 +137,7 @@ fn child_line(around: &Around, child: &Child, batch: &BTreeSet<PathBuf>) -> Stri
     }
     let deps = deps_of(around, child);
     if !deps.is_empty() {
-        line.push_str(&format!(" deps: {}", deps.join(", ")));
+        let _ = write!(line, " deps: {}", deps.join(", "));
     }
     line
 }
@@ -152,8 +152,7 @@ fn deps_of(around: &Around, child: &Child) -> Vec<String> {
             .unit
             .place
             .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| around.unit.place.clone())
+            .map_or_else(|| around.unit.place.clone(), Path::to_path_buf)
     };
     let mut map: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for edge in &child.outgoing {
@@ -207,7 +206,7 @@ fn decl_line(
     format!(
         "{}:{} declares {}",
         parts::rel(base, from),
-        decl.line.map(|line| line + 1).unwrap_or(0),
+        decl.line.map_or(0, |line| line + 1),
         raw
     )
 }
@@ -238,7 +237,7 @@ fn up_line(base: &Path, edge: &Edge) -> String {
         edge.symbols.join(", ")
     );
     if let Some(via) = edge.via.first() {
-        line.push_str(&format!(" via {}", parts::rel(base, via)));
+        let _ = write!(line, " via {}", parts::rel(base, via));
     }
     line
 }

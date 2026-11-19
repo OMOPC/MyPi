@@ -40,8 +40,7 @@ fn root_of(unit: &Unit) -> PathBuf {
     } else {
         unit.place
             .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| unit.place.clone())
+            .map_or_else(|| unit.place.clone(), Path::to_path_buf)
     }
 }
 
@@ -68,7 +67,7 @@ fn levels(
         if let Some(up) = base.parent()
             && up.starts_with(&domain.root)
         {
-            for entry in loader.entries(up) {
+            for entry in Loader::entries(up) {
                 if entry.dir && entry.path != base {
                     roots.push(entry.path);
                 }
@@ -153,7 +152,7 @@ fn walk(
         if dir == skip {
             continue;
         }
-        for entry in loader.entries(&dir) {
+        for entry in Loader::entries(&dir) {
             if entry.dir {
                 if entry.path != skip {
                     stack.push(entry.path);

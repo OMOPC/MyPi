@@ -1,6 +1,7 @@
 // The printing parts: every view is assembled from these, so widths and counts never drift.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::Path;
 
 use super::{Boundary, Edge, Size};
@@ -44,16 +45,16 @@ pub(crate) fn joined_all(items: &[String]) -> String {
 
 // A list on one line, cut at a character budget with the rest counted.
 pub(crate) fn joined(items: &[String]) -> String {
+    const MAX: usize = 300;
     if items.is_empty() {
         return "none".to_string();
     }
-    const MAX: usize = 300;
     let mut out = String::new();
     let mut used = 0usize;
     for (at, item) in items.iter().enumerate() {
         let add = item.chars().count() + usize::from(at > 0) * 2;
         if used + add > MAX {
-            out.push_str(&format!(" [+{} more]", items.len() - at));
+            let _ = write!(out, " [+{} more]", items.len() - at);
             break;
         }
         if at > 0 {
@@ -75,8 +76,7 @@ pub(crate) fn clip(text: String) -> String {
     let cut = text
         .char_indices()
         .nth(MAX)
-        .map(|(at, _)| at)
-        .unwrap_or(text.len());
+        .map_or(text.len(), |(at, _)| at);
     format!("{}[+{}]", &text[..cut], count - MAX)
 }
 
@@ -108,10 +108,10 @@ pub(crate) fn edge_line(base: &Path, edge: &Edge) -> String {
         joined(&edge.symbols)
     );
     if edge.to.is_none() {
-        line.push_str(&format!("  {} (external)", edge.wrote));
+        let _ = write!(line, "  {} (external)", edge.wrote);
     }
     if let Some(via) = edge.via.first() {
-        line.push_str(&format!("  via {}", rel(base, via)));
+        let _ = write!(line, "  via {}", rel(base, via));
     }
     clip(line)
 }

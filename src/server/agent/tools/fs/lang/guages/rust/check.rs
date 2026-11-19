@@ -42,9 +42,8 @@ fn run(root: &Path, _touched: &[PathBuf], stop: &Stop) -> Check {
     let mut cmd = Command::new(cargo());
     cmd.args(["check", "--message-format=json", "--quiet"])
         .current_dir(root);
-    let ran = match gate::run(cmd, None, None, stop) {
-        Ok(ran) => ran,
-        Err(_) => return Check::Unchecked("cargo did not run".to_string()),
+    let Ok(ran) = gate::run(cmd, None, None, stop) else {
+        return Check::Unchecked("cargo did not run".to_string());
     };
     if ran.stopped {
         return Check::Unchecked("the turn was stopped".to_string());
@@ -82,7 +81,7 @@ pub(super) fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
         };
         let span = spans
             .iter()
-            .find(|span| span.get("is_primary").and_then(|p| p.as_bool()) == Some(true))
+            .find(|span| span.get("is_primary").and_then(serde_json::Value::as_bool) == Some(true))
             .or_else(|| spans.first());
         let Some(span) = span else {
             continue;
@@ -90,7 +89,10 @@ pub(super) fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
         let Some(file) = span.get("file_name").and_then(|f| f.as_str()) else {
             continue;
         };
-        let line = span.get("line_start").and_then(|l| l.as_u64()).unwrap_or(1) as usize;
+        let line = span
+            .get("line_start")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(1) as usize;
         let text = message
             .get("message")
             .and_then(|m| m.as_str())

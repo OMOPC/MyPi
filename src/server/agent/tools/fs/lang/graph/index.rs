@@ -39,8 +39,7 @@ pub(crate) fn unit_texts(unit: &Unit, loader: &Loader) -> Vec<(PathBuf, String)>
             .map(|text| vec![(unit.place.clone(), text)])
             .unwrap_or_default();
     }
-    loader
-        .entries(&unit.place)
+    Loader::entries(&unit.place)
         .into_iter()
         .filter(|entry| !entry.dir)
         .filter_map(|entry| {
@@ -67,8 +66,7 @@ fn unit_interface(facts: &Hub, unit: &Unit, loader: &Loader) -> Vec<String> {
 
 fn size_of(unit: &Unit, loader: &Loader) -> Size {
     if unit.place.is_dir() {
-        let files = loader
-            .entries(&unit.place)
+        let files = Loader::entries(&unit.place)
             .into_iter()
             .filter(|entry| !entry.dir)
             .count();
@@ -76,8 +74,7 @@ fn size_of(unit: &Unit, loader: &Loader) -> Size {
     }
     loader
         .read(&unit.place)
-        .map(|text| Size::Lines(text.lines().count()))
-        .unwrap_or(Size::Unknown)
+        .map_or(Size::Unknown, |text| Size::Lines(text.lines().count()))
 }
 
 fn has_children(facts: &Hub, unit: &Unit, loader: &Loader) -> bool {
@@ -143,8 +140,7 @@ fn edges_of(facts: &Hub, unit: &Unit, loader: &Loader) -> Vec<Edge> {
 fn children(facts: &Hub, loader: &Loader, unit: &Unit) -> Vec<Child> {
     let decls = match facts.territory {
         Some(territory) => territory(unit, loader),
-        None => loader
-            .entries(&unit.place)
+        None => Loader::entries(&unit.place)
             .into_iter()
             .filter(|entry| entry.dir)
             .map(|entry| Decl {
@@ -237,13 +233,12 @@ fn incoming(facts: &Hub, unit: &Unit, found: Vec<(PathBuf, Vec<RawEdge>)>) -> Ve
 }
 
 // Build one unit's neighbourhood from a language's facts.
-pub(crate) fn build(facts: &Hub, loader: &Loader, file: &Path) -> Option<Around> {
+pub(crate) fn build(facts: &Hub, loader: &Loader, file: &Path) -> Around {
     let unit = resolve_unit(facts, file);
     let domain = facts.domain.and_then(|domain| domain(file));
     let base = domain
         .as_ref()
-        .map(|domain| domain.root.clone())
-        .unwrap_or_else(|| unit.place.clone());
+        .map_or_else(|| unit.place.clone(), |domain| domain.root.clone());
     let outgoing = edges_of(facts, &unit, loader);
     let (incoming, boundary) = match &domain {
         Some(domain) => {
@@ -265,7 +260,7 @@ pub(crate) fn build(facts: &Hub, loader: &Loader, file: &Path) -> Option<Around>
             },
         ),
     };
-    Some(Around {
+    Around {
         interface: unit_interface(facts, &unit, loader),
         children: children(facts, loader, &unit),
         declared_by: declared_by(facts, loader, &unit),
@@ -275,5 +270,5 @@ pub(crate) fn build(facts: &Hub, loader: &Loader, file: &Path) -> Option<Around>
         base,
         file: file.to_path_buf(),
         unit,
-    })
+    }
 }

@@ -109,7 +109,7 @@ fn territory(unit: &Unit, loader: &Loader) -> Vec<Decl> {
         return out;
     }
     // No declarations: the directory's own files are the units, the entry excluded.
-    for child in loader.entries(&base) {
+    for child in Loader::entries(&base) {
         if child.dir {
             continue;
         }
@@ -274,8 +274,7 @@ fn declarations(text: &str) -> Vec<(usize, (String, String))> {
             if rest.len() < raw.len() {
                 let end = raw
                     .find(')')
-                    .map(|i| i + 1)
-                    .unwrap_or_else(|| raw.find(' ').unwrap_or(raw.len()));
+                    .map_or_else(|| raw.find(' ').unwrap_or(raw.len()), |i| i + 1);
                 raw[..end].trim().to_string()
             } else {
                 "pub".to_string()
@@ -406,35 +405,29 @@ fn expand_named(tree: &str) -> Vec<(Vec<String>, String)> {
         return Vec::new();
     }
     let mut out: Vec<(Vec<String>, String)> = Vec::new();
-    match split_group(tree) {
-        Some((head, inner)) => {
-            for part in split_top(inner) {
-                let part = part.trim();
-                if part.is_empty() {
-                    continue;
-                }
-                match split_group(part) {
-                    Some((nested, body)) => {
-                        let mut prefix = segments(head);
-                        prefix.extend(segments(nested));
-                        out.extend(expand_named(&format!("{}::{{{body}}}", prefix.join("::"))));
-                    }
-                    None => {
-                        let mut prefix = segments(head);
-                        let (tail, name) = split_alias(part);
-                        prefix.extend(segments(tail));
-                        if named(&name) {
-                            out.push((prefix, name));
-                        }
-                    }
+    if let Some((head, inner)) = split_group(tree) {
+        for part in split_top(inner) {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            if let Some((nested, body)) = split_group(part) {
+                let mut prefix = segments(head);
+                prefix.extend(segments(nested));
+                out.extend(expand_named(&format!("{}::{{{body}}}", prefix.join("::"))));
+            } else {
+                let mut prefix = segments(head);
+                let (tail, name) = split_alias(part);
+                prefix.extend(segments(tail));
+                if named(&name) {
+                    out.push((prefix, name));
                 }
             }
         }
-        None => {
-            let (tail, name) = split_alias(tree);
-            if named(&name) {
-                out.push((segments(tail), name));
-            }
+    } else {
+        let (tail, name) = split_alias(tree);
+        if named(&name) {
+            out.push((segments(tail), name));
         }
     }
     out
@@ -446,15 +439,14 @@ fn named(name: &str) -> bool {
 
 fn split_alias(text: &str) -> (&str, String) {
     let text = text.trim();
-    match text.split_once(" as ") {
-        Some((left, right)) => (left.trim(), right.trim().to_string()),
-        None => {
-            let name = text
-                .rsplit("::")
-                .find(|part| !part.is_empty())
-                .unwrap_or("");
-            (text, name.to_string())
-        }
+    if let Some((left, right)) = text.split_once(" as ") {
+        (left.trim(), right.trim().to_string())
+    } else {
+        let name = text
+            .rsplit("::")
+            .find(|part| !part.is_empty())
+            .unwrap_or("");
+        (text, name.to_string())
     }
 }
 

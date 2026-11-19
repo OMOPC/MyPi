@@ -1,4 +1,10 @@
 // The fs family: files read and written by line number, and the language rules they lean on.
+// Line numbers and byte offsets stay far below integer limits; these casts are intentional.
+#![allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation
+)]
 
 pub(crate) mod change;
 pub(crate) mod edit;
