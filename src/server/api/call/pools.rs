@@ -1,4 +1,4 @@
-//! `pools` — the models and the profiles a session may be opened with.
+// `pools` — the models and the profiles a session may be opened with.
 
 use std::path::PathBuf;
 
@@ -28,7 +28,7 @@ pub(crate) fn answer(api: &Api, ask: &Value) -> Result<Value, Refuse> {
     Ok(json!({"models": models, "profiles": cfg.profiles(&cwd)}))
 }
 
-/// Where the ask stands: the directory it names, else the attached session's, else this process's.
+// Where the ask stands: the directory it names, else the attached session's, else this process's.
 fn cwd_of(api: &Api, ask: &Value) -> Result<PathBuf, Refuse> {
     if let Some(path) = opt_str_of(ask, "cwd")?.filter(|path| !path.trim().is_empty()) {
         return Ok(PathBuf::from(path));

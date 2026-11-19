@@ -1,4 +1,4 @@
-//! `init` — the whole structure, plus the newest blocks.
+// `init` — the whole structure, plus the newest blocks.
 
 use anyhow::Result;
 use serde_json::{Value, json};

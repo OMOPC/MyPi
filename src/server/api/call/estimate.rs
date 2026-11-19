@@ -1,15 +1,15 @@
-//! Where the context stands: the newest stamp, or after a compaction a difference estimate.
+// Where the context stands: the newest stamp, or after a compaction a difference estimate.
 
 use serde_json::Value;
 
-/// One lap's bill, stamped on the last block it landed.
+// One lap's bill, stamped on the last block it landed.
 pub(crate) struct Stamp {
     pub at: i64,
     pub prompt: u64,
     pub completion: u64,
 }
 
-/// The context in use, and whether that number is an estimate.
+// The context in use, and whether that number is an estimate.
 pub(crate) fn context(
     list: &[Value],
     stamps: &[Stamp],
@@ -36,7 +36,7 @@ pub(crate) fn context(
     }
 }
 
-/// The tail the compaction kept, plus its summary and the overhead every request carries.
+// The tail the compaction kept, plus its summary and the overhead every request carries.
 fn estimate(list: &[Value], stamps: &[Stamp], baseline: Option<u64>) -> Option<u64> {
     let at = list
         .iter()
@@ -60,7 +60,7 @@ fn estimate(list: &[Value], stamps: &[Stamp], baseline: Option<u64>) -> Option<u
     Some(tail + overhead + summary.completion)
 }
 
-/// `[[lo, hi], ...]` as pairs.
+// `[[lo, hi], ...]` as pairs.
 fn intervals(raw: &Value) -> Vec<(i64, i64)> {
     raw.as_array()
         .map(|items| {

@@ -1,4 +1,4 @@
-//! The api's public face: one connection table, one entry point per frame.
+// The api's public face: one connection table, one entry point per frame.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use crate::server::storage::{Reader, Writer};
 use super::relay::Relay;
 use super::route;
 
-/// Why a door refused.
+// Why a door refused.
 pub enum Refuse {
     Unknown(String),
     Bad(String),
@@ -56,7 +56,7 @@ impl From<anyhow::Error> for Refuse {
     }
 }
 
-/// One connection's outbound end.
+// One connection's outbound end.
 pub struct Conn {
     id: u64,
     tx: Sender<Frame>,
@@ -68,20 +68,20 @@ impl Conn {
     }
 }
 
-/// The backend's one surface for the ipc server.
+// The backend's one surface for the ipc server.
 pub struct Api {
     db: PathBuf,
     writer: Writer,
     cfg: Config,
     ledger: Loop,
     relay: Relay,
-    /// What the configuration had to say at load: handed to every front end as it opens.
+    // What the configuration had to say at load: handed to every front end as it opens.
     notices: Value,
     next: AtomicU64,
 }
 
 impl Api {
-    /// Open the writer, the relay, the request half and the loop, in that order.
+    // Open the writer, the relay, the request half and the loop, in that order.
     pub fn open(db: PathBuf, cfg: Config) -> anyhow::Result<Api> {
         let writer = Writer::open(&db)?;
         let (relay, events) = Relay::start()?;
@@ -123,7 +123,7 @@ impl Api {
         })
     }
 
-    /// Take one connection: its handle, and the queue its writer thread drains.
+    // Take one connection: its handle, and the queue its writer thread drains.
     pub fn connect(&self) -> (Conn, Receiver<Frame>) {
         let (tx, rx) = mpsc::channel();
         let id = self.next.fetch_add(1, Ordering::Relaxed);
@@ -131,7 +131,7 @@ impl Api {
         (Conn { id, tx }, rx)
     }
 
-    /// One inbound frame: a reply to write back, or nothing.
+    // One inbound frame: a reply to write back, or nothing.
     pub fn receive(&self, conn: &Conn, frame: Frame) -> Option<Frame> {
         match frame.kind.as_str() {
             "register" => self.register(conn, &frame),
@@ -149,11 +149,18 @@ impl Api {
                         Err(refuse) => Some(error(&frame, &refuse)),
                     };
                 }
-                let answer = match frame.kind.as_str() {
-                    "call" => route::call(self, &viewer, &frame),
-                    _ => route::post(self, conn.id, &viewer, &frame),
-                };
-                Some(match answer {
+                if frame.kind == "post" {
+                    return match route::post(self, conn.id, &viewer, &frame) {
+                        Ok(reply) => {
+                            if let Some(signal) = reply.signal {
+                                self.relay.signal(signal, &viewer);
+                            }
+                            Some(Frame::reply_to(&frame, reply.done))
+                        }
+                        Err(refuse) => Some(error(&frame, &refuse)),
+                    };
+                }
+                Some(match route::call(self, &viewer, &frame) {
                     Ok(value) => Frame::reply_to(&frame, value),
                     Err(refuse) => error(&frame, &refuse),
                 })
@@ -165,17 +172,17 @@ impl Api {
         }
     }
 
-    /// The connection is gone; its subscriptions go with it.
+    // The connection is gone; its subscriptions go with it.
     pub fn disconnect(&self, conn: &Conn) {
         self.relay.detach(conn.id);
     }
 
-    /// Front ends connected right now.
+    // Front ends connected right now.
     pub(crate) fn live(&self) -> usize {
         self.relay.live()
     }
 
-    /// No connection for a whole grace period.
+    // No connection for a whole grace period.
     pub fn idle_for(&self, grace: Duration) -> bool {
         if self.relay.live() > 0 {
             return false;
@@ -184,7 +191,7 @@ impl Api {
         self.relay.live() == 0
     }
 
-    /// Put a session the loop does not know back on the table, out of its own rows.
+    // Put a session the loop does not know back on the table, out of its own rows.
     pub(crate) fn ensure_booked(&self, session: i64) -> Result<(), Refuse> {
         if self.ledger.booked(session) {
             return Ok(());
@@ -311,7 +318,7 @@ impl Api {
     }
 }
 
-/// What the configuration said at load, as a front end reads it: one line per notice.
+// What the configuration said at load, as a front end reads it: one line per notice.
 fn startup_notices(cfg: &Config) -> Value {
     let lines: Vec<Value> = cfg
         .notices(None)

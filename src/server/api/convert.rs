@@ -1,4 +1,4 @@
-//! The one storage shape the api renames for the wire.
+// The one storage shape the api renames for the wire.
 
 use serde_json::{Value, json};
 

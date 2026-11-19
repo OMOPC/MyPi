@@ -1,4 +1,4 @@
-//! `memo` — user notes: add and mod append a version, del removes every version.
+// `memo` — user notes: add and mod append a version, del removes every version.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -8,7 +8,7 @@ use crate::server::api::{Api, Refuse};
 use crate::server::storage::query::{Cond, Query, Sheet, Val};
 use crate::server::storage::{Reader, Ref, Row, Submit, Table};
 
-/// Where a row hangs: one session, or none.
+// Where a row hangs: one session, or none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Scope {
     Current,
@@ -24,7 +24,7 @@ impl Scope {
     }
 }
 
-pub(crate) fn apply(api: &Api, _conn: u64, _viewer: &str, ask: &Value) -> Result<Value, Refuse> {
+pub(crate) fn apply(api: &Api, ask: &Value) -> Result<Value, Refuse> {
     let op = str_of(ask, "op")?;
     let scope = scope(ask)?;
     let name = name(str_of(ask, "name")?)?;
@@ -50,7 +50,7 @@ pub(crate) fn apply(api: &Api, _conn: u64, _viewer: &str, ask: &Value) -> Result
     }
 }
 
-/// A write lands global unless the caller names another scope.
+// A write lands global unless the caller names another scope.
 fn scope(ask: &Value) -> Result<Scope, Refuse> {
     match opt_str_of(ask, "scope")?.unwrap_or("global") {
         "global" => Ok(Scope::Global),
@@ -59,7 +59,7 @@ fn scope(ask: &Value) -> Result<Scope, Refuse> {
     }
 }
 
-/// A name is one word; the tool's rule, kept here too.
+// A name is one word; the tool's rule, kept here too.
 fn name(raw: &str) -> Result<String, Refuse> {
     let name = raw.trim();
     if name.is_empty() || name.chars().any(char::is_whitespace) {
@@ -70,7 +70,7 @@ fn name(raw: &str) -> Result<String, Refuse> {
     Ok(name.to_string())
 }
 
-/// The block a current-scope row hangs on: the session's newest one.
+// The block a current-scope row hangs on: the session's newest one.
 fn anchor(api: &Api, scope: Scope, ask: &Value) -> Result<Option<i64>, Refuse> {
     if scope == Scope::Global {
         return Ok(None);
@@ -83,7 +83,7 @@ fn anchor(api: &Api, scope: Scope, ask: &Value) -> Result<Option<i64>, Refuse> {
     Ok(Some(*hi))
 }
 
-/// Every version of that name in that scope goes; `0` = there was nothing to delete.
+// Every version of that name in that scope goes; `0` = there was nothing to delete.
 fn delete(api: &Api, scope: Scope, ask: &Value, name: &str) -> Result<usize, Refuse> {
     let reader = Reader::open(api.db())?;
     let mut filter = match scope {

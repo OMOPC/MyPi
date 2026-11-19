@@ -1,4 +1,4 @@
-//! Call — the read side: every answer comes from the database.
+// Call — the read side: every answer comes from the database.
 
 pub(crate) mod blocks;
 pub(crate) mod children;

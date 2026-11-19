@@ -1,7 +1,7 @@
 # api
 
 The backend's only front-facing surface. One connection table, one stream per session, and one
-door per name. Nothing here knows what a block means; it moves rows and frames.
+name per action. Nothing here knows what a block means; it moves rows and frames.
 
 ## 1. Design / Schema
 
@@ -19,19 +19,25 @@ One frame is `kind`, `name`, `payload`.
 | kind | direction | name | payload |
 |---|---|---|---|
 | `register` | front end | `hello` / `bye` | the viewer id |
-| `call` | front end | a read door | the door's arguments |
-| `post` | front end | a write door | the door's arguments |
-| `subscribe` | front end | `watch` / `submit` / `compact` | the door's arguments |
-| `stream` | back end | `change` / `notice` / the door that opened the turn | the pushed row |
+| `call` | front end | a read name | that name's arguments |
+| `post` | front end | `meta` / `init` / `memo` / `default_model` / `interrupt` / `mailbox` | that name's arguments |
+| `subscribe` | front end | `watch` / `submit` / `compact` | that name's arguments |
+| `stream` | back end | `signal` / `notice` / the turn's name | the pushed row |
 
 A reply carries the request's `kind` and `name`, so a front end matches an answer to its own
 request without a counter. A failure is a reply whose payload is `{"error": {"code", "message"}}`.
+Every `post` answers `{}` except `init`, which answers `{"session"}`.
 
-### Doors
+`post meta` is the write path for session metadata. Its payload is `{"name", "content"}`: `name`
+picks the write (`name`, `cwd`, `switch`, `effort`, `delete`, `rewind`) and `content` holds that
+write's arguments. The result leaves the session stream as `stream signal`, whose payload is the
+write's own fields plus `signal` naming it. The issuer is skipped.
+
+### Names
 
 Read: `init`, `blocks`, `meta`, `usage`, `todo`, `memo`, `children`, `config`, `pools`, `sessions`.
-Write: `init`, `name`, `cwd`, `switch`, `effort`, `delete`, `interrupt`, `rewind`, `default_model`,
-`mailbox`.
+Write: `meta` (`name`, `cwd`, `switch`, `effort`, `delete`, `rewind`), `init`, `memo`,
+`default_model`, `interrupt`, `mailbox`.
 Subscribe: `watch`, `submit`, `compact`.
 
 - `init` (post) writes the `sessions` row and its `request_meta` archive in one submission, then
@@ -69,7 +75,7 @@ Subscribe: `watch`, `submit`, `compact`.
   clears it. The loop takes it at a blocking point and opens a turn named `mailbox`, exactly as a
   `submit` would; taking it clears it and puts `signal: mailbox` on the stream, carrying the words
   for every watcher but the writer.
-- `effort` sets how hard the session's next laps ask the model to think. It is the one write door
+- `effort` sets how hard the session's next laps ask the model to think. It is the one write
   that changes no row: the rung lives on the session's request config and dies with the booking. A
   model that declares no rung answers `bad_payload` rather than accepting a value it could never
   send, and a rung the model does not declare is refused the same way, with the declared ones named.
@@ -81,18 +87,18 @@ Subscribe: `watch`, `submit`, `compact`.
 - A refusal the user can actually cause is said in the session's own stream — one `stream notice`
   frame — instead of only in the answer the front end may drop. Today that is `delete` on a busy
   session and `cwd` on a path that does not exist or is not a workspace.
-- `profile` is an argument of the write `init` and never a door of its own: a session's profile is
+- `profile` is an argument of the write `init` and never a name of its own: a session's profile is
   fixed when it is created.
 - A child session takes no messages: `submit` and `compact` answer `permission_denied` for one.
 - The configuration is a startup snapshot. `call.config` answers the same values the process runs
-  on; there is no door that re-reads the files, because the loop, the tool layer and the limits are
+  on; there is no name that re-reads the files, because the loop, the tool layer and the limits are
   built once.
 
-### Door arguments
+### Name arguments
 
-| kind | door | payload | answer |
+| kind | name | payload | answer |
 |---|---|---|---|
-| `register` | `hello` | `viewer` | an empty `opened` frame |
+| `register` | `hello` | `viewer` | `{"notices"}` |
 | `register` | `bye` | — | nothing |
 | `call` | `init` | `session` | `structure` (`turn` + `ranges` + `compact` per round, the whole list, borrowed rounds left out), `blocks` (newest 32, whole rows), `todo` (the list, or null), `effort` (the rung the session runs with now) |
 | `call` | `blocks` | `session`, `ranges` | `blocks`, whole rows, in request order |
@@ -104,19 +110,26 @@ Subscribe: `watch`, `submit`, `compact`.
 | `call` | `config` | `key` | the value; a bare `models.model.<address>` answers the whole entry |
 | `call` | `pools` | — | `models`, `profiles` |
 | `call` | `sessions` | `under` (optional directory) | `rows`: main sessions, newest first, each carrying `first_user`, `bytes`, `last_ts`, `memos` |
-| `post` | `init` | `cwd`, `name`, `model`, `profile` | `session` |
-| `post` | `name` | `session`, `name` | — |
-| `post` | `cwd` | `session`, `path` | `cwd` (resolved) |
-| `post` | `switch` | `session`, `model` | — |
-| `post` | `effort` | `session`, `effort` (`auto`, or a rung the model declares) | `effort` |
-| `post` | `delete` | `session` | — |
-| `post` | `interrupt` | `session` | — |
-| `post` | `rewind` | `session`, `turn`, `block` | `cut` |
-| `post` | `default_model` | `model` | `path` of the file written |
-| `post` | `mailbox` | `session`, `text`, `prefix`, `suffix` (all but `session` optional) | `written`: whether a body was stored |
+| `post` | `meta` | `name`, `content` | `{}`; the result is a `stream signal` |
+| `post` | `init` | `cwd`, `name`, `model`, `profile` | `{"session"}` |
+| `post` | `memo` | `session` (current only), `op`, `scope`, `name`, `content` | `{}` |
+| `post` | `default_model` | `model` | `{}` |
+| `post` | `interrupt` | `session` | `{}` |
+| `post` | `mailbox` | `session`, `text`, `prefix`, `suffix` (all but `session` optional) | `{}` |
 | `subscribe` | `watch` | `session`, or `null` to stop following | — |
 | `subscribe` | `submit` | `session`, `text`, `prefix`, `suffix` | `turn` |
 | `subscribe` | `compact` | `session`, `retention` (`{"chars"}` or `{"blocks"}`), `focus` | `turn` |
+
+A `post meta` payload's `name` and `content`:
+
+| name | content | signal |
+|---|---|---|
+| `name` | `session`, `name` | `{"signal": "name", "name": ...}` |
+| `cwd` | `session`, `path` | `{"signal": "cwd", "cwd": ...}` |
+| `switch` | `session`, `model` | `{"signal": "model", "model": ...}` |
+| `effort` | `session`, `effort` | `{"signal": "effort", "effort": ...}` |
+| `delete` | `session` | `{"signal": "delete", "session": ...}` |
+| `rewind` | `session`, `turn`, `block` | `{"signal": "rewind", "turn", "block", "cut"}` |
 
 A `sessions` row is the session's own columns plus four the picker draws: `first_user` (the
 first non-empty user body), `bytes` (the UTF-8 size of every block body), `last_ts` (the time of
@@ -134,7 +147,7 @@ Two sources feed one dispatcher, one queue:
 ```text
 request half  --(Sender<Event>)-->  relay  -->  frames on every connection watching the session
 storage       --(ranges, by the loop's settle)-->  the same Sender<Event>
-api's own write doors ------------->  relay
+api's own writes ------------------->  relay
 ```
 
 The loop settles a turn through `pen::turn::settle`, which hands back the closed ranges and whether
@@ -144,9 +157,9 @@ turn's first frame, always — not usually.
 
 | event | `kind` | `name` | payload |
 |---|---|---|---|
-| write signal | `stream` | `signal` | the fields that write changed |
+| write signal | `stream` | `signal` | the write's fields plus `signal` |
 | slot taken | `stream` | `signal` | `signal: mailbox` |
-| live output | `stream` | the door that opened the turn | `session`, `turn`, `kind`, the piece |
+| live output | `stream` | the name that opened the turn | `session`, `turn`, `kind`, the piece |
 | notice | `stream` | `notice` | `session`, `level`, `content` |
 | slot taken | `stream` | `signal` | `signal: mailbox`, and `text` for every watcher but the writer |
 | turn opened | `stream` | `signal` | `signal: user`, `text` |
@@ -158,9 +171,9 @@ turn's first frame, always — not usually.
   column holds the same array.
 - `text`, `thinking` and `arguments` carry `usage`: the bill of the request that just ended, on the
   one piece the decoder wrote it onto; `null` on every other piece.
-- A write signal names the field its door changed: `cwd` with the landed path, `model` with the
-  address, `name` with the new name, `effort` with the rung. `delete` and `rewind` say so in `signal` and carry their own
-  fields.
+- A write signal carries `signal` naming the write, plus its own fields: `cwd` with the landed
+  path, `model` with the address, `name` with the new name, `effort` with the rung, `delete` with
+  the session, `rewind` with `turn`, `block` and `cut`.
 - A write signal skips the viewer that issued it. The slot-taken signal, the turn-opened signal,
   live output, notices and structure go to everyone watching.
 
@@ -178,7 +191,7 @@ turn's first frame, always — not usually.
 ### The writer
 
 A session is idle or busy. Idle: whoever submits first opens the turn and becomes the writer.
-Busy: the writer is fixed to the viewer that opened the turn; any other viewer's write door answers
+Busy: the writer is fixed to the viewer that opened the turn; any other viewer's write answers
 `permission_denied`. The slot is cleared when the round structure arrives, not when the connection
 goes away.
 
@@ -190,7 +203,7 @@ goes away.
 
 ## 2. Design intent
 
-- **The api is a postman.** It decodes a frame, names a door, and encodes the answer. Blocks,
+- **The api is a postman.** It decodes a frame, names the write or read, and encodes the answer. Blocks,
   rounds, archives and tool results are the other halves' vocabulary, carried through untouched.
 - **One stream per session, not per connection.** A second front end on the same session sees the
   same turn; the buffer is what makes joining mid-turn possible.

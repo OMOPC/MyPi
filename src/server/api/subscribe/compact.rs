@@ -1,4 +1,4 @@
-//! `compact` — open a compaction turn and take the session's writer slot.
+// `compact` — open a compaction turn and take the session's writer slot.
 
 use anyhow::Result;
 use serde_json::Value;
@@ -18,7 +18,7 @@ pub(crate) fn apply(api: &Api, conn: u64, viewer: &str, ask: &Value) -> Result<V
     submit::open(api, conn, viewer, session, message, "compact")
 }
 
-/// `{"chars": n}` or `{"blocks": n}`; absent keeps the configured tail.
+// `{"chars": n}` or `{"blocks": n}`; absent keeps the configured tail.
 fn retention_of(ask: &Value) -> Result<Option<Retention>, Refuse> {
     let value = match ask.get("retention") {
         Some(value) => value,

@@ -1,4 +1,4 @@
-//! `init` — the session row, its request archive, and the loop's booking.
+// `init` — the session row, its request archive, and the loop's booking.
 
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ use crate::server::storage::{Ref, RequestMeta, Row, Submit};
 
 use super::emit;
 
-pub(crate) fn apply(api: &Api, _conn: u64, _viewer: &str, ask: &Value) -> Result<Value, Refuse> {
+pub(crate) fn apply(api: &Api, ask: &Value) -> Result<Value, Refuse> {
     // The launch directory exists; only where it may stand is asked, and a barred one lands in
     // the temp dir.
     let cwd = crate::server::agent::tools::workspace::launch_dir(str_of(ask, "cwd")?);

@@ -1,4 +1,4 @@
-//! `children` — the sessions a `task` call spawned, found by the block they hang on.
+// `children` — the sessions a `task` call spawned, found by the block they hang on.
 
 use anyhow::Result;
 use serde_json::{Value, json};

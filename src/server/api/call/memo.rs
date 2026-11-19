@@ -1,4 +1,4 @@
-//! `memo` — every name in both scopes with its latest text, and one name's versions.
+// `memo` — every name in both scopes with its latest text, and one name's versions.
 
 use std::collections::BTreeMap;
 
@@ -9,7 +9,7 @@ use crate::server::api::{Api, Refuse};
 use crate::server::storage::Reader;
 use crate::server::storage::query::{Cond, Order, Query, Sheet, Val};
 
-/// The scopes a list reaches, in the order the answer carries them.
+// The scopes a list reaches, in the order the answer carries them.
 const SCOPES: [&str; 2] = ["current", "global"];
 
 pub(crate) fn answer(
@@ -35,7 +35,7 @@ pub(crate) fn answer(
     }
 }
 
-/// One row per name and scope, carrying the newest version's content.
+// One row per name and scope, carrying the newest version's content.
 fn list(reader: &Reader, session: Option<i64>) -> Result<Vec<Value>, Refuse> {
     let mut out: Vec<Value> = Vec::new();
     for scope in SCOPES {
@@ -64,7 +64,7 @@ fn list(reader: &Reader, session: Option<i64>) -> Result<Vec<Value>, Refuse> {
     Ok(out)
 }
 
-/// Name first, scope second, so one name's two scopes sit together.
+// Name first, scope second, so one name's two scopes sit together.
 fn rank(row: &Value) -> (&str, &str) {
     (
         row["name"].as_str().unwrap_or_default(),
@@ -72,7 +72,7 @@ fn rank(row: &Value) -> (&str, &str) {
     )
 }
 
-/// Every version of one name, oldest first.
+// Every version of one name, oldest first.
 fn history(
     reader: &Reader,
     session: Option<i64>,
@@ -91,7 +91,7 @@ fn history(
     )?)
 }
 
-/// One scope's conditions; `None` = this scope holds nothing here.
+// One scope's conditions; `None` = this scope holds nothing here.
 fn filter(reader: &Reader, session: Option<i64>, scope: &str) -> Result<Option<Vec<Cond>>, Refuse> {
     Ok(match scope {
         "global" => Some(vec![Cond::Null("anchor")]),

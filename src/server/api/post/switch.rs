@@ -1,4 +1,4 @@
-//! `switch` — this session's model.
+// `switch` — this session's model.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -19,8 +19,7 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
         .cfg()
         .model_by_id(&format!("{provider}:{model}"))
         .ok_or_else(|| Refuse::Bad(format!("no such model: {provider}:{model}")))?;
-    emit::require_writer(api, viewer, session)?;
-    api.ensure_booked(session)?;
+    emit::prepare(api, viewer, session)?;
     let address = format!("{provider}:{model}");
     api.ledger().change(
         session,
@@ -30,6 +29,5 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
             vision: resolved.entry.vision,
         },
     )?;
-    emit::changed(api, viewer, session, json!({"model": address}));
-    Ok(serde_json::json!({}))
+    Ok(json!({"model": address}))
 }

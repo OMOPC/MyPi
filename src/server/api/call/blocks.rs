@@ -1,4 +1,4 @@
-//! `blocks` — closed id ranges, answered in request order.
+// `blocks` — closed id ranges, answered in request order.
 
 use anyhow::Result;
 use serde_json::{Value, json};

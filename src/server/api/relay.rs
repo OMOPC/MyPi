@@ -1,5 +1,5 @@
-//! The session stream: one table of connections, one current turn per session, and the buffer a
-//! late watcher catches up from.
+// The session stream: one table of connections, one current turn per session, and the buffer a
+// late watcher catches up from.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Sender};
@@ -12,14 +12,21 @@ use crate::ipc::contract::Frame;
 use crate::server::agent::r#loop::{Element, Event, NoticeLevel, Stream, ToolEvent};
 use crate::server::agent::request::message::Usage;
 
-/// One connection's outbound end and what it currently follows.
+// One write's result, ready to be said on the session stream.
+pub(crate) struct Signal {
+    pub session: i64,
+    pub name: &'static str,
+    pub content: Value,
+}
+
+// One connection's outbound end and what it currently follows.
 struct Entry {
     viewer: Option<String>,
     session: Option<i64>,
     tx: Sender<Frame>,
 }
 
-/// The turn a session is in, the door that opened it, and the viewer that did.
+// The turn a session is in, the door that opened it, and the viewer that did.
 struct Active {
     turn: i64,
     opened_by: &'static str,
@@ -30,17 +37,17 @@ struct Active {
 struct State {
     conns: HashMap<u64, Entry>,
     active: HashMap<i64, Active>,
-    /// The viewer that put a message in the slot, waiting for the turn it opens.
+    // The viewer that put a message in the slot, waiting for the turn it opens.
     pending: HashMap<i64, String>,
     buffers: HashMap<i64, Vec<Frame>>,
-    /// The sessions a connection followed at the last change.
+    // The sessions a connection followed at the last change.
     watched: HashSet<i64>,
 }
 
-/// Told, outside the state lock, that a session has no watcher left.
+// Told, outside the state lock, that a session has no watcher left.
 pub(crate) type Closer = Arc<dyn Fn(i64) + Send + Sync>;
 
-/// The stream: who follows which session, and what this turn has already said.
+// The stream: who follows which session, and what this turn has already said.
 #[derive(Clone)]
 pub(crate) struct Relay {
     state: Arc<Mutex<State>>,
@@ -48,8 +55,8 @@ pub(crate) struct Relay {
 }
 
 impl Relay {
-    /// Hand back the one event sender the loop writes to: every frame a front end hears leaves by
-    /// this queue, in the order the loop sent it.
+    // Hand back the one event sender the loop writes to: every frame a front end hears leaves by
+    // this queue, in the order the loop sent it.
     pub(crate) fn start() -> Result<(Relay, Sender<Event>)> {
         let relay = Relay {
             state: Arc::new(Mutex::new(State::default())),
@@ -85,12 +92,12 @@ impl Relay {
         }
     }
 
-    /// Who to tell when a session's last watcher goes away.
+    // Who to tell when a session's last watcher goes away.
     pub(crate) fn close_with(&self, closer: Closer) {
         *self.closer.lock().unwrap_or_else(|e| e.into_inner()) = Some(closer);
     }
 
-    /// Tell the closer about every session that just lost its last watcher.
+    // Tell the closer about every session that just lost its last watcher.
     fn report(&self, gone: Vec<i64>) {
         if gone.is_empty() {
             return;
@@ -128,14 +135,16 @@ impl Relay {
         self.state().conns.len()
     }
 
-    /// This connection follows this session, and hears whatever this turn already said.
-    pub(crate) fn declare(&self, conn: u64, session: i64) {
+    // This connection follows one session, or none, and hears whatever that turn already said.
+    pub(crate) fn follow(&self, conn: u64, session: Option<i64>) {
         let gone = {
             let mut state = self.state();
             if let Some(entry) = state.conns.get_mut(&conn) {
-                entry.session = Some(session);
+                entry.session = session;
             }
-            let replay = state.buffers.get(&session).cloned().unwrap_or_default();
+            let replay = session
+                .and_then(|session| state.buffers.get(&session).cloned())
+                .unwrap_or_default();
             if let Some(tx) = state.conns.get(&conn).map(|entry| entry.tx.clone()) {
                 for frame in replay {
                     let _ = tx.send(frame);
@@ -146,31 +155,20 @@ impl Relay {
         self.report(gone);
     }
 
-    /// This connection stops following whatever it followed.
-    pub(crate) fn unwatch(&self, conn: u64) {
-        let gone = {
-            let mut state = self.state();
-            if let Some(entry) = state.conns.get_mut(&conn) {
-                entry.session = None;
-            }
-            drop_unfollowed(&mut state)
-        };
-        self.report(gone);
-    }
-
-    /// Is a turn already running on this session?
+    // Is a turn already running on this session?
     pub(crate) fn busy(&self, session: i64) -> bool {
         self.state().active.contains_key(&session)
     }
 
-    /// Record the turn this viewer just opened on this session.
-    pub(crate) fn opened(
+    // Record the turn this viewer just opened, and tell the others the words that opened it.
+    pub(crate) fn open(
         &self,
         conn: u64,
         session: i64,
         viewer: &str,
         turn: i64,
         door: &'static str,
+        opening: &str,
     ) {
         let gone = {
             let mut state = self.state();
@@ -189,33 +187,33 @@ impl Relay {
             drop_unfollowed(&mut state)
         };
         self.report(gone);
+        if !opening.is_empty() {
+            let said = json!({"signal": "user", "text": opening});
+            self.deliver(session, Frame::new("stream", "signal", said), Some(viewer));
+        }
     }
 
-    /// A turn just opened: every watcher but the writer is told the words that opened it.
-    pub(crate) fn told(&self, session: i64, viewer: &str, text: &str) {
-        let said = json!({"signal": "user", "text": text});
-        self.deliver(session, Frame::new("stream", "signal", said), Some(viewer));
-    }
-
-    /// Remember who wrote the slot; the turn it opens is named after the slot, nobody else.
-    pub(crate) fn note_mail(&self, conn: u64, session: i64, viewer: &str) {
+    // Remember who is waiting for the slot, or forget it when the slot is cleared.
+    pub(crate) fn mail(&self, conn: u64, session: i64, waiting: Option<&str>) {
         let gone = {
             let mut state = self.state();
-            if let Some(entry) = state.conns.get_mut(&conn) {
-                entry.session = Some(session);
+            match waiting {
+                Some(viewer) => {
+                    if let Some(entry) = state.conns.get_mut(&conn) {
+                        entry.session = Some(session);
+                    }
+                    state.pending.insert(session, viewer.to_string());
+                }
+                None => {
+                    state.pending.remove(&session);
+                }
             }
-            state.pending.insert(session, viewer.to_string());
             drop_unfollowed(&mut state)
         };
         self.report(gone);
     }
 
-    /// The slot was cleared before the loop took it: nothing is owed a turn.
-    pub(crate) fn drop_mail(&self, session: i64) {
-        self.state().pending.remove(&session);
-    }
-
-    /// Only the viewer that opened the turn may change the session while it runs.
+    // Only the viewer that opened the turn may change the session while it runs.
     pub(crate) fn writes(&self, session: i64, viewer: &str) -> bool {
         match self.state().active.get(&session) {
             Some(active) => active.viewer == viewer,
@@ -223,16 +221,26 @@ impl Relay {
         }
     }
 
-    /// One change of the api's own: everybody but the issuer hears the field it changed.
-    pub(crate) fn change(&self, session: i64, changed: Value, issuer: &str) {
+    // One write's result: everybody but the issuer hears the field it changed.
+    pub(crate) fn signal(&self, signal: Signal, issuer: &str) {
+        let Signal {
+            session,
+            name,
+            mut content,
+        } = signal;
+        if let Some(object) = content.as_object_mut() {
+            object.insert("signal".to_string(), json!(name));
+        } else {
+            content = json!({"signal": name, "content": content});
+        }
         self.deliver(
             session,
-            Frame::new("stream", "signal", changed),
+            Frame::new("stream", "signal", content),
             Some(issuer),
         );
     }
 
-    /// One line the api has to say, into the session's stream.
+    // One line the api has to say, into the session's stream.
     pub(crate) fn notice(&self, session: i64, level: NoticeLevel, text: impl Into<String>) {
         let level = match level {
             NoticeLevel::Info => "info",
@@ -243,8 +251,8 @@ impl Relay {
         self.deliver(session, Frame::new("stream", "notice", payload), None);
     }
 
-    /// The session is gone: its buffer, its turn, and every watcher's claim on it.
-    pub(crate) fn forget(&self, session: i64) {
+    // The session is gone: its buffer, its turn, and every watcher's claim on it.
+    pub(crate) fn close(&self, session: i64) {
         let gone = {
             let mut state = self.state();
             state.buffers.remove(&session);
@@ -260,7 +268,7 @@ impl Relay {
         self.report(gone);
     }
 
-    /// One live moment from the loop.
+    // One live moment from the loop.
     fn event(&self, event: Event) {
         let session = event.session;
         let element = match event.element {
@@ -366,8 +374,8 @@ impl Relay {
         }
     }
 
-    /// The slot was taken: the writer recorded at write time owns the turn, and the door is the
-    /// slot. A letter taken into a turn that is already running keeps that turn's door.
+    // The slot was taken: the writer recorded at write time owns the turn, and the door is the
+    // slot. A letter taken into a turn that is already running keeps that turn's door.
     fn slot_opened(&self, session: i64, turn: i64) -> Option<String> {
         let mut state = self.state();
         let viewer = state.pending.remove(&session).filter(|who| !who.is_empty());
@@ -389,7 +397,7 @@ impl Relay {
         viewer
     }
 
-    /// One piece of live output, labelled with the turn and the door that opened it.
+    // One piece of live output, labelled with the turn and the door that opened it.
     fn stream(&self, session: i64, turn: i64, door: &'static str, kind: &str, extra: Value) {
         let mut payload = json!({"session": session, "turn": turn, "kind": kind});
         if let (Some(object), Some(extra)) = (payload.as_object_mut(), extra.as_object()) {
@@ -400,7 +408,7 @@ impl Relay {
         self.deliver(session, Frame::new("stream", door, payload), None);
     }
 
-    /// The turn closed: its ranges go out last, then the buffer and the turn go.
+    // The turn closed: its ranges go out last, then the buffer and the turn go.
     fn structure(&self, session: i64, turn: i64, ranges: Vec<[i64; 2]>, compact: bool) {
         let (_, door) = self.turn_of(session);
         let payload = json!({
@@ -423,7 +431,7 @@ impl Relay {
             .unwrap_or((0, "wake"))
     }
 
-    /// One frame for every connection following this session; the issuer never reads its own write.
+    // One frame for every connection following this session; the issuer never reads its own write.
     fn deliver(&self, session: i64, frame: Frame, issuer: Option<&str>) {
         let mut state = self.state();
         let targets: Vec<(u64, Sender<Frame>)> = state
@@ -458,7 +466,7 @@ impl Relay {
         self.report(gone);
     }
 
-    /// One frame for one viewer's connection, never buffered: the writer's own copy of a signal.
+    // One frame for one viewer's connection, never buffered: the writer's own copy of a signal.
     fn send_one(&self, session: i64, viewer: &str, frame: Frame) {
         let mut state = self.state();
         let targets: Vec<(u64, Sender<Frame>)> = state
@@ -487,7 +495,7 @@ impl Relay {
     }
 }
 
-/// One request's bill as a frame carries it; `null` when the piece carries none.
+// One request's bill as a frame carries it; `null` when the piece carries none.
 fn bill(usage: Option<Usage>) -> Value {
     match usage {
         Some(u) => json!({
@@ -501,7 +509,7 @@ fn bill(usage: Option<Usage>) -> Value {
     }
 }
 
-/// A session with no watcher left keeps no buffer, and is handed back to be unbooked.
+// A session with no watcher left keeps no buffer, and is handed back to be unbooked.
 fn drop_unfollowed(state: &mut State) -> Vec<i64> {
     let followed: HashSet<i64> = state
         .conns

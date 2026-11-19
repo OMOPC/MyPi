@@ -1,14 +1,44 @@
-//! The name tables: kind and name pick the door, JSON picks the arguments.
+// The name tables: kind and name pick the write or read, JSON picks the arguments.
 
 use anyhow::Result;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::ipc::contract::Frame;
 
 use super::call;
 use super::post;
+use super::relay::Signal;
 use super::subscribe;
 use super::{Api, Refuse};
+
+// What one write hands back: the reply's body, and what the session stream should hear.
+pub(crate) struct Reply {
+    pub done: Value,
+    pub signal: Option<Signal>,
+}
+
+impl Reply {
+    fn plain() -> Self {
+        Self {
+            done: json!({}),
+            signal: None,
+        }
+    }
+
+    fn done(value: Value) -> Self {
+        Self {
+            done: value,
+            signal: None,
+        }
+    }
+
+    fn signal(signal: Signal) -> Self {
+        Self {
+            done: json!({}),
+            signal: Some(signal),
+        }
+    }
+}
 
 pub(crate) fn call(api: &Api, _viewer: &str, frame: &Frame) -> Result<Value, Refuse> {
     let ask = &frame.payload;
@@ -33,22 +63,40 @@ pub(crate) fn call(api: &Api, _viewer: &str, frame: &Frame) -> Result<Value, Ref
     }
 }
 
-pub(crate) fn post(api: &Api, conn: u64, viewer: &str, frame: &Frame) -> Result<Value, Refuse> {
+pub(crate) fn post(api: &Api, conn: u64, viewer: &str, frame: &Frame) -> Result<Reply, Refuse> {
     let ask = &frame.payload;
     match frame.name.as_str() {
-        "init" => post::init::apply(api, conn, viewer, ask),
-        "name" => post::name::apply(api, viewer, ask),
-        "cwd" => post::cwd::apply(api, viewer, ask),
-        "switch" => post::switch::apply(api, viewer, ask),
-        "effort" => post::effort::apply(api, viewer, ask),
-        "delete" => post::delete::apply(api, viewer, ask),
-        "interrupt" => post::interrupt::apply(api, viewer, ask),
-        "mailbox" => post::mailbox::apply(api, conn, viewer, ask),
-        "memo" => post::memo::apply(api, conn, viewer, ask),
-        "rewind" => post::rewind::apply(api, viewer, ask),
-        "default_model" => post::default_model::apply(api, ask),
+        "meta" => meta(api, viewer, ask),
+        "init" => post::init::apply(api, ask).map(Reply::done),
+        "memo" => post::memo::apply(api, ask).map(|_| Reply::plain()),
+        "default_model" => post::default_model::apply(api, ask).map(|_| Reply::plain()),
+        "interrupt" => post::interrupt::apply(api, viewer, ask).map(|_| Reply::plain()),
+        "mailbox" => subscribe::mail::apply(api, conn, viewer, ask).map(|_| Reply::plain()),
         other => Err(Refuse::Unknown(format!("no such name: {other}"))),
     }
+}
+
+// One meta request: its `name` picks the write, its `content` holds that write's arguments.
+fn meta(api: &Api, viewer: &str, ask: &Value) -> Result<Reply, Refuse> {
+    let name = str_of(ask, "name")?;
+    let content = ask
+        .get("content")
+        .ok_or_else(|| Refuse::Bad("missing `content`".into()))?;
+    let session = i64_of(content, "session")?;
+    let (signal, value) = match name {
+        "name" => ("name", post::name::apply(api, viewer, content)?),
+        "cwd" => ("cwd", post::cwd::apply(api, viewer, content)?),
+        "switch" => ("model", post::switch::apply(api, viewer, content)?),
+        "effort" => ("effort", post::effort::apply(api, viewer, content)?),
+        "delete" => ("delete", post::delete::apply(api, viewer, content)?),
+        "rewind" => ("rewind", post::rewind::apply(api, viewer, content)?),
+        other => return Err(Refuse::Unknown(format!("no such meta name: {other}"))),
+    };
+    Ok(Reply::signal(Signal {
+        session,
+        name: signal,
+        content: value,
+    }))
 }
 
 pub(crate) fn subscribe(

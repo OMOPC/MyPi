@@ -1,11 +1,11 @@
-//! What every write door shares: the writer gate, the event, and the model pair.
+// What every write door shares: the writer gate, the event, and the model pair.
 
 use anyhow::Result;
 use serde_json::Value;
 
 use crate::server::api::{Api, Refuse};
 
-/// Only the viewer that opened the running turn may change the session while it runs.
+// Only the viewer that opened the running turn may change the session while it runs.
 pub(crate) fn require_writer(api: &Api, viewer: &str, session: i64) -> Result<(), Refuse> {
     if api.relay().writes(session, viewer) {
         Ok(())
@@ -16,12 +16,13 @@ pub(crate) fn require_writer(api: &Api, viewer: &str, session: i64) -> Result<()
     }
 }
 
-/// Announce the field one write changed to everyone but the writer.
-pub(crate) fn changed(api: &Api, viewer: &str, session: i64, changed: Value) {
-    api.relay().change(session, changed, viewer);
+// A write that needs the session in the loop before it can change it.
+pub(crate) fn prepare(api: &Api, viewer: &str, session: i64) -> Result<(), Refuse> {
+    require_writer(api, viewer, session)?;
+    api.ensure_booked(session)
 }
 
-/// A model pair from `{"provider", "model"}`.
+// A model pair from `{"provider", "model"}`.
 pub(crate) fn model_of(value: &Value) -> Result<(String, String), Refuse> {
     let provider = value
         .get("provider")

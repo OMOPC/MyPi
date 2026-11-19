@@ -1,4 +1,4 @@
-//! `effort` — how hard this session's laps ask the model to think.
+// `effort` — how hard this session's laps ask the model to think.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -10,7 +10,7 @@ use crate::server::api::{Api, Refuse};
 
 use super::emit;
 
-/// The one refusal a front end reads as "this model takes no effort".
+// The one refusal a front end reads as "this model takes no effort".
 pub(crate) const NO_EFFORT: &str = "this model takes no thinking effort";
 
 pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refuse> {
@@ -20,8 +20,7 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
         .and_then(Value::as_str)
         .ok_or_else(|| Refuse::Bad("missing or bad `effort`".into()))?;
     let effort = Effort::parse(raw).ok_or_else(|| Refuse::Bad(format!("no such effort: {raw}")))?;
-    emit::require_writer(api, viewer, session)?;
-    api.ensure_booked(session)?;
+    emit::prepare(api, viewer, session)?;
     // The rungs a model takes are its own declaration; a front end hears the refusal here.
     let declared = declared(api, session)?;
     if declared.is_empty() {
@@ -39,11 +38,10 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
         )));
     }
     api.ledger().change(session, Change::Effort(effort))?;
-    emit::changed(api, viewer, session, json!({"effort": effort.as_str()}));
-    Ok(serde_json::json!({"effort": effort.as_str()}))
+    Ok(json!({"effort": effort.as_str()}))
 }
 
-/// The rungs this session's model declares; empty takes none.
+// The rungs this session's model declares; empty takes none.
 fn declared(api: &Api, session: i64) -> Result<Vec<Effort>, Refuse> {
     let (provider, model) = api.ledger().model(session)?;
     Ok(api

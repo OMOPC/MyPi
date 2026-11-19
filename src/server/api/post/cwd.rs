@@ -1,4 +1,4 @@
-//! `cwd` — the working directory: resolved and licensed here, answered as it landed.
+// `cwd` — the working directory: resolved and licensed here, answered as it landed.
 
 use std::path::PathBuf;
 
@@ -14,8 +14,7 @@ use super::emit;
 pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refuse> {
     let session = i64_of(ask, "session")?;
     let path = str_of(ask, "path")?;
-    emit::require_writer(api, viewer, session)?;
-    api.ensure_booked(session)?;
+    emit::prepare(api, viewer, session)?;
     let landed = match api
         .ledger()
         .change(session, Change::Cwd(PathBuf::from(path)))
@@ -31,6 +30,5 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
     let cwd = landed
         .map(|real| real.to_string_lossy().into_owned())
         .unwrap_or_default();
-    emit::changed(api, viewer, session, json!({"cwd": &cwd}));
     Ok(json!({ "cwd": cwd }))
 }

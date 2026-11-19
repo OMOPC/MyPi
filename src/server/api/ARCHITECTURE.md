@@ -8,12 +8,12 @@ What is here, what each file holds, who talks to whom. Current state only.
 |---|---|
 | `mod.rs` | module declarations and the three exports |
 | `api.rs` | `Api`, `Conn`, `Refuse`: the connection table, the frame entry, the booking of an existing session |
-| `route.rs` | the name tables: kind plus name pick a door; JSON picks its arguments |
+| `route.rs` | the name tables: kind plus name pick the write or read; JSON picks its arguments |
 | `relay.rs` | the stream: viewers per session, the running turn, the buffer, the frame shapes |
 | `convert.rs` | the rewind cut, the only storage shape this domain renames |
-| `call/` | the read doors: `init`, `blocks`, `meta`, `usage`, `todo`, `memo`, `children`, `config`, `pools`, `sessions` |
-| `post/` | the write doors: `init`, `name`, `cwd`, `switch`, `effort`, `delete`, `interrupt`, `rewind`, `default_model`, `reload`; `emit.rs` holds the writer gate and the signal announcer |
-| `subscribe/` | `watch` (a session, or none), `submit`, `compact` |
+| `call/` | the read names: `init`, `blocks`, `meta`, `usage`, `todo`, `memo`, `children`, `config`, `pools`, `sessions` |
+| `post/` | the writes: `meta` unpacks to `name`, `cwd`, `switch`, `effort`, `delete`, `rewind`; also `init`, `memo`, `default_model`, `interrupt`; `emit.rs` holds the writer gate and the booking |
+| `subscribe/` | the session stream: `watch` (a session, or none), `submit`, `compact`, `mail` (the pending letter), `close` (a deleted session's stream) |
 
 ## What it talks to
 
@@ -36,8 +36,9 @@ What is here, what each file holds, who talks to whom. Current state only.
 Api::receive
   → register  ── hello / bye
   → call      ── route::call   → call/*  ── Reader
-  → post      ── route::post   → post/*  ── Writer, Loop, Config
-  → subscribe ── route::subscribe → watch | submit | compact ── Relay, Loop
+  → post      ── route::post   → meta unpack → post/*  ── Writer, Loop, Config
+                                  ↑ result → Relay::signal
+  → subscribe ── route::subscribe → watch | submit | compact | mail | close ── Relay, Loop
   → reply frame, or the error frame
 
 Relay::start
@@ -60,7 +61,8 @@ Relay::start
 
 ## Must stay in step
 
-1. `route.rs` and the `call/` `post/` `subscribe/` files: a door is a name here and one function there.
+1. `route.rs` and the `call/` `post/` `subscribe/` files: a name here is one function there, and a
+   `meta` name is one write there.
 2. `relay.rs`'s frame shapes and `README.md`'s tables: the front end reads one and this writes it.
 3. `post/init.rs`'s archive and `Loop`'s request assembly: both expand the same names through
    `registry::roster`, so a session's stored manuals and its live manuals are the same bytes.
@@ -69,6 +71,5 @@ Relay::start
 
 ## Not wired
 
-1. `ui::tui` still imports the retired `ipc::contract` shapes and the old session surface; the `ui`
-   tree does not compile. `ui::session` speaks the frames.
+1. `ui::session` still asks for the old `post name` writes; it moves to `post meta` next.
 2. `usage` quotes only what `models.yml` declares; a model with no price answers `null`.

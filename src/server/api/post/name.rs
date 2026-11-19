@@ -1,4 +1,4 @@
-//! `name` — the session's display name.
+// `name` — the session's display name.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -17,6 +17,5 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
     api.writer().push(Submit {
         rows: vec![Row::Rename { session, name }],
     })?;
-    emit::changed(api, viewer, session, changed);
-    Ok(serde_json::json!({}))
+    Ok(changed)
 }

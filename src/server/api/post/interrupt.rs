@@ -1,4 +1,4 @@
-//! `interrupt` — stop the running turn.
+// `interrupt` — stop the running turn.
 
 use anyhow::Result;
 use serde_json::Value;

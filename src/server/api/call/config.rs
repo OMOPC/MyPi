@@ -1,4 +1,4 @@
-//! `config` — one key's value, or a model's whole display entry.
+// `config` — one key's value, or a model's whole display entry.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ pub(crate) fn answer(api: &Api, key: &str) -> Result<Value, Refuse> {
     cfg.get_json(key, None).map_err(Refuse::Bad)
 }
 
-/// Everything a front end draws for one model.
+// Everything a front end draws for one model.
 fn entry(model: &ResolvedModel) -> Value {
     let entry = &model.entry;
     json!({

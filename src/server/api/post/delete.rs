@@ -1,11 +1,11 @@
-//! `delete` — a child is refused; a parent takes its children with it.
+// `delete` — a child is refused; a parent takes its children with it.
 
 use anyhow::Result;
 use serde_json::{Value, json};
 
 use crate::server::agent::r#loop::NoticeLevel;
 use crate::server::api::route::i64_of;
-use crate::server::api::{Api, Refuse};
+use crate::server::api::{Api, Refuse, subscribe};
 use crate::server::storage::Reader;
 use crate::server::storage::Table;
 use crate::server::storage::query::{Cond, Order, Query, Sheet};
@@ -55,15 +55,10 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
                 .map_err(|e| Refuse::Internal(format!("{e:#}")))?;
         }
     }
-    api.relay().change(
-        session,
-        json!({"signal": "delete", "session": session}),
-        viewer,
-    );
     api.writer().delete_rows(Table::Sessions, &ids)?;
     for id in &ids {
         api.ledger().drop(*id);
-        api.relay().forget(*id);
+        subscribe::close::apply(api, *id);
     }
-    Ok(json!({}))
+    Ok(json!({"session": session}))
 }

@@ -1,4 +1,4 @@
-//! `meta` — the session row, every column of it.
+// `meta` — the session row, every column of it.
 
 use anyhow::Result;
 use serde_json::Value;

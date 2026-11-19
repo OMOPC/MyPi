@@ -1,4 +1,4 @@
-//! `submit` — open a turn and take the session's writer slot.
+// `submit` — open a turn and take the session's writer slot.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -18,7 +18,7 @@ pub(crate) fn apply(api: &Api, conn: u64, viewer: &str, ask: &Value) -> Result<V
     open(api, conn, viewer, session, message, "submit")
 }
 
-/// Shared by `submit` and `compact`: one turn, one writer.
+// Shared by `submit` and `compact`: one turn, one writer.
 pub(crate) fn open(
     api: &Api,
     conn: u64,
@@ -47,9 +47,7 @@ pub(crate) fn open(
     };
     api.ensure_booked(session)?;
     let turn = api.ledger().deliver(session, message)?;
-    api.relay().opened(conn, session, viewer, turn, door);
-    if !opening.is_empty() {
-        api.relay().told(session, viewer, &opening);
-    }
+    api.relay()
+        .open(conn, session, viewer, turn, door, &opening);
     Ok(json!({"turn": turn}))
 }

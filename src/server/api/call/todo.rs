@@ -1,4 +1,4 @@
-//! `todo` — the list replayed from the session's own calls.
+// `todo` — the list replayed from the session's own calls.
 
 use anyhow::Result;
 use serde_json::Value;

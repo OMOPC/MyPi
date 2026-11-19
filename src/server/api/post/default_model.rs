@@ -1,4 +1,4 @@
-//! `default_model` — the model a new session opens with.
+// `default_model` — the model a new session opens with.
 
 use anyhow::Result;
 use serde_json::{Value, json};

@@ -1,4 +1,4 @@
-//! `rewind` — cut the list back to a block.
+// `rewind` — cut the list back to a block.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -24,10 +24,5 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
         block,
     })?);
     api.ledger().forget(session);
-    api.relay().change(
-        session,
-        json!({"signal": "rewind", "turn": turn, "block": block, "cut": cut.clone()}),
-        viewer,
-    );
-    Ok(json!({"cut": cut}))
+    Ok(json!({"turn": turn, "block": block, "cut": cut}))
 }

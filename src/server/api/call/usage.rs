@@ -1,6 +1,5 @@
-//! `usage` — tokens per model, the cache-hit share, what it cost, and where the context stands.
-//!
-//! The session's bill is the union of stamped blocks: one lap, one stamp, nothing else counted.
+// `usage` — tokens per model, the cache-hit share, what it cost, and where the context stands.
+// A session's bill is the union of stamped blocks: one lap, one stamp, nothing else counted.
 
 use std::collections::BTreeMap;
 
@@ -23,7 +22,7 @@ struct Tally {
     written: i64,
 }
 
-/// One group's bill, in the model's own currency and in both display currencies.
+// One group's bill, in the model's own currency and in both display currencies.
 struct Quote {
     input: f64,
     output: f64,
@@ -197,12 +196,12 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
     }))
 }
 
-/// `(provider, model)` of a round row, when it asked at all.
+// `(provider, model)` of a round row, when it asked at all.
 fn pair_of(turn: &Value) -> Option<(&str, &str)> {
     Some((turn["provider"].as_str()?, turn["model"].as_str()?))
 }
 
-/// Every round's block intervals, paired with its row, in turn order.
+// Every round's block intervals, paired with its row, in turn order.
 fn spans(turns: &[Value]) -> Vec<(&Value, [i64; 2])> {
     let mut out = Vec::new();
     for turn in turns {
@@ -227,7 +226,7 @@ fn spans(turns: &[Value]) -> Vec<(&Value, [i64; 2])> {
     out
 }
 
-/// Every session this one spawned, its bill added into the pools by model address.
+// Every session this one spawned, its bill added into the pools by model address.
 fn collect_subagents(reader: &Reader, session: i64) -> Result<BTreeMap<String, Tally>> {
     let ranges = reader.ranges(session)?;
     let rows = reader.query(
@@ -266,7 +265,7 @@ fn collect_subagents(reader: &Reader, session: i64) -> Result<BTreeMap<String, T
     Ok(out)
 }
 
-/// One group's row: the shape both the session's bill and the subagents' pool carry.
+// One group's row: the shape both the session's bill and the subagents' pool carry.
 fn row_json(
     address: &str,
     provider: &str,
@@ -289,7 +288,7 @@ fn row_json(
     })
 }
 
-/// One quote as the answer carries it.
+// One quote as the answer carries it.
 fn price_json(quote: &Quote) -> Value {
     json!({
         "currency": quote.currency,
@@ -303,7 +302,7 @@ fn price_json(quote: &Quote) -> Value {
     })
 }
 
-/// Rows by their share, greatest first.
+// Rows by their share, greatest first.
 fn by_share(rows: &mut [Value]) {
     rows.sort_by(|left, right| {
         let share = |row: &Value| row["share"].as_f64().unwrap_or(0.0);
@@ -312,13 +311,13 @@ fn by_share(rows: &mut [Value]) {
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 }
-/// The smallest context this session's request archive ever carried; `None` until one is known.
+// The smallest context this session's request archive ever carried; `None` until one is known.
 pub(crate) fn baseline_prompt(reader: &Reader, session: i64) -> Option<u64> {
     let meta = reader.session(session).ok()??["meta"].as_i64()?;
     reader.request(meta).ok()??["baseline_prompt"].as_u64()
 }
 
-/// What one group cost, in the model's own currency and in both display currencies.
+// What one group cost, in the model's own currency and in both display currencies.
 fn quote(model: &ResolvedModel, tally: &Tally, fx: f64) -> Quote {
     let per_million = |tokens: i64, price: f64| tokens as f64 / 1_000_000.0 * price;
     let cost = model.entry.cost;
