@@ -16,9 +16,9 @@ pub(crate) struct Block {
     pub(crate) head: String,
 }
 
-// How wide a line-number gutter is for a file of `total` lines.
+// How wide a line-number gutter is for a file of `total` lines: its own last number's digits.
 pub(crate) fn width(total: usize) -> usize {
-    total.to_string().len().max(3)
+    total.to_string().len()
 }
 
 // One source line behind its gutter: the number right-aligned, then the pipe, then the text. A
@@ -80,5 +80,5 @@ pub(crate) fn seam(raw: &[&str], first: usize, last: usize, width: usize) -> Vec
 
 // A piece's own name, cut to something that fits beside its numbers.
 fn head_of(exact: Option<&str>) -> String {
-    summary::clip(exact.unwrap_or("").trim(), 64)
+    summary::flat(exact.unwrap_or("").trim())
 }

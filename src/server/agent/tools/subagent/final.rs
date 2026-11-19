@@ -114,5 +114,5 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 /// One line for a history listing: the operation.
 fn summary(call: &CallRecord) -> String {
     let op = summary::field(call, "type").unwrap_or_default();
-    summary::clip(&op, 96)
+    summary::flat(&op)
 }

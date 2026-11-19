@@ -15,10 +15,7 @@ pub(crate) type Place = Option<(usize, usize)>;
 // One change, measured in the snapshot it was written against.
 #[derive(Debug, Clone)]
 pub(crate) struct Edit {
-    // Which call of the batch wrote it, in arrival order.
-    pub call: usize,
-
-    // Which item of that call's `edits`, 1-based.
+    // Which item of its own call's `edits`, 1-based.
     pub index: usize,
 
     // The first line it takes, 0-based.
@@ -44,7 +41,7 @@ impl Edit {
     // One `edits[k]` of one call, read against a snapshot of `base` lines. A `@@COPY(a..b)@@` in
     // `new` becomes the snapshot's own lines; a `@@CUT(a..b)@@` does the same and adds the change
     // that takes those lines away.
-    pub(crate) fn read(item: &Item, call: usize, index: usize, base: &[&str]) -> Result<Vec<Self>> {
+    pub(crate) fn read(item: &Item, index: usize, base: &[&str]) -> Result<Vec<Self>> {
         let total = base.len();
         let (start, expect_start) = item.axis("start")?;
         let (end, expect_end) = item.axis("end")?;
@@ -66,7 +63,6 @@ impl Edit {
         );
         let (text, cuts) = rewritten(&item.text("new")?, base, item)?;
         let mut out = vec![Self {
-            call,
             index,
             start: start - 1,
             end,
@@ -83,7 +79,6 @@ impl Edit {
                 item.label()
             );
             out.push(Self {
-                call,
                 index,
                 start: first,
                 end: last,
@@ -121,30 +116,34 @@ pub(crate) fn opens(line: &str, expect: &str) -> bool {
     summary::flat(line).starts_with(&summary::flat(expect))
 }
 
-// One call's ranges, measured against the snapshot it was written against. A range may be cut
-// once per call: two macros cutting into one another is the model contradicting itself.
-pub(crate) fn call_edits(items: &[Item], call: usize, base: &[&str]) -> Result<Vec<Edit>> {
-    anyhow::ensure!(!items.is_empty(), "`edits` must name at least one range");
-    let mut out: Vec<Edit> = Vec::new();
-    for (index, item) in items.iter().enumerate() {
-        out.extend(Edit::read(item, call, index + 1, base)?);
-    }
-    let mut cuts: Vec<(usize, usize, usize)> = out
+// One call's items read against the snapshot: each item's ranges, or why that item alone was left
+// out. A range may be cut once per call: two macros cutting into one another is the model
+// contradicting itself.
+pub(crate) fn call_edits(items: &[Item], base: &[&str]) -> Vec<Result<Vec<Edit>>> {
+    let mut cuts: Vec<(usize, usize)> = Vec::new();
+    items
         .iter()
-        .filter(|edit| edit.cut)
-        .map(|edit| (edit.index, edit.start, edit.end))
-        .collect();
-    cuts.sort_by_key(|(_, start, _)| *start);
-    for pair in cuts.windows(2) {
-        let (first, _, end) = pair[0];
-        let (second, other, _) = pair[1];
-        anyhow::ensure!(
-            end <= other,
-            "`edits[{first}].new` and `edits[{second}].new` cut overlapping lines; a range may be \
-             cut once"
-        );
-    }
-    Ok(out)
+        .enumerate()
+        .map(|(index, item)| {
+            let list =
+                Edit::read(item, index + 1, base).map_err(|why| anyhow!("MISMATCH: {why:#}"))?;
+            let clash = list.iter().filter(|edit| edit.cut).any(|edit| {
+                cuts.iter()
+                    .any(|(first, last)| edit.start < *last && *first < edit.end)
+            });
+            anyhow::ensure!(
+                !clash,
+                "MISMATCH: two `CUT` macros of this call cut overlapping lines; a range may be cut \
+                 once"
+            );
+            cuts.extend(
+                list.iter()
+                    .filter(|edit| edit.cut)
+                    .map(|edit| (edit.start, edit.end)),
+            );
+            Ok(list)
+        })
+        .collect()
 }
 
 // A `new` string with its macros filled in, and the 0-based ranges it wants cut away.
@@ -205,6 +204,13 @@ fn rewritten(new: &str, base: &[&str], item: &Item) -> Result<(String, Vec<(usiz
     Ok((text, cuts))
 }
 
+// Why one edit was left out: it lost to an accepted edit, or its own anchor reads otherwise.
+#[derive(Clone)]
+pub(crate) enum Why {
+    Overlap,
+    Mismatch(String),
+}
+
 // Whether two changes fight over the same lines. A point (an insertion) collides with the range
 // that holds it strictly inside, and with another point on the same line.
 pub(crate) fn collide(a: &Edit, b: &Edit) -> bool {
@@ -221,7 +227,8 @@ pub(crate) fn collide(a: &Edit, b: &Edit) -> bool {
 pub(crate) fn spliced(text: &str, edits: &[&Edit]) -> String {
     let mut out: Vec<String> = text.lines().map(str::to_string).collect();
     let mut ordered: Vec<&&Edit> = edits.iter().collect();
-    ordered.sort_by_key(|edit| edit.start);
+    // Ranges first among equal starts: an insertion on a range's own first line lands above it.
+    ordered.sort_by_key(|edit| (edit.start, edit.start != edit.end));
     for edit in ordered.iter().rev() {
         out.splice(edit.start..edit.end, edit.block.iter().cloned());
     }
@@ -290,8 +297,7 @@ fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String>
             return None;
         }
         return Some(format!(
-            "MISMATCH: line {} reads `{shown}`; name it as `{} {shown}`. Re-Read or Re-Grep, then \
-             resend the range",
+            "MISMATCH: line {} reads `{shown}`; name it as `{} {shown}`",
             idx + 1,
             idx + 1
         ));
@@ -300,52 +306,28 @@ fn miss_at(idx: usize, expect: &str, base: &[impl AsRef<str>]) -> Option<String>
         return None;
     }
     Some(format!(
-        "MISMATCH: line {} reads `{shown}`, not `{}`. Re-Read or Re-Grep, then resend the range",
+        "MISMATCH: line {} reads `{shown}`, not `{}`",
         idx + 1,
         summary::flat(expect)
     ))
 }
 
-// What a range loses to: an earlier call of the batch already wrote the lines it names.
-pub(crate) const OVERLAP: &str =
-    "OVERLAPPED: an earlier call on this file wrote these lines; Re-Read or Re-Grep, then resend";
-
 // Which edits may run and which are refused: the kept positions, then each refused one with its
-// reason. The lines are judged first, because a range that fights another over them says nothing
-// about the file; only a range whose lines are its own is then asked whether it still finds what it
-// named. Two ranges of one call may not overlap at all — that is the model contradicting itself,
-// and the call is left alone.
-pub(crate) fn settle_overlaps(
-    edits: &[Edit],
-    base: &[&str],
-) -> Result<(Vec<usize>, Vec<(usize, String)>)> {
+// reason. A later edit that fights an accepted one loses, whichever call sent it; the rest of the
+// batch lands.
+pub(crate) fn settle_overlaps(edits: &[Edit], base: &[&str]) -> (Vec<usize>, Vec<(usize, Why)>) {
     let mut kept: Vec<usize> = Vec::new();
-    let mut dropped: Vec<(usize, String)> = Vec::new();
+    let mut dropped: Vec<(usize, Why)> = Vec::new();
     for at in 0..edits.len() {
-        let mut clash = false;
-        for held in &kept {
-            if !collide(&edits[*held], &edits[at]) {
-                continue;
-            }
-            if edits[*held].call == edits[at].call {
-                bail!(
-                    "`edits[{}]` and `edits[{}]` of this call overlap; send one range per item",
-                    edits[*held].index,
-                    edits[at].index
-                );
-            }
-            clash = true;
-            break;
-        }
-        if clash {
-            dropped.push((at, OVERLAP.to_string()));
+        if kept.iter().any(|held| collide(&edits[*held], &edits[at])) {
+            dropped.push((at, Why::Overlap));
         } else if let Some(why) = drift(&edits[at], base) {
-            dropped.push((at, why));
+            dropped.push((at, Why::Mismatch(why)));
         } else {
             kept.push(at);
         }
     }
-    Ok((kept, dropped))
+    (kept, dropped)
 }
 
 // Replace whole lines by 1-based number: `from..=to` becomes `new`, any number of lines.
@@ -366,7 +348,6 @@ pub(crate) fn mass_text(
         "line {to} does not exist; file has {total} lines"
     );
     let one = Edit {
-        call: 0,
         index: 1,
         start: from - 1,
         end: to,

@@ -8,11 +8,11 @@
   `scope` names (one miss line per unusable entry), the matcher (text or pattern), the parallel
   collection of every file `lang::files` names and `loader::text` reads, and the item grouping
   that turns a file's hit lines into the pieces the answer draws.
-- `render.rs` — the answer: the header (hits, items, files, mode, tier), the folded reminder, the
+- `render.rs` — the answer: two header lines (counts, mode, tier, then the scope inventory), the
   language's relation block (`[type]` / `[module]` / `[x-ray]`), the tier judgment over the item
-  count, the three densities (whole items, outlines, the census in its 500-line room), the `[scope]`
-  lines, and the stamps into `env.seen`. Each drawn line comes from `fs/skeleton`'s gutter and
-  `fs/summary`'s cut, so every tool numbers and clips a line the same way.
+  count, the three densities (whole items, outlines, the census in its 500-row room), the footer
+  (`DOWNSHIFTED`, `[+N more files]`, `[scope]`), and the stamps into `env.seen`. Each drawn line
+  comes from `fs/skeleton`'s gutter, so every tool numbers a line the same way.
 
 ## Relations
 

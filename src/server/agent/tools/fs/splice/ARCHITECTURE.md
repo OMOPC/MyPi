@@ -7,10 +7,10 @@ What is here, what each file holds, who talks to whom. Current state only.
 | file | holds |
 |---|---|
 | `mod.rs` | module declarations, and the two names the rest of the crate takes: `TOOL`, and `mass_text` / `parse_range` for `final` |
-| `tool.rs` | the tool's face: the parameter table, the batch-aware `run` (one merged write per file, one answer per call, the audit's later half), the merged snapshot `compute`, and the flattening of every call's items into one list of ranges |
-| `edit.rs` | one range: its snapshot coordinates, its block, the macros it fills and the ranges it cuts, the anchor and overlap rules, the reverse-order splice, where its lines land without a formatter, and the whole-line write `final` reuses |
+| `tool.rs` | the tool's face: the parameter table, the batch-aware `run` (authorisation, one merged write per file, one answer per call, the audit's later half), the merged snapshot `compute`, and the flattening of every call's items into one list of ranges |
+| `edit.rs` | one range: its snapshot coordinates, its block, the macros it fills and the ranges it cuts, the anchor rule, the overlap rule that decides what is written and what is refused, the reverse-order splice, where its lines land without a formatter, and the whole-line write `final` reuses |
 | `fmt.rs` | the language's formatter through the gate: the merged text with a marker comment around every block, the markers' lines as each range's landing, the text without them, and the per-block trials that only name what the parser blames |
-| `receipt.rs` | the answer: the verdict, then one row per range with the lines it took and the block in place, the reasons under them, and the segment memo a front end draws |
+| `receipt.rs` | the answer: the verdict line, one block per range with the lines it took and the block in place, the single word or sentence a refused range carries, and the segment memo a front end draws. The footer is `fs/fault`'s |
 
 ## What it talks to
 
@@ -45,6 +45,7 @@ splice::TOOL
       → fmt::settle        the formatter's pass and each range's landing, or the plain splice
       → write_atomic       only when the text changed
   → Built::answers        one answer per call: its own rows, its own verdict, the audit's slots
+      → receipt::build     the verdict line and the blocks; `fs::fault` appends the footer later
   → env.shells            the handover the batch's check fills later
 ```
 
@@ -59,6 +60,10 @@ splice::TOOL
    coordinates, so a changed walk-back changes both.
 4. `Built` and `tool.rs`'s audit block: the checked file, its landing places and the per-call slots
    are built together, and `fs/fault` reads them as they are.
+7. `receipt`'s footer tags and `fs::fault`'s report lines: one family, `[i] …` and `[+N …]`, since
+   both land in the same footer and the model reads them as one paragraph.
+8. `Run` and `env.seen`: the authorisation is granted only for a clean `OK`, so `Built::clean` and
+   the answer's verdict must agree on what that means.
 5. `mass_text` / `parse_range` and `subagent/final`: they are the only other consumer of the
    whole-line write, and they carry no anchor words at all.
 6. `TOOL.name` and `fs/read`'s `Numbers`: a Rust body carries line numbers only while `splice` is

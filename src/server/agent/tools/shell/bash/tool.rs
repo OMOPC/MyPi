@@ -60,5 +60,5 @@ fn run(env: &mut Env, args: &Args, progress: &mut dyn FnMut(ToolProgress)) -> Re
 /// One line for a history listing: the command, flattened, and whether it failed.
 fn summary(call: &CallRecord) -> String {
     let command = summary::field(call, "command").unwrap_or_else(|| call.args.clone());
-    summary::clip(&command, 96)
+    summary::flat(&command)
 }

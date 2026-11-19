@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::{self, Line, Relation, Relations, Row, Source, Table};
-use crate::server::agent::tools::summary;
 
 // How Rust's relations read: a namespace or a type, indexed by `::`.
 pub(crate) const RELATIONS: Relations = Relations { scan };
@@ -102,7 +101,7 @@ fn type_rows(
             if matches!(lang::shape(src.table, piece), Some("enum" | "struct")) {
                 let end = src.table.end(index).unwrap_or(index);
                 for line in members(&raw, index + 1, end, b) {
-                    mine.push(format!("{}  {}", line + 1, summary::clip(raw[line], 120)));
+                    mine.push(format!("{}  {}", line + 1, raw[line]));
                 }
             }
             if mine.is_empty() {
@@ -111,11 +110,7 @@ fn type_rows(
             used.push(at);
             rows.push(Row {
                 heading: None,
-                text: format!(
-                    "  {label}:{}  {}",
-                    index + 1,
-                    summary::clip(exact(piece), 200)
-                ),
+                text: format!("  {label}:{}  {}", index + 1, exact(piece)),
             });
             for row in mine.iter().take(items) {
                 rows.push(Row {
@@ -199,7 +194,7 @@ fn module_rows(
                         text: format!(
                             "  {label}:{}  {}  ({}..{})",
                             item_at + 1,
-                            summary::clip(exact(item), 200),
+                            exact(item),
                             item_at + 1,
                             target.table.end(item_at).unwrap_or(item_at) + 1
                         ),
@@ -250,7 +245,7 @@ fn x_ray_rows(
                 text: format!(
                     "  {label}:{}  {}  ({}..{})",
                     index + 1,
-                    summary::clip(exact(line), 200),
+                    exact(line),
                     index + 1,
                     src.table.end(index).unwrap_or(index) + 1
                 ),
@@ -277,7 +272,7 @@ fn x_ray_rows(
                     "  {label}:{}..{}  {}",
                     index + 1,
                     src.table.end(index).unwrap_or(index) + 1,
-                    summary::clip(exact(line), 200)
+                    exact(line)
                 ),
             });
             let mine = src.table.inner(index);

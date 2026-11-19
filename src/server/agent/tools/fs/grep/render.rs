@@ -6,15 +6,11 @@ use crate::server::agent::tools::contract::env::{GrepLimits, License, Seen};
 use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::{self, Relation, Source};
 use crate::server::agent::tools::fs::skeleton;
-use crate::server::agent::tools::summary;
 
 use super::scan;
 
-// The answer's own room at tier 3, its header included.
+// The census's own room: its rows alone, the header and the relation block never charge it.
 const LEDGER_MAX: usize = 500;
-
-// One drawn source line's own width: past this it is cut.
-const LINE_MAX: usize = 240;
 
 // One answered call's text, and the files whose lines it showed.
 pub(crate) fn answer(
@@ -25,6 +21,7 @@ pub(crate) fn answer(
     caps: GrepLimits,
     lavish: bool,
     misses: &[String],
+    scope: &[String],
 ) -> (String, BTreeSet<usize>) {
     let hits: usize = files
         .iter()
@@ -40,25 +37,23 @@ pub(crate) fn answer(
     } else {
         3
     };
-    // Lavish lifts the whole answer one tier: no front, no mixture of two densities.
-    let tier = if lavish {
-        counted.saturating_sub(1).max(1)
-    } else {
-        counted
-    };
+    // Lavish raises the whole answer one tier: no front, no mixture of two densities.
+    let tier = if lavish { counted.max(2) - 1 } else { counted };
     let mut out = format!(
         "grep \"{query}\": {}, {}, {}, {mode}, tier {tier}\n",
         parts::plural(hits, "hit"),
         parts::plural(items, "item"),
         parts::plural(touched, "file"),
     );
-    if tier > 1 {
-        let hint = if lavish {
-            "narrow the scope"
-        } else {
-            "go lavish, or narrow the scope"
-        };
-        out.push_str(&format!("[folded: {hint}]\n"));
+    if scope.is_empty() {
+        out.push_str("==> src/\n");
+    } else {
+        out.push_str(&format!(
+            "==> {}, {} used: {}\n",
+            parts::plural(scope.len(), "path"),
+            scope.len() - misses.len(),
+            scope.join(" ")
+        ));
     }
 
     let mut shown: BTreeSet<usize> = BTreeSet::new();
@@ -85,12 +80,41 @@ pub(crate) fn answer(
         }
     }
     out.push('\n');
-    draw(files, zone, tier, &mut out, &mut shown);
+    let omitted = if tier == 3 {
+        let (rows, more) = census(files, zone, &mut shown, LEDGER_MAX);
+        out.push_str(&rows);
+        more
+    } else {
+        draw(files, zone, tier, &mut out, &mut shown);
+        0
+    };
+    let tail = footer(tier, lavish, omitted, misses);
+    if !tail.is_empty() {
+        out.push('\n');
+        out.push_str(&tail);
+    }
+    (out, shown)
+}
+
+// What the answer did not give, then the one move that would give more of it.
+fn footer(tier: usize, lavish: bool, omitted: usize, misses: &[String]) -> String {
+    let mut out = String::new();
+    if tier > 1 {
+        let hint = if lavish {
+            "DOWNSHIFTED: narrow down the `scope`.\n"
+        } else {
+            "DOWNSHIFTED: set `lavish` true to raise the answer tier, or narrow down the `scope`.\n"
+        };
+        out.push_str(hint);
+    }
+    if omitted > 0 {
+        out.push_str(&format!("[+{omitted} more files]\n"));
+    }
     for miss in misses {
         out.push_str(miss);
         out.push('\n');
     }
-    (out, shown)
+    out
 }
 
 // A relation's rows as one block: each heading, then its lines, in the language's own order.
@@ -106,7 +130,7 @@ fn paint(relation: &Relation) -> String {
     out
 }
 
-// The hits at the tier's density: whole items, then outlines, then the census alone.
+// The hits at tier 1 or 2: whole items, then outlines.
 fn draw(
     files: &[scan::File],
     zone: &scan::Zone,
@@ -114,12 +138,6 @@ fn draw(
     out: &mut String,
     shown: &mut BTreeSet<usize>,
 ) {
-    if tier == 3 {
-        out.push_str("[hits] too wide to list; per file\n");
-        let room = LEDGER_MAX.saturating_sub(out.lines().count());
-        out.push_str(&census(files, zone, shown, room));
-        return;
-    }
     for (at, file) in files.iter().enumerate() {
         if file.items.is_empty() {
             continue;
@@ -157,7 +175,7 @@ fn whole(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
             out.push_str(&format!("  in: {}\n", above.join(" > ")));
         }
         for index in item.open..=item.close {
-            let text = summary::cut(raw[index], LINE_MAX);
+            let text = raw[index];
             let mark = (item.hits.contains(&index) || file.table.key(index)).then_some(index + 1);
             out.push_str(&skeleton::numbered(width, mark, &text));
             out.push('\n');
@@ -174,8 +192,7 @@ fn outline(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String
     for item in &file.items {
         for (at, _) in file.table.around(item.open) {
             if at != item.open && heads.insert(at) {
-                let text = summary::cut(raw[at], LINE_MAX);
-                out.push_str(&skeleton::numbered(width, Some(at + 1), &text));
+                out.push_str(&skeleton::numbered(width, Some(at + 1), raw[at]));
                 out.push('\n');
             }
         }
@@ -183,27 +200,21 @@ fn outline(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String
             if !file.table.key(index) && !item.hits.contains(&index) {
                 continue;
             }
-            let mut text = summary::cut(raw[index], LINE_MAX);
-            if index == item.open && item.close > item.open {
-                text.push_str(&format!(" ..{}", item.close + 1));
-            }
-            out.push_str(&skeleton::numbered(width, Some(index + 1), &text));
+            out.push_str(&skeleton::numbered(width, Some(index + 1), raw[index]));
             out.push('\n');
         }
     }
     out
 }
 
-// The census's rows: one per file that holds an item, widest first, within the room left.
+// The census's rows: one per file that holds an item, widest first, within the room, and how many
+// files the room could not hold.
 fn census(
     files: &[scan::File],
     zone: &scan::Zone,
     shown: &mut BTreeSet<usize>,
     room: usize,
-) -> String {
-    if room == 0 {
-        return String::new();
-    }
+) -> (String, usize) {
     let mut rows: Vec<(usize, String, usize)> = files
         .iter()
         .enumerate()
@@ -211,17 +222,12 @@ fn census(
         .map(|(at, file)| (at, parts::rel(&zone.root, &file.path), file.items.len()))
         .collect();
     rows.sort_by(|a, b| b.2.cmp(&a.2));
-    let more = rows.len() > room;
-    let keep = if more { room.saturating_sub(1) } else { room };
     let mut out = String::new();
-    for (at, path, count) in rows.iter().take(keep) {
+    for (at, path, count) in rows.iter().take(room) {
         out.push_str(&format!("  {path}  {}\n", parts::plural(*count, "item")));
         shown.insert(*at);
     }
-    if more {
-        out.push_str(&format!("  [+{} more files]\n", rows.len() - keep));
-    }
-    out
+    (out, rows.len().saturating_sub(room))
 }
 
 // One answered call's stamp: the files whose lines an answer showed, into `seen`.

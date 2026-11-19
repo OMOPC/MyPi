@@ -116,7 +116,6 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
             mine: (checker.shown)(&root, &p),
             root,
             file: p.clone(),
-            parse_failed: unparsed.is_some(),
             unfold,
             seam: true,
             slots: vec![Slot {

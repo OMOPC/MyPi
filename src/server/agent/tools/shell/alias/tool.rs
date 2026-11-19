@@ -253,7 +253,7 @@ fn summary(call: &CallRecord) -> String {
                     format!("{name} => {command}")
                 })
                 .unwrap_or_default();
-            summary::clip(&summary::counted(&first, items.len()), 96)
+            summary::counted(&first, items.len())
         }
         "del" => {
             let names = summary::array(call, "names");
@@ -262,8 +262,8 @@ fn summary(call: &CallRecord) -> String {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            summary::clip(&summary::counted(&format!("del {first}"), names.len()), 96)
+            summary::counted(&format!("del {first}"), names.len())
         }
-        _ => summary::clip(&op, 96),
+        _ => summary::flat(&op),
     }
 }

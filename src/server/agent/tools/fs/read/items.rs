@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use super::tool::{MAX_BYTES_SOURCE, MAX_LINES_SOURCE, header};
+use super::tool::header;
 use crate::server::agent::tools::contract::env::{Env, License};
 use crate::server::agent::tools::fs::lang::graph::loader;
 use crate::server::agent::tools::fs::lang::graph::parts;
@@ -30,7 +30,6 @@ fn render(path: &Path, cwd: &Path, wanted: &str) -> Result<(String, Vec<(PathBuf
 
     let mut out = String::new();
     let mut seen: Vec<(PathBuf, String)> = Vec::new();
-    let mut room = Room::default();
     for file in scope(path) {
         let Some(text) = loader::text(&file) else {
             continue;
@@ -49,63 +48,22 @@ fn render(path: &Path, cwd: &Path, wanted: &str) -> Result<(String, Vec<(PathBuf
         let width = skeleton::width(raw.len());
 
         // A directory names the file, because one header may stand in several of them.
-        let mut opened = false;
-        for at in hits {
-            let block = block(&raw, &table, at, width);
-            let head = match opened || !path.is_dir() {
-                true => String::new(),
-                false => header(&parts::rel(cwd, &file)),
-            };
-            let sep = usize::from(!out.is_empty());
-            let bytes = head.len() + block.len() + sep;
-            let lines = head.lines().count() + block.lines().count() + sep;
-
-            if !room.fits(lines, bytes) {
-                room.left += 1;
-                continue;
-            }
-            room.take(lines, bytes);
-
-            if sep == 1 {
+        if path.is_dir() {
+            if !out.is_empty() {
                 out.push('\n');
             }
-            opened = true;
-            out.push_str(&head);
-            out.push_str(&block);
+            out.push_str(&header(&parts::rel(cwd, &file)));
         }
-        if opened {
-            seen.push((file, text));
+        for at in hits {
+            out.push_str(&block(&raw, &table, at, width));
         }
+        seen.push((file, text));
     }
 
     if out.is_empty() {
         return Ok((empty(path, &needle, cwd), seen));
     }
-    if room.left > 0 {
-        out.push_str(&format!("[+{} more items]\n", room.left));
-    }
     Ok((out, seen))
-}
-
-// What one answer may still spend: lines and bytes both.
-#[derive(Default)]
-struct Room {
-    lines: usize,
-    bytes: usize,
-
-    // Items the budget pushed away.
-    left: usize,
-}
-
-impl Room {
-    fn fits(&self, lines: usize, bytes: usize) -> bool {
-        self.lines + lines <= MAX_LINES_SOURCE && self.bytes + bytes <= MAX_BYTES_SOURCE
-    }
-
-    fn take(&mut self, lines: usize, bytes: usize) {
-        self.lines += lines;
-        self.bytes += bytes;
-    }
 }
 
 // The files the call looks through: the one it named, or every sorted file under the directory.
@@ -148,12 +106,12 @@ fn outer(table: &Table, at: usize) -> Option<&str> {
     line.exact.as_deref()
 }
 
-// Whether this piece's own text carries what the model remembers.
+// Whether this piece's own header is exactly what the model named, runs of whitespace aside.
 fn says(line: &Line, needle: &str) -> bool {
     line.exact
         .as_deref()
         .map(summary::flat)
-        .is_some_and(|exact| exact.contains(needle))
+        .is_some_and(|exact| exact == needle)
 }
 
 // What an answer with nothing in it owes the model.
@@ -161,7 +119,10 @@ fn empty(path: &Path, needle: &str, cwd: &Path) -> String {
     let named = parts::rel(cwd, path);
     match path.is_file() && lang::owner(path).is_none() {
         true => format!("[item] {named}: no sorter reads this file\n"),
-        false => format!("[item] {needle}: nothing under {named} says it\n"),
+        false => format!(
+            "[item] no piece under {named} opens with the header `{needle}`; copy the piece's own \
+             line from an earlier answer, it is not cut short\n"
+        ),
     }
 }
 

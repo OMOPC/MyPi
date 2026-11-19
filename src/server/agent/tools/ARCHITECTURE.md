@@ -16,7 +16,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 | `contract/job.rs` | the job vocabulary a tool shares with the loop: `JobSpec`, `Schedule`, `JobRunner`, `JobCtx`, `JobOutcome`, `Receipt`, `Row`, `Status`, `Exit`, `OutputSink`, and the `JobHost` port |
 | `engine.rs` | `Engine`: `Batch::run` — env, gates, decode, run, stamp, measure (every tool but `read`), events; a call whose arguments arrived answers, and a stop landing mid-call becomes the result's reason |
 | `spec.rs` | `Kind`, `Param`, `schema_of`, `Args`, `Item`, `Tool`, `Run`, `Summary`, `ToolProgress` |
-| `summary.rs` | one recorded call's arguments, the one-line history summary every file tool reuses, and the shared text parts: whitespace folding, cutting a line, clipping a summary |
+| `summary.rs` | one recorded call's arguments, the one-line history summary every file tool reuses, and the shared text parts: whitespace folding and a summary's own line |
 | `registry.rs` | `TOOLS`, `spec`, `roster` |
 | `workspace.rs` | `Workspace`, the licensed zones, the per-path write lock, `write_atomic`, `canonicalize_lenient` |
 | `fs/mod.rs` | declares the fs family |

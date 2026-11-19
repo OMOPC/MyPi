@@ -2,6 +2,7 @@
 // the language that owns it. Faults that land on a written edit hang under it; the unit's report rides on the last written
 // answer.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use super::lang::graph::parts;
@@ -10,11 +11,8 @@ use super::skeleton;
 use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::output::ToolResult;
 use crate::server::agent::tools::fs::lang;
-use crate::server::agent::tools::fs::lang::{Checker, Tests};
+use crate::server::agent::tools::fs::lang::{Checker, Table, Tests};
 use crate::server::platform::stop::Stop;
-
-// How many lines one error block may take.
-const ROOM: usize = 16;
 
 // How many diagnostics one folded report lists.
 const FAULTS: usize = 12;
@@ -22,13 +20,10 @@ const FAULTS: usize = 12;
 // A file that did not parse: the formatter's verdict is the whole report.
 pub(crate) fn unparsed(why: &Unparsed) -> String {
     let at = match why.line {
-        Some(line) => format!("line {line}: "),
+        Some(line) => format!(" line {line}:"),
         None => String::new(),
     };
-    format!(
-        "--- [Check] not type-checked: this file does not parse ---\n! {at}{}",
-        why.message
-    )
+    format!("[i] fmt · not parsed:{at} {}", why.message)
 }
 
 // Finish every written call's answer with the batch's one check.
@@ -39,7 +34,10 @@ pub(crate) fn settle(env: &mut Env, results: &mut [ToolResult]) {
         return;
     }
     if stop.is_stopped() {
-        let note = ["[i] not checked or tested: the turn was stopped".to_string()];
+        let note = [
+            "[i] check · interrupted".to_string(),
+            "[i] test · interrupted".to_string(),
+        ];
         for shell in &shells {
             append(results, &shell.call_id, &note);
         }
@@ -140,6 +138,7 @@ pub(crate) fn finish(
     let mut report: Vec<String> = Vec::new();
 
     // Tests first: their lines hang under the same edits, so the check's own lines stand above them.
+    let mut covered: BTreeMap<PathBuf, (String, Table)> = BTreeMap::new();
     let mut tested: Vec<String> = Vec::new();
     for (root, support, verdict) in tests {
         let name = (support.title)(root);
@@ -150,7 +149,7 @@ pub(crate) fn finish(
             Verdict::Passed { ran, note } => {
                 tested.push(format!("[i] test · {name} {ran} passed"));
                 if let Some(note) = note {
-                    tested.push(format!("[i] test · {name} {note}"));
+                    tested.push(format!("[i] test · {name}: {note}"));
                 }
             }
             Verdict::Failed {
@@ -160,13 +159,13 @@ pub(crate) fn finish(
                 let mut groups: Vec<(String, usize, Vec<String>)> = Vec::new();
                 let mut lones: Vec<Fault> = Vec::new();
                 for fault in faults {
-                    place(root, shells, fault, &mut groups, &mut lones);
+                    place(root, shells, fault, &mut groups, &mut lones, &mut covered);
                 }
                 groups.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
                 for (call_id, at, lines) in &groups {
                     insert(results, call_id, *at, lines);
                 }
-                tested.push(format!("[Test] {name}: {said}"));
+                tested.push(format!("[i] test · {name}: {said}"));
                 tested.extend(listing(&lones, &[], unfold));
             }
         }
@@ -174,19 +173,13 @@ pub(crate) fn finish(
 
     for (root, check, checker) in checks {
         let name = (checker.title)(root);
-        for shell in shells.iter().filter(|s| s.root == *root && s.parse_failed) {
-            report.push(format!(
-                "[i] fmt · {} does not parse, written as it stands",
-                shell.mine
-            ));
-        }
         let (faults, warns) = match check {
             Check::Clean => {
-                report.push(format!("[i] check · {name} clean"));
+                report.push(format!("[i] check · {name}: clean"));
                 continue;
             }
             Check::Unchecked(why) => {
-                report.push(format!("[i] check · {name} not type-checked: {why}"));
+                report.push(format!("[i] check · {name}: not type-checked: {why}"));
                 continue;
             }
             Check::Faults { faults, warns } => (faults, warns),
@@ -195,10 +188,10 @@ pub(crate) fn finish(
         let mut groups: Vec<(String, usize, Vec<String>)> = Vec::new();
         let mut lones: (Vec<Fault>, Vec<Fault>) = (Vec::new(), Vec::new());
         for fault in faults {
-            place(root, shells, fault, &mut groups, &mut lones.0);
+            place(root, shells, fault, &mut groups, &mut lones.0, &mut covered);
         }
         for fault in warns {
-            place(root, shells, fault, &mut groups, &mut lones.1);
+            place(root, shells, fault, &mut groups, &mut lones.1, &mut covered);
         }
 
         // A later insert point first: the earlier ones keep their line numbers.
@@ -207,10 +200,8 @@ pub(crate) fn finish(
             insert(results, call_id, *at, lines);
         }
 
-        if !lones.0.is_empty() || !lones.1.is_empty() {
-            report.push(head(&name, lones.0.len(), lones.1.len()));
-            report.extend(listing(&lones.0, &lones.1, unfold));
-        }
+        report.push(head(&name, faults.len(), warns.len()));
+        report.extend(listing(&lones.0, &lones.1, unfold));
     }
 
     report.extend(tested);
@@ -240,6 +231,7 @@ fn place(
     fault: &Fault,
     groups: &mut Vec<(String, usize, Vec<String>)>,
     lone: &mut Vec<Fault>,
+    covered: &mut BTreeMap<PathBuf, (String, Table)>,
 ) {
     let mine = || {
         shells
@@ -255,13 +247,13 @@ fn place(
     }
     if let Some(shell) = mine().rev().find(|shell| shell.seam) {
         let at = shell.slots.first().map(|slot| slot.insert_at).unwrap_or(0);
-        group(groups, &shell.call_id, at, seam_block(root, fault));
+        group(groups, &shell.call_id, at, seam_block(root, fault, covered));
         return;
     }
     lone.push(fault.clone());
 }
 
-// The report's head: how many of each the crate still owes the reader.
+// The report's head: how many of each the crate's own check found.
 fn head(name: &str, faults: usize, warns: usize) -> String {
     let mut counts: Vec<String> = Vec::new();
     if faults > 0 {
@@ -270,7 +262,7 @@ fn head(name: &str, faults: usize, warns: usize) -> String {
     if warns > 0 {
         counts.push(parts::plural(warns, "warn"));
     }
-    format!("[i] check · {name} {}", counts.join(", "))
+    format!("[i] check · {name}: {}", counts.join(", "))
 }
 
 // The report's lines: every error, then every warning; folded past the cap unless unfolded.
@@ -281,7 +273,7 @@ fn listing(faults: &[Fault], warns: &[Fault], unfold: bool) -> Vec<String> {
     }
     let mut out: Vec<String> = lines[..FAULTS].to_vec();
     out.push(format!(
-        "(+{} more) — use the Grep tool to catch them",
+        "[+{} more faults: set `unfold` true to list them]",
         lines.len() - FAULTS
     ));
     out
@@ -306,12 +298,19 @@ fn hanging(fault: &Fault) -> String {
 }
 
 // One fault's lines as they stand under a written file's answer: the source seam and the words.
-fn seam_block(root: &Path, fault: &Fault) -> Vec<String> {
+fn seam_block(
+    root: &Path,
+    fault: &Fault,
+    covered: &mut BTreeMap<PathBuf, (String, Table)>,
+) -> Vec<String> {
     let mut out = vec![format!("--- {}:{} ---", fault.file, fault.line)];
-    if let Ok(source) = std::fs::read_to_string(root.join(&fault.file)) {
-        out.extend(seam(&source, fault.line, &root.join(&fault.file)));
-    }
-    out.push(format!("! {}", fault.message));
+    let full = root.join(&fault.file);
+    let (source, table) = covered.entry(full.clone()).or_insert_with(|| {
+        let text = std::fs::read_to_string(&full).unwrap_or_default();
+        let table = lang::table(&full, &text);
+        (text, table)
+    });
+    out.extend(seam(source, table, fault.line));
     for help in &fault.helps {
         out.push(format!("! {help}"));
     }
@@ -371,6 +370,7 @@ fn append(results: &mut [ToolResult], call_id: &str, lines: &[String]) {
         return;
     };
     let mut text = result.result.clone();
+    text.push('\n');
     for line in lines {
         text.push('\n');
         text.push_str(line);
@@ -379,13 +379,12 @@ fn append(results: &mut [ToolResult], call_id: &str, lines: &[String]) {
 }
 
 // The error's own lines, two above and two below, and the piece they sit in.
-fn seam(text: &str, line: usize, path: &Path) -> Vec<String> {
+fn seam(text: &str, table: &Table, line: usize) -> Vec<String> {
     let raw: Vec<&str> = text.lines().collect();
-    let table = lang::table(path, text);
     let mut out: Vec<String> = Vec::new();
     let width = skeleton::width(raw.len());
     let spot = line.saturating_sub(1);
-    if let Some(block) = skeleton::innermost(&table, spot) {
+    if let Some(block) = skeleton::innermost(table, spot) {
         out.push(format!(
             "in: {} ({}..{})",
             block.head,
@@ -393,8 +392,6 @@ fn seam(text: &str, line: usize, path: &Path) -> Vec<String> {
             block.end + 1
         ));
     }
-    let mut rows = skeleton::seam(&raw, line, line, width);
-    rows.truncate(ROOM);
-    out.extend(rows);
+    out.extend(skeleton::seam(&raw, line, line, width));
     out
 }

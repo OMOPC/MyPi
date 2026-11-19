@@ -7,26 +7,21 @@ use anyhow::{Result, bail};
 
 use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::fs::lang::graph::loader::{MAX_BYTES, entries_all};
-use crate::server::agent::tools::fs::lang::graph::parts::{plural, rel};
+use crate::server::agent::tools::fs::lang::graph::parts::plural;
 use crate::server::agent::tools::workspace::canonicalize_lenient;
 use crate::server::platform::time;
 
 // Direct files at or past this count fold into counts.
 const FOLD_AT: usize = 10;
 
-// The most lines one listing may take.
-const MAX_LINES: usize = 800;
-
-// One directory's listing. The root is special: `src/` becomes a section of its own. `docs` names
-// the documents the user keeps current, which take no part in any level's verdict.
-pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool, docs: &[String]) -> Result<String> {
+// One directory's listing, as its own counts and its body. The root is special: `src/` becomes a
+// section of its own. `docs` names the documents the user keeps current, which take no part in any
+// level's verdict.
+pub(crate) fn listing(path: &Path, cwd: &Path, docs: &[String]) -> Result<(String, String)> {
     let root = canonicalize_lenient(cwd);
     let target = canonicalize_lenient(path);
     let mut list = List::new();
     if target == root {
-        if titled {
-            list.line(format!("./  {}", counts(&root)));
-        }
         let src = root.join("src");
         fill(&mut list, &root, 1, false, Some(&src), docs);
         if lang::tree(&src) {
@@ -36,49 +31,31 @@ pub(crate) fn listing(path: &Path, cwd: &Path, titled: bool, docs: &[String]) ->
             list.line(format!("src/  {}", counts(&src)));
             fill(&mut list, &src, 1, true, None, docs);
         }
-        return Ok(list.finish());
+        return Ok((counts(&root), list.finish()));
     }
     if !lang::tree(&target) {
         bail!("`read` lists directories at the session root and inside a source tree only");
     }
-    if titled {
-        list.line(format!("{}/  {}", rel(cwd, &target), counts(&target)));
-    }
     fill(&mut list, &target, 1, true, None, docs);
-    Ok(list.finish())
+    Ok((counts(&target), list.finish()))
 }
 
-// The listing being built: its lines, and how many the budget pushed away.
+// The listing being built: one line per entry, and folding at each level as its own budget.
 struct List {
     out: String,
-    left: usize,
-    over: usize,
 }
 
 impl List {
     fn new() -> Self {
-        List {
-            out: String::new(),
-            left: MAX_LINES,
-            over: 0,
-        }
+        List { out: String::new() }
     }
 
-    // One printed line, or one counted away when the budget is spent.
     fn line(&mut self, text: String) {
-        if self.left == 0 {
-            self.over += 1;
-            return;
-        }
-        self.left -= 1;
         self.out.push_str(&text);
         self.out.push('\n');
     }
 
-    fn finish(mut self) -> String {
-        if self.over > 0 {
-            self.out.push_str(&format!("[+{} entries]\n", self.over));
-        }
+    fn finish(self) -> String {
         self.out
     }
 }

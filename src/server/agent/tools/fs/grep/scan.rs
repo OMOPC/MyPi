@@ -45,7 +45,10 @@ pub(crate) fn zone(cwd: &Path) -> Result<Zone> {
 }
 
 // The files and directories to read, and one line per scope entry that could not be used.
-pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<String>) {
+pub(crate) fn roots(
+    zone: &Zone,
+    scope: &mut Vec<String>,
+) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<String>) {
     if scope.is_empty() {
         return (vec![zone.src.clone()], Vec::new(), Vec::new());
     }
@@ -53,6 +56,13 @@ pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf
     let mut dirs: Vec<PathBuf> = Vec::new();
     let mut files: Vec<PathBuf> = Vec::new();
     let mut misses: Vec<String> = Vec::new();
+    // One entry per path, however many times the call named it.
+    let mut named: Vec<String> = Vec::new();
+    scope.retain(|entry| {
+        let repeated = named.contains(entry);
+        named.push(entry.clone());
+        !repeated
+    });
 
     for entry in scope {
         let raw = entry.trim();

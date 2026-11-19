@@ -1,4 +1,4 @@
-// Reading a recorded call's arguments, and clipping a summary to one line.
+// Reading a recorded call's arguments, and folding a summary to one line.
 
 use serde_json::Value;
 
@@ -39,23 +39,10 @@ pub(crate) fn counted(first: &str, total: usize) -> String {
 
 // The path a call wrote to, as a history listing shows it.
 pub(crate) fn path(call: &CallRecord) -> String {
-    clip(&field(call, "path").unwrap_or_default(), 96)
+    flat(&field(call, "path").unwrap_or_default())
 }
 
-// Whitespace runs collapsed to one space, so spacing never hides a match.
+// Whitespace runs collapsed to one space: one line, so spacing never hides a match.
 pub(crate) fn flat(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-// A text cut to `cap` characters, its tail marked rather than silently gone.
-pub(crate) fn cut(text: &str, cap: usize) -> String {
-    match text.char_indices().nth(cap) {
-        Some((at, _)) => format!("{}…", &text[..at]),
-        None => text.to_string(),
-    }
-}
-
-// Whitespace runs folded to one space, then cut to `cap` characters: one listing line.
-pub(crate) fn clip(text: &str, cap: usize) -> String {
-    cut(&flat(text), cap)
 }

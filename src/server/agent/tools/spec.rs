@@ -412,6 +412,11 @@ impl Item {
             .ok_or_else(|| self.wrong(name, "a string"))
     }
 
+    /// Whether the call stated this field, table default or not.
+    pub fn gave(&self, name: &str) -> bool {
+        self.map.contains_key(name)
+    }
+
     /// An optional string.
     pub fn opt_str(&self, name: &str) -> Result<Option<String>> {
         match self.value(name)? {

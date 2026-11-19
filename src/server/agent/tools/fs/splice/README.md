@@ -8,9 +8,9 @@ written somewhere else.
 
 ### One call
 
-`path` and `edits`, and `unfold` when the batch's check report is wanted whole. Each element of
-`edits` is one range `{start, end, new}`; the elements are answered in the order they were given,
-and a batch of calls on one file becomes one write.
+`path` and `edits`, and `unfold` when the batch's check and test reports are wanted whole. Each
+element of `edits` is one range `{start, end, new}`; the elements are answered in the order they
+were given, and a batch of calls on one file becomes one write.
 
 | field | value |
 |---|---|
@@ -36,24 +36,34 @@ give and take a bare number: a blank line, and the end of the file, which an app
 
 A `@@CUT(a..b)@@` inside `new` carries no words of its own, because the macro names its lines.
 
+### Authorisation
+
+A file may be spliced only after `read` or `grep` has shown it in this conversation. That showing is
+the authorisation, and it carries the content's hash: a file that changed on disk since is
+unauthorized, and so is a file whose last splice did not end `OK`.
+
+Any splice that is not a clean `OK` — a refused range, an unreadable argument, a text that does not
+parse — takes the authorisation away at once, one missed range out of many included. The model's way
+back is one: `read` or `grep` the file again, then send the edit. A formatter that never ran is not
+the text's fault, so `WRITTEN, UNFORMATTED` keeps the authorisation.
+
 ### What holds a range back
 
 | refused | why |
 |---|---|
-| a line that is not what the anchor says | the model read a different file, or a stale one; `read` or `grep` again and resend |
-| two ranges of one call overlapping | the model contradicting itself; the whole call is left alone |
-| a range overlapping one from an earlier call in the batch | the earlier call is written, the later one is refused, and the rest land |
-| a file not read in this conversation | no licence to write it |
-| a file changed on disk since `read` described it | the anchor's coordinates moved; a fresh read is the way back |
-| a licence revoked by a refused write | the next write needs a fresh read |
+| a line that is not what the anchor says | the model read a different file, or a stale one; that range is left out and the rest land |
+| a range overlapping one already accepted, in the same call or an earlier one | the later range loses; the earlier one is written and the rest land |
+| a range that cannot exist: past the last line, `end` above `start - 1`, a malformed `@@…@@`, two `@@CUT` of one call cutting the same line | that item is left out; the rest land |
+| a file not read or grepped in this conversation | unauthorized |
+| a file changed on disk since it was read | unauthorized |
 
-The lines are judged before the anchors: a range that fights another over them is refused for the
-fight, and only a range whose lines are its own is asked whether it still finds what it named. So
-two refusals never stack on one range, and every refused range still owns the lines it names.
+Overlap is judged first and alone: a range that loses to an accepted one carries no other reason.
+A range whose lines are its own is then asked whether it still finds what it named. Every refusal
+takes one range or one item, never the call and never the batch: the rest of it lands, and the
+verdict counts what did.
 
-A refusal takes one range, never the call — except two of the call's own ranges overlapping, which
-leaves that call alone. The verdict counts what landed and what did not, and a refusal's reason
-stands under its own block.
+Two ranges that only touch are both written: half-open ranges, and an insertion belongs to neither
+side of a boundary. An insertion on a range's own first line lands above that range's block.
 
 ### The batch's one write
 
@@ -89,8 +99,8 @@ Both are the file's language's own; a language that names no formatter writes th
 Each change is wrapped in a marker comment before the formatter sees it, so the answer can say
 where that block ended up; the markers are stripped from what is written, and the blank lines they
 held open are folded back. A comment's word carries a fingerprint of the snapshot, so no line of the
-file can be read as one. A text the formatter could not parse was never formatted, so each change's
-landing is the one its own range puts it at.
+file can be read as one. A landing the markers cannot be walked back to falls to the position the
+plain splice would give it.
 
 Every parse is one `rustfmt` run over stdin: the binary is looked for beside this executable first,
 then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
@@ -110,68 +120,77 @@ can hold goes to the crate's list on the batch's last written answer that can st
 
 ### The answer
 
-The shape is `grep`'s: a verdict line, then one block per edit, each opening with `path:line`, an
-`in:` line naming the item it sits in, and numbered source. A block that stands there carries `+`;
-a deletion shows what it removed with `-`. Nothing else marks a block or separates two of them.
+Three parts, and nothing outside them. The header names the file and says what became of the call;
+the body is one block per edit; the footer is the batch's reports and the next move.
 
-The verdict is `OK`, `PARTLY FAILED` (with `, LINES SHIFTED` when a refused edit's lines moved),
-`FAILED, NOTHING WRITTEN`, `WRITTEN, NOT PARSED`, or `WRITTEN, UNFORMATTED`, then the file's
-length:
+A call that landed whole and clean draws the header and nothing else — `splice src/demo.rs: OK`.
+Its diff is what the model just sent, and the file it can read is the truth; the body exists for
+calls that partly failed.
 
 ```text
-[Splice] OK · now 11 lines
+splice src/demo.rs: PARTLY FAILED
 
 src/demo.rs:6-11
-  in: pub fn alpha() -> u8
-+   1|pub fn alpha() -> u8 {
-+   2|    1
-+   3|}
-+   4|pub fn beta() -> u8 {
-+   5|    2
-+   6|}
-src/demo.rs:3-5
--    |pub fn alpha() -> u8 {
--    |    1
--    |}
-+    |(nothing: the range is gone)
-```
-
-A written edit is named where it landed and shows the block that stands there now; the plus side
-counts inside the block. A deletion has no landing of its own: it is named by the range it took, and
-shows what left, unnumbered. Both sides fold in the middle past twelve rows, and a line is cut at
-140 characters.
-
-A refused edit shows its reason and nothing else, under a heading of the line its own range now
-starts on: the written ranges above it moved it, so the old number it was sent with is not where it
-sits any more. A block the parser blames carries the parser's words under it:
-
-```text
-[Splice] PARTLY FAILED, LINES SHIFTED · now 13 lines
+  in: impl Foo > pub fn alpha
++  6|pub fn alpha() -> u8 {
++  7|    1
++  8|}
 
 src/demo.rs:9-11
   in: pub fn beta
-+   1|pub fn beta() -> u16 {
-+   2|    2
-+   3|}
-src/demo.rs:14
-  in: pub fn gamma
-  ! OVERLAPPED: an earlier call on this file wrote these lines; Re-Read or Re-Grep, then resend
-  ! line 3: mismatched types
+-  9|pub fn beta() -> u8 {
+- 10|    2
+- 11|}
+
+OVERLAP
+
+SHIFTED, the edit scope you requested earlier is now 14-16; reread or regrep to issue another splice
+  ! MISMATCH: line 12 reads `pub fn gamma`, not `pub fn delta`
 ```
 
-A text that does not parse is written as it stands, and the answer says which edit the parser blames
-or, failing that, what it said:
+The header is one line: `splice <path>: <verdict>`. The verdict is `OK`, `PARTLY FAILED`,
+`FAILED, NOTHING WRITTEN`, `WRITTEN, NOT PARSED` or `WRITTEN, UNFORMATTED`. A call that never
+reached its edits names the reason instead of a verdict:
 
 ```text
-[Splice] WRITTEN, NOT PARSED · now 13 lines
+splice src/demo.rs: FAILED, NOTHING WRITTEN
 
-src/demo.rs:2
-+   1|pub fn broken( -> u8 {
-[i] the file does not parse: this file contains an unclosed delimiter
+! `src/demo.rs` is unauthorized: it has not been read in this conversation
 ```
 
-`WRITTEN, UNFORMATTED` is the same shape with a formatter that never answered:
-`[i] not formatted, written as it stands: rustfmt did not finish in 5 s, so it was killed`.
+A written block opens with where it landed, names the item, and numbers its lines by the file's own
+numbers — the plus side as it now stands, the minus side as it stood before the write. A deletion
+has no plus side. A block that lost for overlap says one word:
+
+```text
+OVERLAP
+```
+
+A block refused by its anchor says where the lines it asked for now sit, then the anchor's words:
+
+```text
+SHIFTED, the edit scope you requested earlier is now 14-16; reread or regrep to issue another splice
+  ! MISMATCH: line 12 reads `pub fn gamma`, not `pub fn delta`
+```
+
+`UNCHANGED, ` replaces `SHIFTED, ` when nothing was written and the range therefore did not move.
+An item that could not be read at all has no range to name and carries its reason alone.
+
+Both sides fold in the middle past twelve lines, counted as `[+N lines]`. No line is cut.
+
+The footer follows the body one blank line down and holds only what the file itself cannot say:
+
+```text
+[i] check · mypi: 3 errors, 2 warns
+  src/lib.rs:40: mismatched types | help: expected `u8`, found `u16`
+[+9 more faults: set `unfold` true to list them]
+[i] test · mypi: 4 passed, 1 failed
+  tests/flow.rs:12: assertion failed
+[i] fmt · src/demo.rs does not parse, written as it stands: unclosed delimiter
+```
+
+The check's counts cover every diagnostic the crate's check found, whether it hangs under an edit
+or is listed here. `unfold` lists them all instead of the first twelve.
 
 ### The memo
 
@@ -192,9 +211,10 @@ the formatter's, so the tool carries them rather than leaving the front end to g
 ### Stopping
 
 A stop lands in one of two places, and the answer says which. Before the write, the formatter is
-killed and nothing reaches the file, so the call answers that the file is unchanged. After the
-write, the change stands and waits for the batch's audit: the answer is finished once the batch's
-last write has landed and the crate has been checked.
+killed and nothing reaches the file, so the call answers `FAILED, NOTHING WRITTEN` and `interrupted`;
+the file keeps its authorisation, since nothing about it changed. After the write, the change stands
+and waits for the batch's audit: the answer is finished once the batch's last write has landed and
+the crate has been checked, and a check that never ran says `[i] check · interrupted`.
 
 ## 2. Design intent
 
@@ -207,12 +227,21 @@ spends `read`'s line numbers instead of fighting them.
 number on one side and a quotation on the other; the ends that have no line to name — an insert's
 `end`, an append's `start` — say so by carrying none.
 
-**A refusal is placed, not guessed.** A refused range still owns the lines it named, so where it
-starts after the write is arithmetic over the written ranges above it — never a number carried over
-from the snapshot, and never a net sum that lets an insert and a cut cancel.
-**A refusal is local.** One stale range is dropped and the rest of the batch lands; a call whose
-own ranges contradict each other is left alone, since there is no way to tell which one the model
-meant. Either way the verdict names what landed, and the model resends only what lost.
+**One rule for overlap.** Every range is judged against the ranges already accepted, whichever call
+sent them. The later one loses, the earlier one lands, and nothing else about the call changes.
+A special case per call would make the same mistake refuse different amounts of work.
+
+**A refusal is placed, not guessed.** A refused range still owns the lines it named, and it shares
+none with a written range, so where it starts after the write is arithmetic over the written ranges
+above it — never a number carried over from the snapshot, and never a net sum that lets an insert
+and a cut cancel.
+
+**A refusal is local.** One stale range is dropped and the rest of the batch lands; the model resends
+only what lost. Authorisation goes with it, because the model's picture of the file is what failed.
+
+**The header says the verdict, the blocks say the place.** A successful call carries no numbers past
+its blocks; a refused one carries exactly one sentence about where its lines went, and the same
+sentence is the instruction to read the file again.
 
 **The formatter reports, it does not withhold.** A text that does not parse still lands, because the
 model's next `cargo check` is the real verdict; the tool only makes sure the model knows.
@@ -232,4 +261,4 @@ merging them makes the second call's coordinates mean what the model thought the
 ## 4. Config fields
 
 None. `splice` reads no key of its own; the formatter's and the checker's behaviour comes from the
-language, and the batch's check report from `unfold`.
+language, and the batch's reports from `unfold`.

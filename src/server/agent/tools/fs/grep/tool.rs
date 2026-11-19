@@ -26,12 +26,7 @@ const PARAMS: &[Param] = &[
         "`src/...` files or dirs, whatever suffix a sorter claims (defaults to whole `src/`; invalid \
          entries skipped).",
     ),
-    Param::df(
-        "lavish",
-        Kind::Flag,
-        "Draw the whole answer one tier denser: tier 3 as 2, tier 2 as 1",
-        "false",
-    ),
+    Param::df("lavish", Kind::Flag, "Raise the answer one tier", "false"),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
@@ -39,9 +34,12 @@ pub(crate) const TOOL: Tool = Tool {
     about: "Structural search across the crate's `src/`, Rust source and Markdown. Returns \
             hits with the enclosing piece's hierarchy and line numbers. Supports `A::b` member \
             lookup.",
-    fields: "Requires `query`; `regex` and `scope` are optional.\n\
+    fields: "Requires `query`; `regex`, `scope` and `lavish` are optional.\n\
              - `A::b` syntax: besides literal matches, also locates where type/trait/module `A` declares `b`.\n\
-             - `lavish`: the whole answer draws one tier denser.\n\
+             - Header: the counts and the tier, then the scope entries and how many of them were\n\
+               used.\n\
+             - Footer: `DOWNSHIFTED` while the answer is coarser than tier 1 — `lavish` raises it\n\
+               one tier, a narrower `scope` drops items — then every piece the answer left out.\n\
              - Output: 1-based line numbers + surrounding item scopes.",
     params: PARAMS,
     run,
@@ -59,15 +57,18 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     } else {
         scan::Matcher::text(&query)
     };
-    let (dirs, picked, misses) = scan::roots(&zone, &args.str_list(SCOPE)?);
+    let mut scope = args.str_list(SCOPE)?;
+    let (dirs, picked, misses) = scan::roots(&zone, &mut scope);
     let files = scan::collect(&dirs, &picked, &matcher);
     let mode = if regex { "regex" } else { "literal" };
-    let (text, shown) = render::answer(&query, mode, &files, &zone, env.grep, lavish, &misses);
+    let (text, shown) = render::answer(
+        &query, mode, &files, &zone, env.grep, lavish, &misses, &scope,
+    );
     render::stamp(&mut env.seen, &files, &shown);
     Ok(ToolOutput::text(text))
 }
 
 // One line for a history listing: the query.
 fn summary(call: &CallRecord) -> String {
-    summary::clip(&summary::field(call, "query").unwrap_or_default(), 96)
+    summary::flat(&summary::field(call, "query").unwrap_or_default())
 }

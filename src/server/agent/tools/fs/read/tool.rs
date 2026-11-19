@@ -22,8 +22,8 @@ use base64::Engine as _;
 const FILES: usize = 0;
 
 // A source file's own budget: 800 lines, 256 KiB.
-pub(crate) const MAX_LINES_SOURCE: usize = 800;
-pub(crate) const MAX_BYTES_SOURCE: usize = 256 * 1024;
+const MAX_LINES_SOURCE: usize = 800;
+const MAX_BYTES_SOURCE: usize = 256 * 1024;
 
 // Every other file's budget: 200 lines, 64 KiB.
 const MAX_LINES: usize = 200;
@@ -44,9 +44,9 @@ const FILE_FIELDS: &[Param] = &[
     Param::new(
         "item",
         Kind::Text,
-        "A piece's own header, as the model remembers it: every piece under this path whose header \
-         says that text answers whole, every line numbered. Omitted: the path answers as a file or a \
-         listing, and `offset` and `limit` hold.",
+        "A piece's own header, exactly as an earlier answer opened it (`impl Shout for Dumb`): every \
+         piece under this path whose header equals it answers whole, every line numbered. It turns \
+         the path into a scope, so `offset` and `limit` do not apply.",
     ),
 ];
 
@@ -61,7 +61,9 @@ pub(crate) const TOOL: Tool = Tool {
     about: "Read files or directories; a sorted language answers with key line numbers under \
             splice, a source file with an 800-line budget and a module view when it has one, \
             anything else 200.",
-    fields: "`files` takes one item per path, with `offset` (1-based, default 1), `limit` (default: \
+    fields: "Every answer opens with `==> path` — a directory adds its counts to that line — and \
+             anything left out comes last as one line.\n\
+             `files` takes one item per path, with `offset` (1-based, default 1), `limit` (default: \
              800 for a source file, 200 otherwise, never above that file's own cap) and `item`. \
              Without `item`, a file answers its lines and a directory its entries. A directory \
              answers its immediate children, files with their line counts and directories by name, \
@@ -70,8 +72,9 @@ pub(crate) const TOOL: Tool = Tool {
              drops the stamps and marks them `(latest)`; a document the user keeps current is \
              marked `(persistent)` and never dated. Any other level stamps every file of it. The \
              session root carries a bonus. With `item`, the path is a scope instead: every piece \
-             under it whose own header says that text answers whole, every line numbered, in line \
-             order; a directory names each answer's file.",
+             under it whose own header equals that text exactly answers whole, every line numbered, \
+             in line order; a directory names each answer's file, and `offset` and `limit` are \
+             ignored. An image answers no text at all, only its bytes.",
     params: PARAMS,
     run,
     summary,
@@ -100,31 +103,31 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     for (item, target) in items.iter().zip(targets) {
         let result = match target {
             Ok(path) => match item.opt_str("item")? {
-                Some(wanted) => named(env, item, &path, &wanted, total > 1),
-                None => block(env, &batch, item, &path, total > 1),
+                Some(wanted) => named(env, item, &path, &wanted),
+                None => block(env, &batch, item, &path),
             },
             Err(e) => Err(e),
         };
         match result {
             Ok((text, attached)) => {
-                if !out.is_empty() {
-                    out.push('\n');
+                // An image is its part alone: nothing of it is text.
+                if !text.is_empty() {
+                    if !out.is_empty() {
+                        out.push('\n');
+                    }
+                    out.push_str(&text);
                 }
-                out.push_str(&text);
                 images.extend(attached);
                 outcomes.push(ItemOk::ok());
             }
             Err(e) => {
                 // One path's failure is that path's own: the rest still run and still answer.
-                if total == 1 {
-                    return Err(e);
-                }
                 failed += 1;
                 let path = item.text("path").unwrap_or_else(|_| item.label());
                 if !out.is_empty() {
                     out.push('\n');
                 }
-                out.push_str(&format!("==> {path}\n[error: {e:#}]"));
+                out.push_str(&format!("{}[error: {e:#}]", header(&path)));
                 outcomes.push(ItemOk::failed(format!("{e:#}")));
             }
         }
@@ -149,28 +152,30 @@ fn named(
     item: &Item,
     path: &Path,
     wanted: &str,
-    headed: bool,
 ) -> Result<(String, Vec<ImagePart>)> {
     let raw = item.text("path")?;
-    let text = items::answer(env, path, wanted)?;
-    Ok((titled(&raw, text, headed), Vec::new()))
+    let mut text = header(&raw);
+    // The scope replaced the window: the fields that shape a window are spent, and saying so is
+    // cheaper than a refused call.
+    if item.gave("offset") || item.gave("limit") {
+        text.push_str("[i] item mode: `offset` and `limit` do not apply\n");
+    }
+    text.push_str(&items::answer(env, path, wanted)?);
+    Ok((text, Vec::new()))
 }
 
-// One file's line of a batch: the reader must know which answer is whose.
+// One answer's line of a batch, and its own signpost when alone: every answer names its path.
 pub(super) fn header(raw: &str) -> String {
     format!("==> {raw}\n")
 }
 
-// The header is a batch's signpost; one item alone answers bare.
-pub(super) fn titled(raw: &str, text: String, on: bool) -> String {
-    match on {
-        true => format!("{}{text}", header(raw)),
-        false => text,
-    }
+// A body under its own header.
+pub(super) fn titled(raw: &str, text: String) -> String {
+    format!("{}{text}", header(raw))
 }
-// An image's answer, when the file is one and this session's model can see: a one-line card and
-// the bytes as a part. A non-image, or a model without vision, answers `None`.
-fn image(env: &Env, path: &Path) -> Result<Option<(String, ImagePart)>> {
+// An image's answer, when the file is one and this session's model can see: the bytes as a part,
+// and no text at all. A non-image, or a model without vision, answers `None`.
+fn image(env: &Env, path: &Path) -> Result<Option<ImagePart>> {
     let Some(format) = sniff::detect(path)? else {
         return Ok(None);
     };
@@ -187,17 +192,10 @@ fn image(env: &Env, path: &Path) -> Result<Option<(String, ImagePart)>> {
         MAX_IMAGE_BYTES / 1024,
     );
     let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    let card = format!(
-        "[image: {format}, {} KiB — attached as an image part]",
-        bytes.len() / 1024
-    );
-    Ok(Some((
-        card,
-        ImagePart {
-            format: format.to_string(),
-            data,
-        },
-    )))
+    Ok(Some(ImagePart {
+        format: format.to_string(),
+        data,
+    }))
 }
 
 // The lines one item may take: the file's own cap, or what the call named when that is smaller.
@@ -217,18 +215,17 @@ fn block(
     batch: &BTreeSet<PathBuf>,
     item: &Item,
     path: &Path,
-    headed: bool,
 ) -> Result<(String, Vec<ImagePart>)> {
     let raw = item.text("path")?;
     let offset = item.line("offset")?;
 
     if path.is_dir() {
-        let text = dir::listing(path, &env.workspace.cwd(), !headed, &env.persistent_docs)?;
-        return Ok((titled(&raw, text, headed), Vec::new()));
+        let (counts, body) = dir::listing(path, &env.workspace.cwd(), &env.persistent_docs)?;
+        return Ok((titled(&format!("{raw}  {counts}"), body), Vec::new()));
     }
 
-    if let Some((card, image)) = image(env, path)? {
-        return Ok((titled(&raw, card, headed), vec![image]));
+    if let Some(image) = image(env, path)? {
+        return Ok((String::new(), vec![image]));
     }
 
     let splice = env.allows(SPLICE.name);
@@ -261,10 +258,6 @@ fn block(
         }
         None => {
             let streamed = streamed(path, offset, limit)?;
-            // Only a window is shown, but a later splice still needs the whole-file licence.
-            if let Ok(all) = std::fs::read_to_string(path) {
-                env.seen.files.insert(path.to_path_buf(), License::of(&all));
-            }
             let numbers = if splice { Numbers::All } else { Numbers::None };
             assemble(
                 offset,
@@ -281,13 +274,8 @@ fn block(
         env.seen.files.insert(path.to_path_buf(), License::of(text));
     }
 
-    // The status line is part of the body: it comes first, so the body is known before it is read.
-    let mut text = String::new();
-    if let Some(status) = &body.status {
-        text.push_str(status);
-        text.push('\n');
-    }
-    text.push_str(&body.text);
+    // The body, then the module view, then the footer: what was left out comes last.
+    let mut text = body.text;
 
     if let Some(facts) = lang::hub(path)
         && let Some(unit) = graph::unit(facts, path)
@@ -302,7 +290,12 @@ fn block(
         }
     }
 
-    Ok((titled(&raw, text, headed), Vec::new()))
+    if let Some(status) = &body.status {
+        text.push_str(status);
+        text.push('\n');
+    }
+
+    Ok((titled(&raw, text), Vec::new()))
 }
 
 // One file's neighbourhood, printed and bounded on its own.
@@ -366,7 +359,7 @@ fn assemble<'a>(
     numbers: &Numbers<'_>,
     max_bytes: usize,
 ) -> Body {
-    let width = total.to_string().len();
+    let width = skeleton::width(total);
     let mut text = String::new();
     let mut bytes = 0usize;
     let mut shown = 0usize;
@@ -470,5 +463,5 @@ fn floor_boundary(line: &str, bytes: usize) -> usize {
 fn summary(call: &CallRecord) -> String {
     let paths = summary::paths(call, "files");
     let first = paths.first().cloned().unwrap_or_default();
-    summary::clip(&summary::counted(&first, paths.len()), 96)
+    summary::counted(&first, paths.len())
 }

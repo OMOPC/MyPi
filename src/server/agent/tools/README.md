@@ -282,12 +282,12 @@ parse the text.
 
 Every tool declares `summary`, one line that names the call in a history listing; the field is not
 optional, so no tool joins the table without one. It carries only the least that locates the call:
-the first path plus a count for `read`, the path for `write`, `edit`, `splice` and `cd`, the truncated
+the first path plus a count for `read`, the path for `write`, `edit`, `splice` and `cd`, the
 command for `bash`, the first name and command for `alias`, the operation for the tools whose
 parameters are the interesting part (`memo`, `todo`, `context`, `kairos`, `final`), the first
 server and tool for `mcp`, the first template and its answer name for `task`, the query for
 `search`, and for `web` the operation plus the argument it names: URL, selector or expression.
-A tool name the table no longer holds shows its clipped arguments.
+A tool name the table no longer holds shows its arguments.
 
 ### edit and splice
 

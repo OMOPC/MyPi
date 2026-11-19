@@ -100,8 +100,8 @@ fn summary(call: &CallRecord) -> String {
         _ => String::new(),
     };
     if at.trim().is_empty() {
-        summary::clip(&op, 96)
+        summary::flat(&op)
     } else {
-        summary::clip(&format!("{op} {at}"), 96)
+        summary::flat(&format!("{op} {at}"))
     }
 }
