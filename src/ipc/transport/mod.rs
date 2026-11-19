@@ -1,4 +1,4 @@
-//! Cross-process connection mechanics, one implementation per platform family.
+// Cross-process connection mechanics, one implementation per platform family.
 
 use std::io;
 
@@ -22,8 +22,10 @@ pub fn bind(endpoint: &Endpoint) -> io::Result<Listener> {
         Endpoint::Unix { path } => unix::bind(path),
         #[cfg(windows)]
         Endpoint::Pipe { name } => windows::bind(name),
-        #[allow(unreachable_patterns)]
-        other => unsupported(other),
+        #[cfg(unix)]
+        Endpoint::Pipe { .. } => unsupported(endpoint),
+        #[cfg(windows)]
+        Endpoint::Unix { .. } => unsupported(endpoint),
     }
 }
 
@@ -33,21 +35,23 @@ pub fn connect(endpoint: &Endpoint) -> io::Result<Stream> {
         Endpoint::Unix { path } => unix::connect(path),
         #[cfg(windows)]
         Endpoint::Pipe { name } => windows::connect(name),
-        #[allow(unreachable_patterns)]
-        other => unsupported(other),
+        #[cfg(unix)]
+        Endpoint::Pipe { .. } => unsupported(endpoint),
+        #[cfg(windows)]
+        Endpoint::Unix { .. } => unsupported(endpoint),
     }
 }
 
+#[cfg(unix)]
 pub fn unlink(endpoint: &Endpoint) {
-    match endpoint {
-        #[cfg(unix)]
-        Endpoint::Unix { path } => unix::unlink(path),
-        #[cfg(windows)]
-        Endpoint::Pipe { .. } => {}
-        #[allow(unreachable_patterns)]
-        _ => {}
+    if let Endpoint::Unix { path } = endpoint {
+        unix::unlink(path);
     }
 }
+
+// A pipe name goes away when the last handle closes, so there is nothing to remove.
+#[cfg(windows)]
+pub fn unlink(_: &Endpoint) {}
 
 fn unsupported<T>(endpoint: &Endpoint) -> io::Result<T> {
     Err(io::Error::new(

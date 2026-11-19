@@ -217,6 +217,6 @@ fn set_private(endpoint: &Endpoint) {
             eprintln!("mypi: cannot set 0600 on {}: {e}", path.display());
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     let _ = endpoint;
 }

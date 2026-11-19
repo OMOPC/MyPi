@@ -106,9 +106,12 @@ fn ipc_kind(cfg: &Config) -> Kind {
         .and_then(|value| value.as_text().map(str::to_string))
         .as_deref()
     {
+        Some("os") | None => Kind::of_this_system(),
         Some("unix") => Kind::Unix,
         Some("pipe") => Kind::Pipe,
-        _ => Kind::of_this_system(),
+        Some(other) => {
+            panic!("config.server.platform.ipc: `{other}` is not a known endpoint kind")
+        }
     }
 }
 
