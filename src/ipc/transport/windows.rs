@@ -5,7 +5,8 @@ use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const INVALID_HANDLE_VALUE: *mut c_void = -1isize as *mut c_void;
@@ -14,13 +15,13 @@ const PIPE_UNLIMITED_INSTANCES: u32 = 255;
 const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
 const OPEN_EXISTING: u32 = 3;
-const DUPLICATE_SAME_ACCESS: u32 = 0x0000_0002;
 
 const ERROR_FILE_NOT_FOUND: i32 = 2;
 const ERROR_BROKEN_PIPE: i32 = 109;
 const ERROR_PIPE_BUSY: i32 = 231;
 const ERROR_NO_DATA: i32 = 232;
 const ERROR_PIPE_CONNECTED: i32 = 535;
+const ERROR_OPERATION_ABORTED: i32 = 995;
 
 const BUFFER: u32 = 64 * 1024;
 const RETRIES: usize = 50;
@@ -61,16 +62,6 @@ unsafe extern "system" {
         overlapped: *mut c_void,
     ) -> i32;
     fn CloseHandle(handle: *mut c_void) -> i32;
-    fn DuplicateHandle(
-        process: *mut c_void,
-        source: *mut c_void,
-        target_process: *mut c_void,
-        target: *mut *mut c_void,
-        access: u32,
-        inherit: i32,
-        options: u32,
-    ) -> i32;
-    fn GetCurrentProcess() -> *mut c_void;
     fn SetNamedPipeHandleState(
         pipe: *mut c_void,
         mode: *mut u32,
@@ -119,29 +110,39 @@ pub struct Listener {
 
 /// One connected end.
 pub struct Stream {
-    handle: *mut c_void,
+    handle: Arc<Handle>,
+    closed: Arc<AtomicBool>,
 }
 
 // A handle is a kernel object, safe to move and to use from either thread its owner picks.
-unsafe impl Send for Stream {}
-unsafe impl Sync for Stream {}
+struct Handle(*mut c_void);
 
+unsafe impl Send for Handle {}
+unsafe impl Sync for Handle {}
+
+impl Drop for Handle {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+impl Stream {
+    fn new(handle: *mut c_void) -> Stream {
+        Stream {
+            handle: Arc::new(Handle(handle)),
+            closed: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+// One pipe, one handle: a clone is another owner of the same end, so a shutdown reaches every
+// thread reading or writing through any clone.
 impl Clone for Stream {
     fn clone(&self) -> Stream {
-        let mut copy = ptr::null_mut();
-        let ok = unsafe {
-            DuplicateHandle(
-                GetCurrentProcess(),
-                self.handle,
-                GetCurrentProcess(),
-                &mut copy,
-                0,
-                0,
-                DUPLICATE_SAME_ACCESS,
-            )
-        };
-        assert!(ok != 0, "cannot duplicate the pipe");
-        Stream { handle: copy }
+        Stream {
+            handle: self.handle.clone(),
+            closed: self.closed.clone(),
+        }
     }
 }
 
@@ -182,7 +183,7 @@ impl Listener {
         if let Ok(next) = instance(&self.name) {
             *self.pending.lock().unwrap_or_else(|e| e.into_inner()) = next as usize;
         }
-        Ok(Stream { handle })
+        Ok(Stream::new(handle))
     }
 
     pub fn local_path(&self) -> &Path {
@@ -192,8 +193,10 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let handle =
-            std::mem::replace(&mut *self.pending.lock().unwrap_or_else(|e| e.into_inner()), 0);
+        let handle = std::mem::replace(
+            &mut *self.pending.lock().unwrap_or_else(|e| e.into_inner()),
+            0,
+        );
         if handle != 0 {
             unsafe { CloseHandle(handle as *mut c_void) };
         }
@@ -218,7 +221,7 @@ pub fn connect(name: &str) -> io::Result<Stream> {
         if handle != INVALID_HANDLE_VALUE {
             let mut mode = 0u32; // PIPE_READMODE_BYTE
             unsafe { SetNamedPipeHandleState(handle, &mut mode, ptr::null_mut(), ptr::null_mut()) };
-            return Ok(Stream { handle });
+            return Ok(Stream::new(handle));
         }
         let error = io::Error::last_os_error();
         if error.raw_os_error() == Some(ERROR_PIPE_BUSY) && tries < RETRIES {
@@ -239,26 +242,26 @@ pub fn connect(name: &str) -> io::Result<Stream> {
 }
 
 impl Stream {
-    /// Close both directions: a blocking read on any clone returns end of file.
+    // Close both directions: a blocking read on any clone returns end of file. The flag is what
+    // makes this stick: a read that starts after the cancellation still sees it, and a cancelled
+    // read answers end of file instead of an error.
     pub fn shutdown(&self) {
+        self.closed.store(true, Ordering::SeqCst);
         unsafe {
-            CancelIoEx(self.handle, ptr::null_mut());
+            CancelIoEx(self.handle.0, ptr::null_mut());
         }
-    }
-}
-
-impl Drop for Stream {
-    fn drop(&mut self) {
-        unsafe { CloseHandle(self.handle) };
     }
 }
 
 impl io::Read for Stream {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        if self.closed.load(Ordering::Acquire) {
+            return Ok(0);
+        }
         let mut read = 0u32;
         let ok = unsafe {
             ReadFile(
-                self.handle,
+                self.handle.0,
                 out.as_mut_ptr(),
                 out.len() as u32,
                 &mut read,
@@ -271,6 +274,7 @@ impl io::Read for Stream {
         let error = io::Error::last_os_error();
         match error.raw_os_error() {
             Some(ERROR_BROKEN_PIPE) | Some(ERROR_NO_DATA) => Ok(0),
+            Some(ERROR_OPERATION_ABORTED) if self.closed.load(Ordering::Acquire) => Ok(0),
             _ => Err(error),
         }
     }
@@ -278,10 +282,13 @@ impl io::Read for Stream {
 
 impl io::Write for Stream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "pipe closed"));
+        }
         let mut written = 0u32;
         let ok = unsafe {
             WriteFile(
-                self.handle,
+                self.handle.0,
                 buf.as_ptr(),
                 buf.len() as u32,
                 &mut written,
