@@ -12,19 +12,21 @@ pub fn home() -> Option<PathBuf> {
     }
 }
 
-// Persistent, machine-generated data: the sessions database and the browser profile; $XDG_DATA_HOME/mypi on unix, ~/.mypi/data on windows.
+// Persistent, machine-generated data: the sessions database and the browser profile.
+// `$XDG_DATA_HOME/mypi` on unix, `%LOCALAPPDATA%\mypi` on windows.
 pub fn data_dir() -> PathBuf {
     match os::current().family {
         Family::Unix => base("XDG_DATA_HOME", ".local/share").join("mypi"),
-        Family::Windows => in_home(".mypi").join("data"),
+        Family::Windows => app_dir("LOCALAPPDATA", ["AppData", "Local"]).join("mypi"),
     }
 }
 
-// Configuration the user edits: $XDG_CONFIG_HOME/mypi on unix, ~/.mypi on windows; a missing config.yaml is written here.
+// Configuration the user edits: `$XDG_CONFIG_HOME/mypi` on unix, `%APPDATA%\mypi` on windows.
+// A missing config.yaml is written here.
 pub fn config_dir() -> PathBuf {
     match os::current().family {
         Family::Unix => base("XDG_CONFIG_HOME", ".config").join("mypi"),
-        Family::Windows => in_home(".mypi"),
+        Family::Windows => app_dir("APPDATA", ["AppData", "Roaming"]).join("mypi"),
     }
 }
 
@@ -89,10 +91,13 @@ fn base(variable: &str, fallback: &str) -> PathBuf {
     }
 }
 
-// A folder under the user's home; the same name here when there is no home.
-fn in_home(folder: &str) -> PathBuf {
+// A Windows per-user folder: the environment variable, else the documented path under home.
+fn app_dir(variable: &str, fallback: [&str; 2]) -> PathBuf {
+    if let Some(dir) = var_os(variable) {
+        return PathBuf::from(dir);
+    }
     match home() {
-        Some(home) => home.join(folder),
-        None => PathBuf::from(folder),
+        Some(home) => home.join(fallback[0]).join(fallback[1]),
+        None => PathBuf::from(fallback[0]).join(fallback[1]),
     }
 }

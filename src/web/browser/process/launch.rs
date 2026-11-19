@@ -11,13 +11,10 @@ use super::super::devtools::Client;
 use super::Browser;
 use crate::server::config::BrowserOptions;
 
-/// Fallback executable when neither `$MYPI_BROWSER_BIN` nor `config.yaml` names one.
-const DEFAULT_BROWSER_BIN: &str = "/opt/helium/helium";
-
 pub(super) fn launch(cfg: &BrowserOptions, profile: &Path) -> anyhow::Result<Browser> {
+    let exe = executable(cfg)?;
     std::fs::create_dir_all(profile)
         .with_context(|| format!("creating browser profile dir {}", profile.display()))?;
-    let exe = executable(cfg);
     let mut cmd = command(&exe, profile, cfg);
     let process = Process::spawn(Origin::Browser, &mut cmd)
         .map_err(|e| anyhow!("spawning the browser: {e}"))?;
@@ -34,17 +31,12 @@ pub(super) fn launch(cfg: &BrowserOptions, profile: &Path) -> anyhow::Result<Bro
     }
 }
 
-fn executable(cfg: &BrowserOptions) -> PathBuf {
-    std::env::var_os("MYPI_BROWSER_BIN")
-        .filter(|v| !v.is_empty())
+fn executable(cfg: &BrowserOptions) -> anyhow::Result<PathBuf> {
+    cfg.bin
+        .as_deref()
+        .filter(|b| !b.as_os_str().is_empty())
         .map(PathBuf::from)
-        .or_else(|| {
-            cfg.bin
-                .as_deref()
-                .filter(|b| !b.as_os_str().is_empty())
-                .map(PathBuf::from)
-        })
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_BROWSER_BIN))
+        .ok_or_else(|| anyhow!("browser.bin is empty; set config.server.agent.tools.browser.bin"))
 }
 
 fn command(exe: &Path, profile: &Path, cfg: &BrowserOptions) -> Command {

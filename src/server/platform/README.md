@@ -75,7 +75,8 @@ lifetime. `TZ` is not consulted.
 ### The directories
 
 On unix they follow XDG: the environment variable wins, and the specification's default applies when
-it is unset. Empty counts as unset.
+it is unset. On windows configuration lives under `%APPDATA%` and data under `%LOCALAPPDATA%`, so a
+roaming profile never carries the database or the browser profile. Empty counts as unset.
 
 ### What is asked of the system, and when
 
@@ -140,17 +141,16 @@ timestamp learns to emit timestamps of its own.
 **The log is a ring, not a file.** It narrates our behaviour, not the conversation: read while the
 process runs, gone when it stops.
 
-**Directories follow the platform's own convention.** XDG on unix; an unknown system gets the
-current directory.
+**Directories follow the platform's own convention.** XDG on unix, `%APPDATA%` and
+`%LOCALAPPDATA%` on windows; an unknown system gets the current directory.
 
 **No unit tests here.** Timing, zone tables and the environment are checked by running the program.
 
 ## 3. Open questions
 
 1. **Windows.** The shell, the process tree, the clock and the directories carry both families. The
-   browser paths are still unix-shaped (第 16 条). The unix parent-death signal reaches the leader
-   only; the rest of a following tree dies with the process group when the leader goes, which covers
-   the usual case but not every stray child.
+   unix parent-death signal reaches the leader only; the rest of a following tree dies with the
+   process group when the leader goes, which covers the usual case but not every stray child.
 2. **Instant messaging has no caller.** The switch, the templates and the rendering exist;
    `stamp::inject` is public with no production call site, and the feature's shape is still open — the
    switch may end up named something other than "instant message".

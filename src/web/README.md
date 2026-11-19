@@ -31,7 +31,8 @@ returns the text the model reads.
 
 ### Browser process
 
-One Chromium per process, **always headed**, launched on the first operation and never before.
+One Chromium per process, **always headed**, launched on the first operation and never before. The
+binary has no default: `config.server.agent.tools.browser.bin` must name it before the first launch.
 
 ```text
 ensure
@@ -42,8 +43,9 @@ ensure
   → otherwise                                      → launch
 ```
 
-- `owned` browsers are launched into a session of their own (`setsid`), so the group id is the
-  leader's pid; closing signals the whole group TERM, waits two seconds, then KILLs and reaps.
+- `owned` browsers are launched into a container of their own (`setsid` on unix, a job object on
+  windows); closing stops the whole container (TERM, grace, KILL on unix; TerminateJobObject on
+  windows).
 - `attached` browsers belong to the user: this domain never signals them, and never idles them out.
 - The idle clock is set at launch and at the end of every tab lease; an operation in flight also
   keeps the browser alive. Ten minutes without either closes an owned browser: tabs, group and all.
@@ -254,9 +256,9 @@ named, and until it is, its whole body is what is read.
   to supervise; one tree gives the exit path a single handle.
 - **Owned versus attached.** A browser the user started is theirs; the domain only speaks CDP to it.
   A browser the domain started is a child of the server and must not survive it.
-- **The platform owns the binding.** `PR_SET_PDEATHSIG` binds to the forking thread, so the platform
-  creates every tree on one thread that never ends; a connection thread's end cannot orphan the
-  browser.
+- **The platform owns the binding.** On unix `PR_SET_PDEATHSIG` binds to the forking thread, so the
+  platform creates every tree on one thread that never ends; on windows the job object carries
+  `KILL_ON_JOB_CLOSE`. Either way a connection thread's end cannot orphan the browser.
 - **Idle close.** The profile is on disk, so closing costs only a relaunch. Leaving the process up
   costs an orphan every time the server goes away badly.
 - **Two tabs per session.** Search and interactive work have different lifetimes: a search tab may
@@ -274,7 +276,6 @@ named, and until it is, its whole body is what is read.
 ## 3. Unresolved
 
 - macOS has no parent-death equivalent; only the explicit exit path covers it there.
-- Windows needs a Job Object (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`); not written yet.
 - Attached mode cannot switch a user's browser between headed and headless — irrelevant now, since
   there is no headless mode.
 - The parsers are tuned against captured live pages; the engines edit their markup, so a
@@ -288,7 +289,7 @@ Read by this domain itself, never through `Env`.
 
 | key | use |
 |---|---|
-| `config.server.agent.tools.browser.bin` | the executable; empty = `$MYPI_BROWSER_BIN`, else `/opt/helium/helium` |
+| `config.server.agent.tools.browser.bin` | the executable; required before the browser tool can launch one |
 | `config.server.agent.tools.browser.profileDir` | the persistent profile; empty = `<data dir>/browser/profile` |
 | `config.server.agent.tools.browser.port` | attach to a running browser instead of launching |
 | `config.server.agent.tools.browser.idleSecs` | seconds of no activity before an owned browser is closed; default 600 |

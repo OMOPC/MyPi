@@ -27,7 +27,7 @@ keys! {
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX = "config", "server.agent.tools.grep", "foldMax", Int, DefaultValue::Int(25), "Items grep sketches; more than this folds to per-file counts.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS = "config", "server.agent.tools.grep", "xrayImpls", Int, DefaultValue::Int(8), "`impl` blocks one type's x-ray may list; it takes no share of the hit caps.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS = "config", "server.agent.tools.grep", "xrayItems", Int, DefaultValue::Int(12), "Members one block may list in a grep answer.", true;
-    KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_BIN = "config", "server.agent.tools.browser", "bin", Text, DefaultValue::Null, "Chromium-family executable; empty = $MYPI_BROWSER_BIN or a shipped default.", true;
+    KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_BIN = "config", "server.agent.tools.browser", "bin", Text, DefaultValue::Null, "Chromium-family executable; required before the browser tool can launch one.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_PORT = "config", "server.agent.tools.browser", "port", Int, DefaultValue::Null, "Attach to a running browser on this port instead of launching one.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_PROFILE_DIR = "config", "server.agent.tools.browser", "profileDir", Text, DefaultValue::Null, "Persistent browser profile directory.", true;
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_IDLE_SECS = "config", "server.agent.tools.browser", "idleSecs", Int, DefaultValue::Int(600), "Seconds without web activity before the browser process is closed.", true;

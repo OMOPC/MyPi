@@ -9,6 +9,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use super::zone::{ResumeZone, Row, Scope};
+use crate::server::platform::time as platform_time;
 use crate::ui::tui::text::bytes as byte_size;
 use crate::ui::tui::text::card::{card_edge, card_edge_labeled, card_row};
 use crate::ui::tui::theme::fixed;
@@ -307,92 +308,9 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-#[cfg(unix)]
-#[repr(C)]
-struct Tm {
-    tm_sec: i32,
-    tm_min: i32,
-    tm_hour: i32,
-    tm_mday: i32,
-    tm_mon: i32,
-    tm_year: i32,
-    tm_wday: i32,
-    tm_yday: i32,
-    tm_isdst: i32,
-    tm_gmtoff: i64,
-    tm_zone: *const i8,
-}
-
-#[cfg(unix)]
-unsafe extern "C" {
-    fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
-// The Windows SYSTEMTIME, as the time-zone API writes it.
-#[cfg(windows)]
-#[repr(C)]
-struct WinSystemTime {
-    year: u16,
-    month: u16,
-    day_of_week: u16,
-    day: u16,
-    hour: u16,
-    minute: u16,
-    second: u16,
-    millis: u16,
-}
-
-// The Windows TIME_ZONE_INFORMATION: both biases are in minutes, positive west of Greenwich.
-#[cfg(windows)]
-#[repr(C)]
-struct TimeZoneInformation {
-    bias: i32,
-    standard_name: [u16; 32],
-    standard_date: WinSystemTime,
-    standard_bias: i32,
-    daylight_name: [u16; 32],
-    daylight_date: WinSystemTime,
-    daylight_bias: i32,
-}
-
-#[cfg(windows)]
-unsafe extern "system" {
-    fn GetTimeZoneInformation(info: *mut TimeZoneInformation) -> u32;
-}
-
 fn local_offset() -> i64 {
     static OFFSET: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
-    *OFFSET.get_or_init(|| {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-        local_offset_at(now)
-    })
-}
-
-// Local time minus UTC at one moment, in seconds.
-#[cfg(unix)]
-fn local_offset_at(now: i64) -> i64 {
-    let mut tm: Tm = unsafe { std::mem::zeroed() };
-    unsafe {
-        localtime_r(&now, &mut tm);
-    }
-    tm.tm_gmtoff
-}
-
-// Local time minus UTC at one moment, in seconds; Windows has no localtime_r, so the zone API's bias in minutes (west positive) is used.
-#[cfg(windows)]
-fn local_offset_at(_now: i64) -> i64 {
-    const DAYLIGHT: u32 = 2;
-    let mut info: TimeZoneInformation = unsafe { std::mem::zeroed() };
-    let id = unsafe { GetTimeZoneInformation(&mut info) };
-    let extra = if id == DAYLIGHT {
-        info.daylight_bias
-    } else {
-        info.standard_bias
-    };
-    -((info.bias + extra) as i64) * 60
+    *OFFSET.get_or_init(|| platform_time::offset_at(platform_time::unix_now()) as i64)
 }
 
 /// Relative age in Chinese: just now / N minutes / N hours / N days.

@@ -24,7 +24,7 @@ keeps — is in `README.md`.
 | item | what it does |
 |---|---|
 | `os::{Family, Os, current()}` | which family, name and architecture this is |
-| `env::{home, data_dir, config_dir, temp_dir, downloads_dir}` | the directories, XDG-based on unix, `USERPROFILE` on windows; `downloads_dir` reads `XDG_DOWNLOAD_DIR` and falls back to `~/Downloads`; the IPC endpoint directory belongs to `ipc::endpoint` |
+| `env::{home, data_dir, config_dir, temp_dir, downloads_dir}` | the directories, XDG-based on unix, `%APPDATA%`/`%LOCALAPPDATA%` on windows; `downloads_dir` reads `XDG_DOWNLOAD_DIR` and falls back to `~/Downloads`; the IPC endpoint directory belongs to `ipc::endpoint` |
 | `env::{var, var_os}` | one environment variable, as text or raw |
 | `time::init(name)` | take the zone from configuration, once, at startup (`None` = whatever the machine says) |
 | `time::now_stamp()` | now, in the process's zone, as `YYYY-MM-DD HH:MM:SS` |
@@ -75,9 +75,9 @@ Everything else in this folder is private.
 2. **`stamp::inject` has no caller.** The timestamp injection happens when a user message is written,
    and where exactly that is stays undecided until the instant-messaging mode gets its own design
    (`memo.md`); `config.server.platform.stamp.*` has no reader for the same reason.
-3. **Windows.** `env.rs`, `shell.rs`, `proc.rs` and `time.rs` carry both families. Two places still
-   assume unix: the browser paths, and the parent-death guarantee below the leader (a job object
-   covers the whole tree on windows; unix only covers the leader). 第 16 条 lists the sites.
+3. **Windows.** `env.rs`, `shell.rs`, `proc.rs` and `time.rs` carry both families. One place still
+   assumes unix: the parent-death guarantee below the leader (a job object covers the whole tree on
+   windows; unix only covers the leader).
 4. **The shell backend is not selectable yet.** `Shell::resolve` exists; nothing reads a configured
    name, so every session takes the platform default. `Shell::default` is `bash` on unix and `pwsh`
-   on windows, and the `niu` backend is reachable only through `resolve`.
+   on windows, and the `niu` (niubash) backend is reachable only through `resolve`.
