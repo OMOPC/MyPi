@@ -12,6 +12,7 @@ use mypi::server::api::Api;
 use mypi::server::config::{
     Config, KEY_CONFIG_SERVER_PLATFORM_IPC, KEY_CONFIG_SERVER_PLATFORM_TIMEZONE,
 };
+use mypi::server::platform::proc;
 use mypi::server::platform::time;
 use mypi::server::storage;
 use mypi::ui::tui;
@@ -43,12 +44,12 @@ fn main() -> anyhow::Result<()> {
 /// The server is a background child: it takes no terminal, prints nothing, and leaves with the
 /// last front end. This process waits for its socket, then owns the screen.
 fn spawn_server(file: &Path) -> anyhow::Result<mypi::ui::session::Session> {
-    std::process::Command::new(std::env::current_exe()?)
-        .arg("--server")
+    let mut cmd = std::process::Command::new(std::env::current_exe()?);
+    cmd.arg("--server")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
+        .stderr(std::process::Stdio::null());
+    proc::Process::spawn_detached(proc::Origin::Frontend, &mut cmd)
         .context("cannot start the server")?;
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {

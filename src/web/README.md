@@ -51,9 +51,8 @@ ensure
 - `shutdown()` closes the owner and forgets every tab; it is idempotent. `main` calls it after the
   IPC server returns, and a signal thread calls it for INT, TERM and HUP before letting the signal
   take its default action.
-- An owned browser must not survive the server. Linux gets that from `PR_SET_PDEATHSIG`, which is
-  delivered when the *forking thread* ends; the launch therefore happens on one thread that lives
-  as long as the process.
+- An owned browser must not survive the server. The platform binds every following tree to the main
+  process, so the browser dies with the server without the domain keeping a thread for it.
 - No display (`DISPLAY` / `WAYLAND_DISPLAY` missing) is an error, not a fallback: there is no
   headless mode.
 
@@ -255,9 +254,9 @@ named, and until it is, its whole body is what is read.
   to supervise; one tree gives the exit path a single handle.
 - **Owned versus attached.** A browser the user started is theirs; the domain only speaks CDP to it.
   A browser the domain started is a child of the server and must not survive it.
-- **A resident fork thread.** `PR_SET_PDEATHSIG` binds to the forking thread, so a fork from a
-  connection thread would kill the browser when that front end disconnects. One thread that never
-  ends makes the signal mean "the server died".
+- **The platform owns the binding.** `PR_SET_PDEATHSIG` binds to the forking thread, so the platform
+  creates every tree on one thread that never ends; a connection thread's end cannot orphan the
+  browser.
 - **Idle close.** The profile is on disk, so closing costs only a relaunch. Leaving the process up
   costs an orphan every time the server goes away badly.
 - **Two tabs per session.** Search and interactive work have different lifetimes: a search tab may

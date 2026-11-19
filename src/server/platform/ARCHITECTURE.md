@@ -16,8 +16,8 @@ keeps — is in `README.md`.
 | `stamp.rs` | the timestamp templates: `parse` and `render` turn two instants into the prefix and suffix of one user message |
 | `log.rs` | the in-process ring of what happened to us: a level, a scope, a message and a millisecond |
 | `shell.rs` | which shell runs a command line: `Kind`, `Shell`, `default`, `resolve`, `names`, the one-shot argument shape, and the quoted path a stored text becomes |
-| `proc.rs` | one command's process tree: `Process` (`spawn`, `id`, the three `take_*`, `interrupt`, `kill`, `try_wait`, `wait`) and `grace`; the container is a compile-time `cfg` module |
-| `stop.rs` | the stop signal: `Stop` (flag plus a table of actions) and `Hook` (a registration that comes off on drop); `new`, `is_stopped`, `set`, `reset`, `on_stop` |
+| `proc.rs` | one command's process tree: `Process` (`spawn`, `spawn_detached`, `id`, the three `take_*`, `stop`, `try_wait`, `wait`, `wait_timeout`), the single `process-fork` creation thread and the per-tree reaper; containers live in `proc/sys_unix.rs` and `proc/sys_windows.rs` |
+| `stop.rs` | the stop signal: `Stop` (flag plus a table of actions, each run on its own thread) and `Hook` (a registration that comes off on drop); `new`, `is_stopped`, `set`, `reset`, `on_stop` |
 
 ## The public surface
 
@@ -33,7 +33,7 @@ keeps — is in `README.md`.
 | `stamp::{Parts, parse, weekday, render, inject}` | the injection templates: render a template against two instants, or both halves of one message at once |
 | `log::{Level, Record, push, info, warn, error, recent, by_scope, len}` | the ring |
 | `shell::{Kind, Shell, names}` | the session's shell; `resolve` refuses a shell the platform does not run |
-| `proc::{Process, grace}` | start a command as the leader of a tree, take its streams, ask it to stop or take it down, wait for it |
+| `proc::{Process, Origin}` | start a following or detached tree, take its streams, stop it, wait for it |
 
 Everything else in this folder is private.
 

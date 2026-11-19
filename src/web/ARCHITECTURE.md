@@ -65,7 +65,7 @@ What is here, what each file holds, who talks to whom. Current state only.
   `lifecycle::port` and `lifecycle::bring_to_front`. This is the domain's only reach into the
   backend, and it is why `Env` carries no browser settings.
 - **`server::platform`**: `env::data_dir` for the default profile root, and `proc::Process` for the
-  browser's tree: spawn on the resident thread, stop, wait.
+  browser's tree: spawn, stop, wait.
 - **Crates**: `tungstenite` (WebSocket), `html-to-markdown-rs` (DOM to Markdown), `url`, `ureq`
   (DevTools HTTP), `signal-hook` (exit signals).
 - **Who calls it**: `server::agent::tools::web` — `run` for every operation. `main` calls

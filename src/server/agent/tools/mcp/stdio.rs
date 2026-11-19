@@ -41,7 +41,7 @@ pub(crate) fn spawn(name: &str, cfg: &ServerConfig) -> Result<Server> {
     if let Some(cwd) = &cfg.cwd {
         command.current_dir(cwd.as_path());
     }
-    let process = proc::Process::spawn(&mut command)
+    let process = proc::Process::spawn(proc::Origin::Mcp, &mut command)
         .with_context(|| format!("failed to start MCP server `{name}`"))?;
     let stdin = process
         .take_stdin()
@@ -238,6 +238,11 @@ impl Server {
         self.process.clone()
     }
 
+    // The closed bell, so a stop can flip it without taking this server's lock.
+    pub(crate) fn closed_flag(&self) -> Arc<AtomicBool> {
+        self.closed.clone()
+    }
+
     pub(crate) fn is_closed(&self) -> bool {
         self.closed.load(Ordering::SeqCst)
     }
@@ -245,8 +250,8 @@ impl Server {
     pub(crate) fn shutdown(&mut self) {
         self.closed.store(true, Ordering::SeqCst);
         fail_all(&self.pending, &self.name, "shut down");
-        self.process.kill();
-        let _ = self.process.wait();
+        self.process.stop();
+        let _ = self.process.wait_timeout(Duration::from_millis(50));
     }
 
     fn tail(&self) -> String {
@@ -256,11 +261,5 @@ impl Server {
         }
         let lines: Vec<&str> = tail.iter().map(String::as_str).collect();
         format!("\nstderr:\n{}", lines.join("\n"))
-    }
-}
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        self.shutdown();
     }
 }

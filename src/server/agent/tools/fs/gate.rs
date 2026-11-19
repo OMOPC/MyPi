@@ -13,6 +13,9 @@ use crate::server::platform::stop::Stop;
 /// How often a waiting caller looks at its child.
 const TICK: Duration = Duration::from_millis(5);
 
+/// How long the platform gets to finish a stop before the caller moves on.
+const KILL_LIMIT: Duration = Duration::from_millis(50);
+
 /// How many bytes of one stream a child may hand back.
 const CAP: usize = 8 << 20;
 
@@ -43,7 +46,7 @@ pub(crate) fn run(
     })
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
-    let process = proc::Process::spawn(&mut cmd)?;
+    let process = proc::Process::spawn(proc::Origin::Tool, &mut cmd)?;
 
     // The input goes down a thread of its own: a child that reads late must not hold this call.
     if let Some(bytes) = input {
@@ -62,26 +65,31 @@ pub(crate) fn run(
     let mut timed_out = false;
     let mut stopped = false;
     let status = loop {
-        match process.try_wait() {
+        if stop.is_stopped() {
+            stopped = true;
+            process.stop();
+            let _ = process.wait_timeout(KILL_LIMIT);
+            break None;
+        }
+        let now = Instant::now();
+        if deadline.is_some_and(|at| now >= at) {
+            timed_out = true;
+            process.stop();
+            let _ = process.wait_timeout(KILL_LIMIT);
+            break None;
+        }
+        let wait = deadline
+            .map(|at| at.saturating_duration_since(now))
+            .unwrap_or(TICK)
+            .min(TICK);
+        match process.wait_timeout(wait) {
             Err(e) => {
-                process.kill();
+                process.stop();
                 let _ = process.wait();
                 return Err(e);
             }
             Ok(Some(status)) => break Some(status),
-            Ok(None) if stop.is_stopped() => {
-                stopped = true;
-                process.kill();
-                let _ = process.wait();
-                break None;
-            }
-            Ok(None) if deadline.is_some_and(|at| Instant::now() >= at) => {
-                timed_out = true;
-                process.kill();
-                let _ = process.wait();
-                break None;
-            }
-            Ok(None) => std::thread::sleep(TICK),
+            Ok(None) => {}
         }
     };
     Ok(Ran {

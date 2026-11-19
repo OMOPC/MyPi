@@ -364,7 +364,7 @@ Every parse is one `rustfmt` run over stdin. The binary is looked for beside thi
 then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
 directory. Only a verdict rustfmt actually reached is remembered per edition and content; a timeout
 or a missing binary is not, since neither says anything about the text. Every child the gate starts
-leads a tree of its own and is killed with that tree when its deadline passes or the turn
+leads a tree of its own and is stopped with that tree when its deadline passes or the turn
 is stopped, so a formatter can never hold the call that started it.
 
 Anything that is not a `.rs` file is spliced without a parse and without a format: there is no
@@ -499,10 +499,10 @@ action once, on the caller's thread; `on_stop` registers an action and runs it a
 signal already fired; the returned `Hook` takes it off again when dropped. `reset` clears the flag
 at the start of a turn.
 
-A tool that blocks registers what stopping it means: `bash` asks its tree to stop and kills it
-after `platform::proc`'s grace period; the gate kills the formatter or the compiler it started; `mcp`
-kills the tree of the server a call waits on, and the next call starts that server again. A tool
-that finishes in microseconds registers nothing, and the front door does not pretend otherwise.
+A tool that blocks registers what stopping it means: `bash`, the gate and `mcp` all call one `stop()`
+on the tree they started; the platform owns the ladder below it. `mcp` also marks that server closed,
+so the next call starts a fresh one. A tool that finishes in microseconds registers nothing, and the
+front door does not pretend otherwise.
 
 What a stop leaves behind depends on how far the call got:
 

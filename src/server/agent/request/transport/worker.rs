@@ -53,9 +53,9 @@ pub type SharedWorker = Arc<Mutex<HttpWorker>>;
 /// The environment variable that turns this executable into a worker.
 pub const WORKER_ENV: &str = "MYPI_HTTP_WORKER";
 
-/// One session's worker: the child that owns its sockets, made on demand and killed on demand.
+/// One session's worker: the child that owns its sockets, made on demand and stopped on demand.
 pub struct SessionWorker {
-    /// The worker that owns the sockets, made on demand and taken on kill.
+    /// The worker that owns the sockets, made on demand and taken on stop.
     slot: Mutex<Option<SharedWorker>>,
 }
 
@@ -75,23 +75,18 @@ impl SessionWorker {
         slot.clone()
     }
 
-    /// Kill the child that owns the sockets. A later request spawns its own.
+    /// Stop the child that owns the sockets. A later request spawns its own.
     pub fn kill(&self) {
         let old = self.slot.lock().ok().and_then(|mut slot| slot.take());
         let Some(worker) = old else {
-            crate::server::platform::log::info("worker", "no child to kill");
+            crate::server::platform::log::info("worker", "no child to stop");
             return;
         };
         let pid = HttpWorker::pid(&worker).unwrap_or(0);
-        crate::server::platform::log::info("worker", format!("killed the child on {pid}"));
+        crate::server::platform::log::info("worker", format!("stopped the child on {pid}"));
         if let Ok(worker) = worker.lock() {
-            worker.process.kill();
+            worker.process.stop();
         }
-        std::thread::spawn(move || {
-            if let Ok(mut worker) = worker.lock() {
-                worker.reap();
-            }
-        });
     }
 }
 
@@ -102,8 +97,8 @@ impl Drop for SessionWorker {
             return;
         };
         if let Ok(worker) = worker.lock() {
-            worker.process.kill();
-            let _ = worker.process.wait();
+            worker.process.stop();
+            let _ = worker.process.wait_timeout(Duration::from_millis(50));
         }
     }
 }
@@ -119,8 +114,11 @@ impl HttpWorker {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        let process = crate::server::platform::proc::Process::spawn(&mut cmd)
-            .context("failed to start the HTTP worker")?;
+        let process = crate::server::platform::proc::Process::spawn(
+            crate::server::platform::proc::Origin::Request,
+            &mut cmd,
+        )
+        .context("failed to start the HTTP worker")?;
         let input = process
             .take_stdin()
             .context("HTTP worker stdin unavailable")?;
@@ -133,8 +131,8 @@ impl HttpWorker {
         let output = match greet(output, HELLO_LIMIT) {
             Ok(output) => output,
             Err(e) => {
-                process.kill();
-                let _ = process.wait();
+                process.stop();
+                let _ = process.wait_timeout(Duration::from_millis(50));
                 return Err(e);
             }
         };
@@ -206,9 +204,6 @@ impl HttpWorker {
                 _ => {}
             }
         }
-    }
-    pub fn reap(&mut self) {
-        let _ = self.process.wait();
     }
 }
 

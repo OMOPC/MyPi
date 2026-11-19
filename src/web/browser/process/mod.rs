@@ -66,8 +66,8 @@ impl Browser {
 
     pub(crate) fn stop(&mut self) {
         if let Some(process) = self.process.as_ref() {
-            process.kill();
-            let _ = process.wait();
+            process.stop();
+            let _ = process.wait_timeout(std::time::Duration::from_millis(50));
         }
         self.process = None;
     }

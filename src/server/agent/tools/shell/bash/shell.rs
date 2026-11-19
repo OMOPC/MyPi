@@ -44,10 +44,10 @@ pub(crate) fn run_to(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    let process = proc::Process::spawn(&mut command)
+    let process = proc::Process::spawn(proc::Origin::Tool, &mut command)
         .with_context(|| format!("spawning `{}` failed", shell.name()))?;
 
-    // What stopping means here: ask the tree now, kill it after the grace period if it lives.
+    // What stopping means here: one call to the platform, which owns the ladder.
     let escalate = {
         let flag = flag.clone();
         let process = process.clone();
@@ -56,15 +56,7 @@ pub(crate) fn run_to(
                 return;
             }
             flag.ring();
-            process.interrupt();
-            let flag = flag.clone();
-            let process = process.clone();
-            named("mypi-bash-grace", move || {
-                std::thread::sleep(proc::grace());
-                if !flag.is_done() {
-                    process.kill();
-                }
-            });
+            process.stop();
         }
     };
     // Registered after the spawn: a stop that landed earlier runs this here and now.

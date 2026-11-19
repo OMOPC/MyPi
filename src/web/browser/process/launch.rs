@@ -1,13 +1,11 @@
-//! Launch argv, the fork, and the wait for a DevTools port.
+//! Launch argv and the wait for a DevTools port.
 
 use anyhow::{Context as _, anyhow};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-
-use crate::server::platform::proc::Process;
-use std::sync::LazyLock;
-use std::sync::mpsc::{Sender, SyncSender, channel, sync_channel};
 use std::time::{Duration, Instant};
+
+use crate::server::platform::proc::{Origin, Process};
 
 use super::super::devtools::Client;
 use super::Browser;
@@ -20,8 +18,9 @@ pub(super) fn launch(cfg: &BrowserOptions, profile: &Path) -> anyhow::Result<Bro
     std::fs::create_dir_all(profile)
         .with_context(|| format!("creating browser profile dir {}", profile.display()))?;
     let exe = executable(cfg);
-    let cmd = command(&exe, profile, cfg);
-    let process = fork(cmd)?;
+    let mut cmd = command(&exe, profile, cfg);
+    let process = Process::spawn(Origin::Browser, &mut cmd)
+        .map_err(|e| anyhow!("spawning the browser: {e}"))?;
     match wait_for_devtools(profile, &process) {
         Ok(port) => Ok(Browser {
             process: Some(process),
@@ -29,7 +28,7 @@ pub(super) fn launch(cfg: &BrowserOptions, profile: &Path) -> anyhow::Result<Bro
             attached: false,
         }),
         Err(e) => {
-            process.kill();
+            process.stop();
             Err(e)
         }
     }
@@ -90,37 +89,4 @@ fn wait_for_devtools(profile: &Path, process: &Process) -> anyhow::Result<u16> {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-}
-
-struct Job {
-    cmd: Command,
-    reply: SyncSender<std::io::Result<Process>>,
-}
-
-/// Fork from a thread that never ends, so a parent-death signal binds the
-/// browser to the server rather than to one connection.
-fn fork(cmd: Command) -> anyhow::Result<Process> {
-    static FORKER: LazyLock<Sender<Job>> = LazyLock::new(|| {
-        let (tx, rx) = channel::<Job>();
-        std::thread::Builder::new()
-            .name("web-fork".to_string())
-            .spawn(move || {
-                while let Ok(job) = rx.recv() {
-                    let mut cmd = job.cmd;
-                    let _ = job
-                        .reply
-                        .send(Process::spawn(&mut cmd));
-                }
-            })
-            .expect("cannot start the browser fork thread");
-        tx
-    });
-    let (reply, answer) = sync_channel(1);
-    FORKER
-        .send(Job { cmd, reply })
-        .expect("the fork thread outlives every caller");
-    answer
-        .recv()
-        .expect("the fork thread answers every job")
-        .map_err(|e| anyhow!("spawning the browser: {e}"))
 }

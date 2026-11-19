@@ -29,8 +29,8 @@ every segment once.
 
 The command itself runs in the session's shell (`Env.bash.shell`): `bash` or `zsh` on unix, `pwsh`
 or `niu` on windows. `platform::shell` builds the command line and the quoted path a `#<ref>`
-becomes; `platform::proc` starts it as a tree of its own and stops it as a whole, a request then a
-kill. A stop arrives through the `Stop` the runner registered after the spawn; the tool thread
+becomes; `platform::proc` starts it as a tree of its own and stops it as a whole; the platform picks
+the ladder. A stop arrives through the `Stop` the runner registered after the spawn; the tool thread
 itself only receives, so nothing wakes it on a timer. Stdin is the null device: a command that
 prompts reads EOF, never the terminal the front end owns.
 

@@ -30,20 +30,24 @@ name.
 ### The process tree
 
 ```text
-Process::spawn(cmd)        start the command as the leader of a fresh tree
-process.take_stdin()       take one stream; each stream can be taken once
-process.interrupt()        ask the tree to stop; a windows tree has no polite signal
-process.kill()             take the tree down now
-process.try_wait/wait()    look at or wait for the leader's exit
+Process::spawn(origin, cmd)          start a tree that follows the main process
+Process::spawn_detached(origin, cmd) start a tree that outlives the front end (front end only)
+process.take_stdin/stdout/stderr()   take one stream; each stream can be taken once
+process.stop()                       stop the tree; the platform owns the ladder
+process.try_wait/wait/wait_timeout() look at or wait for the leader's exit
 ```
 
 A tree is one kernel container: its leader, every process the leader starts, and the handle that
 ends them together. On unix the leader becomes its own session (`setsid`) before `exec`, and the
-container is the process group, signalled through the `kill` syscall; `PR_SET_PDEATHSIG` ties the
-leader to the forking thread, so the browser forks from a thread that never ends. On windows the
-container is a job object: `KILL_ON_JOB_CLOSE` takes the tree down when the last `Process` handle
-drops, and `TerminateJobObject` takes it down on request. A drop of the last handle ends the tree on
-both families. Nothing here spawns `setsid`, `kill`, `taskkill` or `timeout` as a program.
+container is the process group, signalled through the `kill` syscall. Creation runs on
+`process-fork`, a thread that never ends, so `PR_SET_PDEATHSIG` binds a following tree to the main
+process rather than to whichever thread asked for it. On windows the container is a job object: a
+following tree carries `KILL_ON_JOB_CLOSE`, a detached one does not, and `TerminateJobObject` is the
+single stop step. A detached tree has no parent-death binding on either family, so the main process
+ending does not take it down; it ends through its own protocol or an explicit stop. Dropping a
+handle never ends a tree; a `process-reap-<pid>` thread holds the child
+until it exits, reclaims leftovers, publishes the status and adds one exit record. Birth adds one
+record too. Nothing here spawns `setsid`, `kill`, `taskkill` or `timeout` as a program.
 
 ### The stamp
 
@@ -92,9 +96,13 @@ run time. The environment is read on demand, through this layer's one mouth.
    lands, by whoever lands it.
 6. **A shell is a value.** No caller asks this layer which system it is on; the resolved `Shell`
    carries every difference a command line has.
-7. **A command is stopped by its tree.** One spawn makes one container; stopping takes the container
-   down.
-8. **Tests are not a concern of this layer.** Timing, zone tables, the environment and the process
+7. **One stop, one ladder.** Every caller stops through `Process::stop`; the platform picks the unix
+   ladder (TERM, a fixed grace, KILL) or the windows single step.
+8. **A handle is not the tree.** Dropping a `Process` ends nothing; the tree lives until its leader
+   exits, another entry stops it, or the main process ends.
+9. **A stop reaches every tree at once.** One slow tree must not hold the others; the signal fans
+   out instead of running each action in turn.
+10. **Tests are not a concern of this layer.** Timing, zone tables, the environment and the process
    tree are checked by running the program; this folder carries no unit tests.
 
 ### What lives in memory
@@ -139,7 +147,9 @@ current directory.
 ## 3. Open questions
 
 1. **Windows.** The shell, the process tree and the clock carry both families. The directory paths
-   still follow unix conventions, and the browser paths are unix-shaped (第 16 条).
+   still follow unix conventions, and the browser paths are unix-shaped (第 16 条). The unix
+   parent-death signal reaches the leader only; the rest of a following tree dies with the process
+   group when the leader goes, which covers the usual case but not every stray child.
 2. **Instant messaging has no caller.** The switch, the templates and the rendering exist;
    `stamp::inject` is public with no production call site, and the feature's shape is still open — the
    switch may end up named something other than "instant message".
