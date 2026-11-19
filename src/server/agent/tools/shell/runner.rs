@@ -87,7 +87,7 @@ pub(crate) fn run_to(
             use std::io::Read as _;
             let mut rdr = std::io::BufReader::new(pipe);
             let mut raw = [0u8; 8192];
-            let mut pending = String::new();
+            let mut pending: Vec<u8> = Vec::new();
             let mut batch = String::new();
             // How much one message carries: a chatty command must not cost one wake per line.
             const CHUNK: usize = 8 * 1024;
@@ -95,11 +95,13 @@ pub(crate) fn run_to(
                 match rdr.read(&mut raw) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        // Lossy per read, keeping the trailing partial line back: a multi-byte character or escape split across reads must not be emitted half-formed.
-                        pending.push_str(&String::from_utf8_lossy(&raw[..n]));
-                        fold_crlf(&mut pending);
-                        while let Some(i) = pending.find('\n') {
-                            batch.extend(pending.drain(..=i));
+                        // Bytes, not text: a multi-byte character split across reads stays whole until its line ends.
+                        pending.extend_from_slice(&raw[..n]);
+                        while let Some(i) = pending.iter().position(|byte| *byte == b'\n') {
+                            let line: Vec<u8> = pending.drain(..=i).collect();
+                            let mut line = String::from_utf8_lossy(&line).into_owned();
+                            fold_crlf(&mut line);
+                            batch.push_str(&line);
                             if batch.len() >= CHUNK {
                                 if tx.send(wrap(std::mem::take(&mut batch))).is_err() {
                                     return;
@@ -110,7 +112,7 @@ pub(crate) fn run_to(
                 }
             }
             if !pending.is_empty() {
-                batch.push_str(&pending);
+                batch.push_str(&String::from_utf8_lossy(&pending));
             }
             if !batch.is_empty() && tx.send(wrap(batch)).is_err() {
                 return;
@@ -281,9 +283,9 @@ impl StopFlag {
     }
 }
 
-// Fold CRLF in place; a lone CR stays, because a progress bar uses it to return to column zero.
-fn fold_crlf(text: &mut String) {
-    if text.contains("\r\n") {
-        *text = text.replace("\r\n", "\n");
+// Drop the `\r` of one line's `\r\n`; a lone CR stays, because a progress bar uses it to return to column zero.
+fn fold_crlf(line: &mut String) {
+    if line.ends_with("\r\n") {
+        line.remove(line.len() - 2);
     }
 }

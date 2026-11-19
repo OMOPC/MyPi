@@ -15,7 +15,7 @@ keeps — is in `README.md`.
 | `time.rs` | the process's fixed offset, and the program's one stamp shape: `init`, `display`, `now_stamp`, `age_seconds`, `days_from_stamp` |
 | `stamp.rs` | the timestamp templates: `parse` and `render` turn two instants into the prefix and suffix of one user message |
 | `log.rs` | the in-process ring of what happened to us: a level, a scope, a message and a millisecond |
-| `shell.rs` | which shell runs a command line: `Kind`, `Shell`, `default`, `resolve`, `names`, the one-shot argument shape, and the quoted path a stored text becomes |
+| `shell.rs` | which shell runs a command line: `Kind`, `Shell`, `detect`, `resolve`, `names`, the one-shot argument shape, and the quoted path a stored text becomes |
 | `proc.rs` | one command's process tree: `Process` (`spawn`, `spawn_detached`, `id`, the three `take_*`, `stop`, `try_wait`, `wait`, `wait_timeout`), the single `process-fork` creation thread and the per-tree reaper; containers live in `proc/sys_unix.rs` and `proc/sys_windows.rs` |
 | `stop.rs` | the stop signal: `Stop` (flag plus a table of actions, each run on its own thread) and `Hook` (a registration that comes off on drop); `new`, `is_stopped`, `set`, `reset`, `on_stop` |
 
@@ -32,7 +32,7 @@ keeps — is in `README.md`.
 | `time::days_from_stamp(stamp)` | a stamp's day count since 1970-01-01 (for weekdays) |
 | `stamp::{Parts, parse, weekday, render, inject}` | the injection templates: render a template against two instants, or both halves of one message at once |
 | `log::{Level, Record, push, info, warn, error, recent, by_scope, len}` | the ring |
-| `shell::{Kind, Shell, names}` | the session's shell; `resolve` refuses a shell the platform does not run |
+| `shell::{Kind, Shell, names}` | the session's shell; `resolve` refuses a shell the platform does not run or cannot find on `PATH` |
 | `proc::{Process, Origin}` | start a following or detached tree, take its streams, stop it, wait for it |
 
 Everything else in this folder is private.
@@ -78,6 +78,3 @@ Everything else in this folder is private.
 3. **Windows.** `env.rs`, `shell.rs`, `proc.rs` and `time.rs` carry both families. Two places still
    assume unix: the browser paths, and the parent-death guarantee below the leader (a job object
    covers the whole tree on windows; unix only covers the leader). 第 16 条 lists the sites.
-4. **The shell backend is selectable.** `config.server.agent.tools.shell` names `auto`, `bash`,
-   `zsh`, `pwsh` or `niu`; `Shell::detect` probes this platform's order for `auto`, and a backend
-   the platform does not run is refused when the session is booked.

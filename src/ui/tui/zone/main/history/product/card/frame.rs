@@ -235,7 +235,7 @@ pub(crate) fn error_body(text: &str) -> Vec<Row> {
 }
 
 /// The call as JSON, its intent left to the header, or as written when it does not parse.
-pub(crate) fn default_call(_name: &str, args: &str) -> Vec<Row> {
+pub(crate) fn default_call(args: &str) -> Vec<Row> {
     let value = call_args(args).filter(|v| match v {
         Value::Object(object) => object.keys().any(|key| key != "intent"),
         _ => true,

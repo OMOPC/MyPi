@@ -113,7 +113,7 @@ impl Loop {
                 members: grep.members,
             },
             shell: crate::server::agent::tools::contract::env::ShellEnv {
-timeout: cfg.shell_timeout(),
+                timeout: cfg.shell_timeout(),
                 backend: cfg.shell()?,
             },
             aliases: cfg.aliases(),

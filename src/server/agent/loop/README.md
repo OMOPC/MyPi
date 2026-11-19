@@ -8,7 +8,7 @@ is booked. A turn opens its rows, runs laps, takes the mailboxes and settles.
 Public surface:
 
 ```text
-Loop::new(writer, settings, ask, out, config) -> Loop
+Loop::new(writer, settings, ask, out, config) -> Result<Loop>
 Loop::book(Birth) -> Result<SessionId>
 Loop::deliver(session, Message) -> Result<TurnId>
 Loop::interrupt(session)

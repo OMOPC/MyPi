@@ -16,8 +16,8 @@ and stopped (`proc.rs`), what a session means by "stop" (`stop.rs`), and what ha
 ```text
 Shell { kind: Bash | Zsh | Pwsh | Niu, program }
 
-Shell::detect()                      this platform's order for `auto`: $SHELL, bash, zsh on unix; pwsh, niu on windows
-Shell::resolve(name)                 a configured name → the backend; `auto` and an empty value probe; a foreign shell is refused
+Shell::detect()                      this platform's order for `auto`: `$SHELL` when it names bash or zsh, then bash, zsh on unix; pwsh, niu on windows
+Shell::resolve(name)                 a configured name → the backend; `auto` and an empty value probe; a foreign or missing shell is refused
 Shell::command(line)                 the program, its one-shot shape, and the UTF-8 setup the backend needs
 Shell::path_token(path)              the one quoted token naming a stored text as a file
 Shell::guarded()                     unix shells only

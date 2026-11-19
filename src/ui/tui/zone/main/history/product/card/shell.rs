@@ -1,6 +1,5 @@
-//! shell: the command, then its output.
+// shell: the command, then its output.
 
-use super::super::super::prefetch::color::code;
 use super::super::super::row::{Lead, Row, Run};
 use super::frame::wrap_rows;
 use super::{ToolBlock, ToolRenderer, partial};
@@ -25,12 +24,7 @@ fn shell_call(args: &str) -> Vec<Row> {
         if i == 0 {
             runs.push(Run::fixed("$ ", fixed::DIM));
         }
-        let hl = code::line(line, Some("sh"));
-        if hl.runs.is_empty() {
-            runs.push(Run::plain(line));
-        } else {
-            runs.extend(hl.runs);
-        }
+        runs.push(Run::plain(line));
         out.push(Row::of(Lead::None, runs));
     }
     out

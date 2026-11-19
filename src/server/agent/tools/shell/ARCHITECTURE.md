@@ -17,7 +17,7 @@
 - Depends on `platform::shell` for the session's backend, the one-shot argument shape and the
   encoding it sets, on `platform::proc` for the process group, and on `platform::stop` for the
   stop action.
-- Depends on `contract::env` for `ShellEnv` (backend, timeout) and `Aliases`.
+- Depends on `contract::env` for `ShellEnv` (timeout, backend) and `Aliases`.
 - `admit` and `guard` are shared with `kairos`: every job command goes through the same admission
   and the same classifier.
 - `alias add` runs the guard on the command it stores, so the same classifier has two callers.

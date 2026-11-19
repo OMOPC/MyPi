@@ -176,7 +176,7 @@ re-exported at the `tools` root; callers write the group they mean.
 Env {
   workspace: Workspace,      // the session's shared cwd handle
   limits: Limits,            // lines, bytes
-  shell: ShellEnv,           // backend, timeout
+  shell: ShellEnv,           // timeout, backend
   stop: Arc<Stop>,           // the session's stop signal; see Stopping
   session: i64,
   batch_len: usize,
@@ -218,7 +218,7 @@ Workspace { shared }
   temp file beside the target and renames it into place. `read` takes no lock.
 - `shell` takes no lock.
 
-Where a session may stand, and the rule `cd` answers, is in `shell/README.md`.
+Where a session may stand, and the rule `cd` answers, is in `cd/README.md`.
 
 ### Stopping
 

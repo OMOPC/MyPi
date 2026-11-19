@@ -52,7 +52,7 @@ pub struct Shell {
 }
 
 impl Shell {
-// This platform's order when the configuration says `auto`: `$SHELL`, bash, zsh on unix; pwsh, niu on windows.
+    // This platform's order when the configuration says `auto`: `$SHELL`, bash, zsh on unix; pwsh, niu on windows.
     pub fn detect() -> Result<Self> {
         match os::current().family {
             Family::Unix => detect_unix(),
@@ -82,10 +82,12 @@ impl Shell {
                         names().join(", ")
                     );
                 }
-                Ok(Self {
-                    kind,
-                    program: PathBuf::from(kind.name()),
-                })
+                let Some(program) = find_on_path(kind.name()) else {
+                    bail!(
+                        "no `{name}` on PATH; install it, or name another backend in config.server.agent.tools.shell"
+                    );
+                };
+                Ok(Self { kind, program })
             }
         }
     }
@@ -103,13 +105,13 @@ impl Shell {
         matches!(self.kind, Kind::Bash | Kind::Zsh)
     }
 
-// One command line, ready to spawn: the program, its own one-shot argument shape, and the encoding it must emit.
+    // One command line, ready to spawn: the program, its own one-shot argument shape, and the encoding it must emit.
     pub fn command(&self, line: &str) -> Command {
         let mut cmd = Command::new(&self.program);
         match self.kind {
             Kind::Bash | Kind::Zsh => {
                 cmd.arg("-c").arg(line);
-                cmd.env("LC_ALL", utf8_locale());
+                cmd.env("LC_CTYPE", utf8_locale());
             }
             Kind::Niu => {
                 cmd.arg("-c").arg(line);
@@ -132,7 +134,7 @@ impl Shell {
     }
 }
 
-// The UTF-8 locale forced on unix: Linux has C.UTF-8, macOS accepts UTF-8.
+// The UTF-8 character set forced on unix: Linux has C.UTF-8, macOS accepts UTF-8.
 fn utf8_locale() -> &'static str {
     match os::current().name {
         "macos" => "UTF-8",
@@ -170,7 +172,7 @@ fn detect_unix() -> Result<Shell> {
         .map(|(kind, program)| Shell { kind, program })
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "no shell found: $SHELL, bash and zsh are not executable; set config.server.agent.tools.shell to auto or one of {}",
+                "no shell found: $SHELL does not name bash or zsh, and neither is executable; install one of {} and name it in config.server.agent.tools.shell",
                 names().join(", ")
             )
         })
@@ -184,7 +186,7 @@ fn detect_windows() -> Result<Shell> {
         .map(|(kind, program)| Shell { kind, program })
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "no shell found: pwsh.exe and niu.exe are not on PATH; set config.server.agent.tools.shell to auto or one of {}",
+                "no shell found: pwsh.exe and niu.exe are not on PATH; install one of {} and name it in config.server.agent.tools.shell",
                 names().join(", ")
             )
         })

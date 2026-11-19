@@ -173,7 +173,7 @@ pub(crate) trait ToolRenderer {
     }
 
     fn call_body(&self, b: &ToolBlock<'_>) -> Vec<Row> {
-        default_call(b.name, b.args)
+        default_call(b.args)
     }
 
     fn result_sections(&self, b: &ToolBlock<'_>, o: ToolOutcome<'_>) -> Vec<Section> {

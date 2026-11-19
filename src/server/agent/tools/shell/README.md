@@ -71,17 +71,21 @@ and refuses an array. `list` answers JSON, and the same value rides along as the
   machine-destroying shapes and warns on the rest, and it always judges the expanded command.
 - **One backend, one shape.** `platform::shell` owns the program, the argument shape and the
   encoding; the tool owns the text it says.
+- **UTF-8, always.** The backend is told to emit UTF-8; a failed setting never refuses the command,
+  and a native program that writes GBK (an old console tool on a Chinese Windows) reads as garbled.
 - **One cwd.** `cd` writes the handle every tool reads; see `cd/README.md`.
 
 ## 3. Unresolved
 
 1. The guard belongs to the unix shells only; `pwsh` and `niu` run the line as written.
+2. On unix the backend sets `LC_CTYPE`; a `LC_ALL` already in the environment still wins, so a shell
+   launched under a forced `C` locale can emit the old bytes.
 
 ## 4. Config fields
 
 | key | meaning |
 |---|---|
-| `config.server.agent.tools.shell` | backend: `auto`, `bash`, `zsh`, `pwsh` or `niu`; default `auto` |
+| `config.server.agent.tools.shell` | backend: `auto`, `bash`, `zsh`, `pwsh` or `niu`; default `auto`; a named one must be on `PATH` |
 | `config.server.agent.tools.shellTimeout` | one shell command's deadline; default 600 s |
 | `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
 
