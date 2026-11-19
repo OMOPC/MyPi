@@ -12,13 +12,8 @@ use crate::server::storage::query::{Cond, Order, Query, Sheet};
 
 use super::emit;
 
-// The rows this write removed; the api closes their streams after the signal goes out.
-pub(crate) struct Deleted {
-    pub session: i64,
-    pub ids: Vec<i64>,
-}
-
-pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Deleted, Refuse> {
+// The rows this write removed; the api closes their streams once they are gone.
+pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Vec<i64>, Refuse> {
     let session = i64_of(ask, "session")?;
     emit::require_writer(api, viewer, session)?;
     if api.relay().busy(session) {
@@ -65,5 +60,5 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Deleted, Ref
     for id in &ids {
         api.ledger().drop(*id);
     }
-    Ok(Deleted { session, ids })
+    Ok(ids)
 }

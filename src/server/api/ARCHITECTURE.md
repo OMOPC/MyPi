@@ -7,12 +7,12 @@ What is here, what each file holds, who talks to whom. Current state only.
 | file | holds |
 |---|---|
 | `mod.rs` | module declarations and the three exports |
-| `api.rs` | `Api`, `Conn`, `Refuse`: the connection table, the frame entry, the booking of an existing session |
+| `dispatch.rs` | `Api`, `Conn`, `Refuse`: the connection table, the frame entry, the booking of an existing session |
 | `route.rs` | the name tables: kind plus name pick the write or read; JSON picks its arguments |
 | `relay.rs` | the stream: viewers per session, the running turn, the buffer, the frame shapes |
 | `convert.rs` | the rewind cut, the only storage shape this domain renames |
 | `call/` | the read names: `init`, `blocks`, `meta`, `usage`, `todo`, `memo`, `children`, `config`, `pools`, `sessions` |
-| `post/` | the writes: `meta` unpacks to `name`, `cwd`, `switch`, `effort`, `delete`, `rewind`; also `init`, `memo`, `default_model`, `interrupt`; `emit.rs` holds the writer gate and the booking |
+| `post/` | the writes: `meta` unpacks to `name`, `cwd`, `switch`, `effort`, `rewind`; also `init`, `delete`, `memo`, `default_model`, `interrupt`; `emit.rs` holds the writer gate and the booking |
 | `subscribe/` | the session stream: `watch` (a session, or none), `submit`, `compact`, `mail` (the pending letter), `close` (a deleted session's stream) |
 
 ## What it talks to
@@ -36,7 +36,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 Api::receive
   → register  ── hello / bye
   → call      ── route::call   → call/*  ── Reader
-  → post      ── route::post   → meta unpack → post/*  ── Writer, Loop, Config
+  → post      ── route::post   → meta unpack / delete → post/*  ── Writer, Loop, Config
                                   ↑ result → Relay::signal, then close
   → subscribe ── route::subscribe → watch | submit | compact | mail | close ── Relay, Loop
   → reply frame, or the error frame
@@ -61,8 +61,8 @@ Relay::start
 
 ## Must stay in step
 
-1. `route.rs` and the `call/` `post/` `subscribe/` files: a name here is one function there, and a
-   `meta` name is one write there.
+1. `route.rs` and the `call/` `post/` `subscribe/` files: a name here is one function there, a
+   `meta` name is one write there, and `delete` is its own name.
 2. `relay.rs`'s frame shapes and `README.md`'s tables: the front end reads one and this writes it.
 3. `post/init.rs`'s archive and `Loop`'s request assembly: both expand the same names through
    `registry::roster`, so a session's stored manuals and its live manuals are the same bytes.
@@ -71,5 +71,4 @@ Relay::start
 
 ## Not wired
 
-1. `ui::session` still asks for the old `post name` writes; it moves to `post meta` next.
-2. `usage` quotes only what `models.yml` declares; a model with no price answers `null`.
+1. `usage` quotes only what `models.yml` declares; a model with no price answers `null`.

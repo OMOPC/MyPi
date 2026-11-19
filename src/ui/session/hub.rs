@@ -1,10 +1,5 @@
-//! The session: one connection, two windows, one outbox.
-//!
-//! Every frame crosses unchanged. The only things read out of a frame are the ones the windows
-//! cannot be kept without: a push's turn, a round's ranges, a block's id, the spot a rewind was
-//! asked for.
-
-use std::collections::VecDeque;
+// The session: one connection, two windows, one outbox.
+// Every frame crosses unchanged. The ones this layer reads are its own questions, a push's turn and ranges, a block's id, and the spot its own rewind asked for.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -17,32 +12,23 @@ use super::content::ContentCache;
 use super::packet::Packet;
 use super::structure::{Structure, Turn};
 
-/// The configuration key that sizes the content window.
+// The configuration key that sizes the content window.
 const BUDGET_KEY: &str = "config.ui.session.preloadCache";
-
-/// A change this front end asked for and has not seen land yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Pending {
-    /// A rewind: the structure goes back to this spot once the write is accepted.
-    Rewind { turn: i64, block: i64 },
-}
 
 pub struct Session {
     client: Client,
-    /// The session this connection follows.
+    // The session this connection follows.
     attached: Option<i64>,
     structure: Structure,
     content: ContentCache,
-    /// What was asked for and not yet answered, oldest first.
-    pending: VecDeque<Pending>,
-    /// What arrived since the last `forward`, in arrival order.
+    // What arrived since the last `forward`, in arrival order.
     outbox: Vec<Packet>,
-    /// The connection died once; the front end is told once.
+    // The connection died once; the front end is told once.
     shut: bool,
 }
 
 impl Session {
-    /// Connect and register. Who starts the server is not this layer's business.
+    // Connect and register. Who starts the server is not this layer's business.
     pub fn connect(endpoint: Endpoint) -> Result<Session> {
         let client = Client::connect(endpoint, viewer())?;
         let mut session = Session {
@@ -50,7 +36,6 @@ impl Session {
             attached: None,
             structure: Structure::default(),
             content: ContentCache::default(),
-            pending: VecDeque::new(),
             outbox: Vec::new(),
             shut: false,
         };
@@ -61,7 +46,7 @@ impl Session {
         Ok(session)
     }
 
-    /// Hand the front end everything the connection produced since the last call.
+    // Hand the front end everything the connection produced since the last call.
     pub fn forward(&mut self) -> Vec<Packet> {
         for item in self.client.pump() {
             self.take(item);
@@ -73,89 +58,96 @@ impl Session {
         std::mem::take(&mut self.outbox)
     }
 
-    /// Follow one session. The caller subscribes the watch; the windows go now.
+    // Follow one session. The caller subscribes the watch; the windows go now.
     pub fn attach(&mut self, id: i64) {
         self.attached = Some(id);
+        self.client.clear();
         self.structure.clear();
         self.content.clear();
-        self.pending.clear();
     }
 
-    /// Stop following. The watch is replaced by the next one.
+    // Stop following on purpose: the server slot is cleared, then the watch is dropped.
     pub fn detach(&mut self) {
         if let Some(id) = self.attached {
-            // The slot this front end wrote is cleared before the queue goes; no answer is owed.
             self.client.clear();
             self.client
                 .queue(Frame::new("post", "mailbox", json!({"session": id})), false);
             let _ = self.client.pump();
         }
+        self.forget();
+        self.unwatch();
+    }
+
+    // Stop following without a word: the server already closed the session.
+    fn forget(&mut self) {
         self.attached = None;
         self.client.clear();
-        self.unwatch();
         self.structure.clear();
         self.content.clear();
-        self.pending.clear();
     }
 
     pub fn attached(&self) -> Option<i64> {
         self.attached
     }
 
-    /// The structural window as it stands: the one snapshot this layer hands down.
+    // The structural window as it stands: the one snapshot this layer hands down.
     pub fn structure(&self) -> Structure {
         self.structure.clone()
     }
 
-    /// Queue one frame. `answer` says whether the server replies to it.
+    // Queue one frame. `answer` says whether the server replies to it.
     pub fn send(&mut self, kind: &str, name: &str, content: Value, answer: bool) {
         if kind == "call" && name == "blocks" {
             self.read_blocks(content);
             return;
         }
-        // A rewind is owed a trim of this layer's own index; the spot comes from the
-        // request, never from the reply, so it is noted before the frame leaves.
-        if kind == "post"
-            && name == "rewind"
-            && let (Some(turn), Some(block)) = (
-                content.get("turn").and_then(Value::as_i64),
-                content.get("block").and_then(Value::as_i64),
-            )
-        {
-            self.pending.push_back(Pending::Rewind { turn, block });
-        }
         self.client.queue(Frame::new(kind, name, content), answer);
     }
 
-    /// Queue one action frame: this session's id goes in, a reply is owed.
+    // Queue one action frame: this session's id goes in, a reply is owed.
     pub(super) fn act(&mut self, kind: &str, name: &str, content: Value) {
-        let content = match (self.attached, content) {
+        let content = self.filled(content);
+        self.send(kind, name, content, true);
+    }
+
+    // Queue one meta write: the door rides inside the frame, its arguments in `content`.
+    pub(super) fn meta_write(&mut self, name: &str, content: Value) {
+        let content = self.filled(content);
+        self.send(
+            "post",
+            "meta",
+            json!({"name": name, "content": content}),
+            true,
+        );
+    }
+
+    fn filled(&self, content: Value) -> Value {
+        match (self.attached, content) {
             (Some(id), Value::Object(mut map)) => {
                 map.entry("session").or_insert(json!(id));
                 Value::Object(map)
             }
             (_, content) => content,
-        };
-        self.send(kind, name, content, true);
+        }
     }
 
-    /// Say goodbye and let the connection go: everything queued leaves, then `bye`.
+    // Say goodbye and let the connection go: everything queued leaves, then `bye`.
     pub fn bye(&mut self) {
         self.client
             .queue(Frame::new("register", "bye", json!({})), false);
         let _ = self.client.pump();
     }
 
-    /// A block read: answered from the window when it covers the ranges.
+    // A block read: answered from the window when it covers the ranges.
     fn read_blocks(&mut self, content: Value) {
         let session = content
             .get("session")
             .and_then(Value::as_i64)
             .or(self.attached);
-        let Some(session) = session else {
-            return;
-        };
-        let Some(ranges) = content.get("ranges").and_then(ranges_of) else {
+        let ranges = content.get("ranges").and_then(ranges_of);
+        let (Some(session), Some(ranges)) = (session, ranges) else {
+            self.client
+                .queue(Frame::new("call", "blocks", content), true);
             return;
         };
         if self.content.covers(&ranges) {
@@ -178,20 +170,10 @@ impl Session {
         match item {
             Incoming::Push(frame) => self.push(frame),
             Incoming::Answer { request, reply } => self.answer(request, reply),
-            Incoming::Lost { request, reason } => {
-                self.outbox.push(Packet::local(
-                    "lost",
-                    json!({
-                        "kind": request.kind,
-                        "name": request.name,
-                        "reason": reason,
-                    }),
-                ));
-            }
         }
     }
 
-    /// One unsolicited frame: keep the windows honest, forward it whole.
+    // One unsolicited frame: keep the windows honest, forward it whole.
     fn push(&mut self, frame: Frame) {
         let content = frame.payload;
         if let Some(turn) = content.get("turn").and_then(Value::as_i64)
@@ -207,7 +189,7 @@ impl Session {
             .push(Packet::new(frame.kind, frame.name, content));
     }
 
-    /// One answer: keep the windows honest, forward it whole.
+    // One answer: keep the windows honest, forward it whole.
     fn answer(&mut self, request: Frame, reply: Frame) {
         match (request.kind.as_str(), request.name.as_str()) {
             ("call", "init") => {
@@ -224,41 +206,27 @@ impl Session {
                 }
             }
             ("call", "config") => {
-                let Some(key) = request.payload.get("key").and_then(Value::as_str) else {
-                    return;
-                };
-                if key == BUDGET_KEY {
+                let key = request.payload.get("key").and_then(Value::as_str);
+                if key == Some(BUDGET_KEY) {
                     if let Some(budget) = reply.payload.as_i64() {
                         self.content.set_budget(budget.max(1) as usize);
                     }
-                    // This layer's own question is not the front end's mail.
                     return;
                 }
-                // The answer names the key it answers: three readers share one bus.
-                self.outbox.push(Packet::new(
-                    "call",
-                    "config",
-                    json!({"key": key, "value": reply.payload}),
-                ));
-                return;
-            }
-            ("post", "rewind") => {
-                // The ledger is the whole of this layer's interest: an accepted write is
-                // one that goes through, and the spot comes from the request.
-                match self.pending.pop_front() {
-                    Some(Pending::Rewind { turn, block })
-                        if reply.payload.get("error").is_none() =>
-                    {
-                        self.structure.cut_at(turn, block);
-                        self.content.retain(|id| self.structure.owns(id));
-                    }
-                    _ => {}
+                if let Some(key) = key {
+                    self.outbox.push(Packet::new(
+                        "call",
+                        "config",
+                        json!({"key": key, "value": reply.payload}),
+                    ));
+                    return;
                 }
             }
+            ("post", "meta") => self.rewind_landed(&request, &reply),
             ("post", "delete") => {
                 let session = request.payload.get("session").and_then(Value::as_i64);
-                if session.is_some() && session == self.attached {
-                    self.detach();
+                if reply.payload.get("error").is_none() && session == self.attached {
+                    self.forget();
                 }
             }
             _ => {}
@@ -266,9 +234,30 @@ impl Session {
         self.outbox
             .push(Packet::new(reply.kind, reply.name, reply.payload));
     }
+
+    // A `post meta` answer may be this layer's own rewind; the spot comes from the request.
+    fn rewind_landed(&mut self, request: &Frame, reply: &Frame) {
+        if reply.payload.get("error").is_some() {
+            return;
+        }
+        if request.payload.get("name").and_then(Value::as_str) != Some("rewind") {
+            return;
+        }
+        let Some(content) = request.payload.get("content") else {
+            return;
+        };
+        let (Some(turn), Some(block)) = (
+            content.get("turn").and_then(Value::as_i64),
+            content.get("block").and_then(Value::as_i64),
+        ) else {
+            return;
+        };
+        self.structure.cut_at(turn, block);
+        self.content.retain(|id| self.structure.owns(id));
+    }
 }
 
-/// A frame's ranges: `[[lo, hi], …]`.
+// A frame's ranges: `[[lo, hi], …]`.
 fn ranges_of(value: &Value) -> Option<Vec<[i64; 2]>> {
     let mut out = Vec::new();
     for item in value.as_array()? {
@@ -281,7 +270,7 @@ fn ranges_of(value: &Value) -> Option<Vec<[i64; 2]>> {
     Some(out)
 }
 
-/// An `init` answer's `structure`: one `{turn, ranges, compact}` per round.
+// An `init` answer's `structure`: one `{turn, ranges, compact}` per round.
 fn turns_of(value: &Value) -> Option<Vec<Turn>> {
     let mut out = Vec::new();
     for entry in value.as_array()? {
@@ -298,7 +287,7 @@ fn turns_of(value: &Value) -> Option<Vec<Turn>> {
     Some(out)
 }
 
-/// One identity for this front end instance.
+// One identity for this front end instance.
 fn viewer() -> Value {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

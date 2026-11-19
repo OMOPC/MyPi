@@ -6,8 +6,11 @@ The front end's half of the wire: one connection, two windows, one outbox.
 
 ### The unit
 
-Every frame crosses this layer as three parts: `kind`, `name`, `content`. Nothing is decoded into
-a type of its own, and nothing is rewritten on the way out.
+Every frame crosses this layer as three parts: `kind`, `name`, `content`. Nothing is decoded into a type of its own.
+
+### Outbound doors
+
+The api takes `name`, `cwd`, `switch`, `effort`, and `rewind` inside one `post meta` frame: `{name, content}`, with the attached session in `content`. Every other door keeps its own name. `actions.rs` is the only place these names are written.
 
 ### The two windows
 
@@ -16,31 +19,22 @@ a type of its own, and nothing is rewritten on the way out.
 | `Structure` | the rounds: turn id, closed block ranges, and whether the round is a compaction, newest first | turn id |
 | `ContentCache` | whole blocks, exactly as an answer carried them | block id |
 
-- Content budget: `config.ui.session.preloadCache`, asked once at connect through `call config`;
-  its answer feeds the window and is not forwarded.
+- Content budget: `config.ui.session.preloadCache`, asked once at connect through `call config`; its answer feeds the window and is not forwarded.
 - Eviction: the earliest admission goes first, then the lowest id.
 - A pushed stream frame carrying `turn` and `ranges` sets that round, compaction mark included.
-- A `call init` answer replaces both windows; a `call blocks` answer merges blocks; a `post delete`
-  answer for the attached session detaches.
+- A `call init` answer replaces both windows; a `call blocks` answer merges blocks; an accepted `post delete` answer for the attached session detaches; an accepted `post meta` rewind trims both windows to the spot its own request named.
 
-### The rewind ledger
+### The rewind
 
-A `post rewind` is noted before its frame leaves: the spot it names (a round and a block) is the
-whole of what this layer needs. When an accepted reply comes back the structure is cut at that
-spot and the blocks outside it are dropped. A refused reply drops the note and changes nothing. The
-reply's own `cut` is forwarded untouched: what survived belongs to the zone that asked.
+A `post meta` rewind names its spot in the request. When the answer carries no error, the structure is cut at that spot and the blocks outside it are dropped. Nothing is kept between the request and the answer: the request is the record, and a refused answer changes nothing. The reply is forwarded untouched.
 
 ### Config answers
 
-A `call config` answer is forwarded with the key it answers: `{key, value}`. Three readers share
-one bus, and the request's key is the only thing that tells them apart. This layer's own
-`preloadCache` question is swallowed here and never reaches the front end.
+A `call config` answer is forwarded with the key it answers: `{key, value}`. This layer's own `preloadCache` question is swallowed. An answer whose request carries no key is forwarded as it came.
 
 ### The outbox
 
-`forward()` returns everything since the last call, in arrival order: pushes, answers, and the
-session's own `local` frames. `local` is the session's own voice: `lost` (a queued frame broke)
-and `disconnected` (the read half closed, once).
+`forward()` returns everything since the last call, in arrival order: pushes, answers, and the session's own `local` frames. `local` is the session's own voice: `disconnected` (the read half closed, once). A `local` frame from the wire, such as the server's `opened`, is forwarded untouched.
 
 ### Entry points
 
@@ -50,40 +44,28 @@ attach(id)  detach()  attached()   structure() -> Structure
 send(kind, name, content, answer)  bye()
 ```
 
-Every door has one named action in `actions.rs` (`init`, `meta`, `usage`, `pools`, `config`,
-`blocks`, `sessions`, `watch`, `submit`, `interrupt`, `write_mailbox`, `clear_mailbox`, `rename`,
-`set_cwd`, `switch_model`, `set_default_model`, `set_effort`, `compact`, `delete`, `rewind`). The door's kind and
-name live there; a front end asks for the action, never for the door. Each action fills the attached
-session in unless the caller named one, and expects a reply unless it is `watch`.
+Every door has one named action in `actions.rs` (`init`, `meta`, `usage`, `pools`, `config`, `blocks`, `sessions`, `watch`, `submit`, `interrupt`, `write_mailbox`, `clear_mailbox`, `rename`, `set_cwd`, `switch_model`, `set_default_model`, `set_effort`, `compact`, `delete`, `rewind`). The door's kind and name live there; a front end asks for the action, never for the door, except `post init`, which a front end sends through `send` because the session it opens has no id yet. Each action fills the attached session in unless the caller named one, and expects a reply unless it is `watch`.
 
-- `call blocks` is answered from the content window when it covers the ranges; otherwise the
-  frame goes upstream and the answer is forwarded like any other.
-- `answer = false` for doors the server does not reply to (`subscribe watch`, `bye`).
+- `call blocks` is answered from the content window when it covers the ranges; otherwise the frame goes upstream and the answer is forwarded like any other.
+- `answer = false` for frames whose answer nobody waits for (`subscribe watch`, `bye`, the mailbox a detach writes).
 
 ### Invariants
 
 1. A frame is forwarded whole; the windows only read what they cannot be kept without.
-2. A reply is matched to the oldest queued frame with the same `kind` and `name`; a mismatch is
-   reported as `local / lost`.
+2. A reply is matched to the oldest queued frame with the same `kind` and `name`; a mismatch is dropped.
 3. Both windows live exactly as long as one attachment.
-4. The rewind ledger is written from the request, never read out of the reply.
+4. The rewind spot is read from the request, never from the reply.
 
 ## 2. Design intent
 
-- **The postman does not open the mail.** What the front end draws is decoded by whoever draws
-  it; this layer only keeps the two indexes every reader would otherwise have to rebuild.
+- **The postman does not open the mail.** What the front end draws is decoded by whoever draws it; this layer only keeps the two indexes every reader would otherwise have to rebuild.
 - **Answer from the window.** A block read the window already covers costs no round trip.
-- **Time before sequence.** The block admitted longest ago is the one the reader moved away from;
-  ids only break ties.
+- **Time before sequence.** The block admitted longest ago is the one the reader moved away from; ids only break ties.
 
 ## 3. Unresolved
 
 1. A refused `call blocks` leaves the window untouched; the refusal is forwarded as it came.
-2. `post rewind` is the one door this layer special-cases: the spot is read out of the request and
-   held, and the index is trimmed on the answer. Every other window change is read from the answer
-   instead. The asymmetry is deliberate for now and the door is expected to be redesigned.
-3. A frame lost in the queue leaves its ledger entry behind, so a later rewind trims to the spot
-   of the frame that never landed.
+2. `post meta` rewind is the one write this layer special-cases: the spot is read out of the request. Every other window change is read from the answer or a push.
 
 ## 4. Config fields
 

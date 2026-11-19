@@ -11,7 +11,7 @@ use super::relay::Signal;
 use super::subscribe;
 use super::{Api, Refuse};
 
-// What one write hands back: the reply's body, what the session stream should hear, and the sessions to close once that signal has gone out.
+// What one write hands back: the reply's body, what the session stream should hear, and the sessions to close once that has gone out.
 pub(crate) struct Reply {
     pub done: Value,
     pub signal: Option<Signal>,
@@ -68,6 +68,12 @@ pub(crate) fn post(api: &Api, conn: u64, viewer: &str, frame: &Frame) -> Result<
     match frame.name.as_str() {
         "meta" => meta(api, viewer, ask),
         "init" => post::init::apply(api, ask).map(Reply::done),
+        "delete" => {
+            let ids = post::delete::apply(api, viewer, ask)?;
+            let mut reply = Reply::plain();
+            reply.closed = ids;
+            Ok(reply)
+        }
         "memo" => post::memo::apply(api, ask).map(|()| Reply::plain()),
         "default_model" => post::default_model::apply(api, ask).map(|()| Reply::plain()),
         "interrupt" => post::interrupt::apply(api, viewer, ask).map(|()| Reply::plain()),
@@ -83,37 +89,19 @@ fn meta(api: &Api, viewer: &str, ask: &Value) -> Result<Reply, Refuse> {
         .get("content")
         .ok_or_else(|| Refuse::Bad("missing `content`".into()))?;
     let session = i64_of(content, "session")?;
-    let (signal, value, closed) = match name {
-        "name" => ("name", post::name::apply(api, viewer, content)?, Vec::new()),
-        "cwd" => ("cwd", post::cwd::apply(api, viewer, content)?, Vec::new()),
-        "switch" => (
-            "model",
-            post::switch::apply(api, viewer, content)?,
-            Vec::new(),
-        ),
-        "effort" => (
-            "effort",
-            post::effort::apply(api, viewer, content)?,
-            Vec::new(),
-        ),
-        "delete" => {
-            let deleted = post::delete::apply(api, viewer, content)?;
-            ("delete", json!({"session": deleted.session}), deleted.ids)
-        }
-        "rewind" => (
-            "rewind",
-            post::rewind::apply(api, viewer, content)?,
-            Vec::new(),
-        ),
+    let (signal, value) = match name {
+        "name" => ("name", post::name::apply(api, viewer, content)?),
+        "cwd" => ("cwd", post::cwd::apply(api, viewer, content)?),
+        "switch" => ("model", post::switch::apply(api, viewer, content)?),
+        "effort" => ("effort", post::effort::apply(api, viewer, content)?),
+        "rewind" => ("rewind", post::rewind::apply(api, viewer, content)?),
         other => return Err(Refuse::Unknown(format!("no such meta name: {other}"))),
     };
-    let mut reply = Reply::signal(Signal {
+    Ok(Reply::signal(Signal {
         session,
         name: signal,
         content: value,
-    });
-    reply.closed = closed;
-    Ok(reply)
+    }))
 }
 
 pub(crate) fn subscribe(

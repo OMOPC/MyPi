@@ -20,7 +20,7 @@ One frame is `kind`, `name`, `payload`.
 |---|---|---|---|
 | `register` | front end | `hello` / `bye` | the viewer id |
 | `call` | front end | a read name | that name's arguments |
-| `post` | front end | `meta` / `init` / `memo` / `default_model` / `interrupt` / `mailbox` | that name's arguments |
+| `post` | front end | `meta` / `init` / `delete` / `memo` / `default_model` / `interrupt` / `mailbox` | that name's arguments |
 | `subscribe` | front end | `watch` / `submit` / `compact` | that name's arguments |
 | `stream` | back end | `signal` / `notice` / the turn's name | the pushed row |
 
@@ -28,15 +28,17 @@ A reply carries the request's `kind` and `name`, so a front end matches an answe
 request without a counter. A failure is a reply whose payload is `{"error": {"code", "message"}}`.
 Every `post` answers `{}` except `init`, which answers `{"session"}`.
 
+`post delete` is its own name: it answers `{}` and closes every removed session's stream, with no signal.
+
 `post meta` is the write path for session metadata. Its payload is `{"name", "content"}`: `name`
-picks the write (`name`, `cwd`, `switch`, `effort`, `delete`, `rewind`) and `content` holds that
+picks the write (`name`, `cwd`, `switch`, `effort`, `rewind`) and `content` holds that
 write's arguments. The result leaves the session stream as `stream signal`, whose payload is the
 write's own fields plus `signal` naming it. The issuer is skipped.
 
 ### Names
 
 Read: `init`, `blocks`, `meta`, `usage`, `todo`, `memo`, `children`, `config`, `pools`, `sessions`.
-Write: `meta` (`name`, `cwd`, `switch`, `effort`, `delete`, `rewind`), `init`, `memo`,
+Write: `meta` (`name`, `cwd`, `switch`, `effort`, `rewind`), `init`, `delete`, `memo`,
 `default_model`, `interrupt`, `mailbox`.
 Subscribe: `watch`, `submit`, `compact`.
 
@@ -112,6 +114,7 @@ Subscribe: `watch`, `submit`, `compact`.
 | `call` | `sessions` | `under` (optional directory) | `rows`: main sessions, newest first, each carrying `first_user`, `bytes`, `last_ts`, `memos` |
 | `post` | `meta` | `name`, `content` | `{}`; the result is a `stream signal` |
 | `post` | `init` | `cwd`, `name`, `model`, `profile` | `{"session"}` |
+| `post` | `delete` | `session` | `{}`; the session's stream closes |
 | `post` | `memo` | `session` (current only), `op`, `scope`, `name`, `content` | `{}` |
 | `post` | `default_model` | `model` | `{}` |
 | `post` | `interrupt` | `session` | `{}` |
@@ -128,7 +131,6 @@ A `post meta` payload's `name` and `content`:
 | `cwd` | `session`, `path` | `{"signal": "cwd", "cwd": ...}` |
 | `switch` | `session`, `model` | `{"signal": "model", "model": ...}` |
 | `effort` | `session`, `effort` | `{"signal": "effort", "effort": ...}` |
-| `delete` | `session` | `{"signal": "delete", "session": ...}` |
 | `rewind` | `session`, `turn`, `block` | `{"signal": "rewind", "turn", "block", "cut"}` |
 
 A `sessions` row is the session's own columns plus four the picker draws: `first_user` (the
@@ -171,8 +173,8 @@ turn's first frame, always — not usually.
 - `text`, `thinking` and `arguments` carry `usage`: the bill of the request that just ended, on the
   one piece the decoder wrote it onto; `null` on every other piece.
 - A write signal carries `signal` naming the write, plus its own fields: `cwd` with the landed
-  path, `model` with the address, `name` with the new name, `effort` with the rung, `delete` with
-  the session, `rewind` with `turn`, `block` and `cut`.
+  path, `model` with the address, `name` with the new name, `effort` with the rung, `rewind` with
+  `turn`, `block` and `cut`. `delete` sends no signal: it closes the stream instead.
 - A write signal skips the viewer that issued it. The slot-taken signal, the turn-opened signal,
   live output, notices and structure go to everyone watching.
 
