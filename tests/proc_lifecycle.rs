@@ -105,9 +105,7 @@ fn external_kill(pid: u32) {
 
 #[cfg(unix)]
 fn external_kill(pid: u32) {
-    let _ = Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .status();
+    let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
 }
 
 fn spawn(origin: Origin, line: &str) -> Process {

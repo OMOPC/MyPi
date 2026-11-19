@@ -32,14 +32,14 @@ impl Stop {
 }
 
 #[cfg(windows)]
-use std::sync::atomic::{AtomicUsize, Ordering};
-#[cfg(windows)]
 use std::sync::Arc;
+#[cfg(windows)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(windows)]
 use signal_hook::consts::{SIGBREAK, SIGINT, SIGTERM};
 
-/// The stop signals, registered once at startup.
+// The stop signals, registered once at startup.
 #[cfg(windows)]
 pub struct Stop {
     seen: Arc<AtomicUsize>,
@@ -55,7 +55,7 @@ impl Stop {
         Ok(Stop { seen })
     }
 
-    /// The stop signal seen since the last call; the last one wins.
+    // The stop signal seen since the last call; the last one wins.
     pub fn poll(&mut self) -> Option<i32> {
         match self.seen.swap(0, Ordering::Acquire) {
             0 => None,

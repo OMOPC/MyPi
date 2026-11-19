@@ -13,9 +13,6 @@ use crate::server::platform::stop::Stop;
 /// How often a waiting caller looks at its child.
 const TICK: Duration = Duration::from_millis(5);
 
-/// How long the platform gets to finish a stop before the caller moves on.
-const KILL_LIMIT: Duration = Duration::from_millis(50);
-
 /// How many bytes of one stream a child may hand back.
 const CAP: usize = 8 << 20;
 
@@ -68,14 +65,14 @@ pub(crate) fn run(
         if stop.is_stopped() {
             stopped = true;
             process.stop();
-            let _ = process.wait_timeout(KILL_LIMIT);
+            let _ = process.wait_timeout(proc::KILL_LIMIT);
             break None;
         }
         let now = Instant::now();
         if deadline.is_some_and(|at| now >= at) {
             timed_out = true;
             process.stop();
-            let _ = process.wait_timeout(KILL_LIMIT);
+            let _ = process.wait_timeout(proc::KILL_LIMIT);
             break None;
         }
         let wait = deadline

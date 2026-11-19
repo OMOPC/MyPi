@@ -29,7 +29,8 @@ pub struct Claim(#[allow(dead_code)] File);
 /// The sidecar that carries the single-server lock. Deliberately not the database itself:
 /// Windows range locks are mandatory, so a lock held on the database would make SQLite's own
 /// reads fail with `SQLITE_IOERR_READ`. On Unix `flock` is advisory and either file works; the
-/// sidecar keeps both platforms on one code path.
+/// sidecar keeps both platforms on one code path. The file stays after the lock is dropped:
+/// removing it would race a server that has already opened it.
 fn lock_path(db: &Path) -> PathBuf {
     let mut name = db.as_os_str().to_owned();
     name.push(".lock");

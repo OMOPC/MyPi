@@ -101,7 +101,8 @@ run time. The environment is read on demand, through this layer's one mouth.
 8. **A handle is not the tree.** Dropping a `Process` ends nothing; the tree lives until its leader
    exits, another entry stops it, or the main process ends.
 9. **A stop reaches every tree at once.** One slow tree must not hold the others; the signal fans
-   out instead of running each action in turn.
+   out instead of running each action in turn. `settle` waits for that fan-out where a caller is
+   about to touch what the actions are taking down.
 10. **Tests are not a concern of this layer.** Timing, zone tables, the environment and the process
    tree are checked by running the program; this folder carries no unit tests.
 
@@ -146,10 +147,10 @@ current directory.
 
 ## 3. Open questions
 
-1. **Windows.** The shell, the process tree and the clock carry both families. The directory paths
-   still follow unix conventions, and the browser paths are unix-shaped (第 16 条). The unix
-   parent-death signal reaches the leader only; the rest of a following tree dies with the process
-   group when the leader goes, which covers the usual case but not every stray child.
+1. **Windows.** The shell, the process tree, the clock and the directories carry both families. The
+   browser paths are still unix-shaped (第 16 条). The unix parent-death signal reaches the leader
+   only; the rest of a following tree dies with the process group when the leader goes, which covers
+   the usual case but not every stray child.
 2. **Instant messaging has no caller.** The switch, the templates and the rendering exist;
    `stamp::inject` is public with no production call site, and the feature's shape is still open — the
    switch may end up named something other than "instant message".
