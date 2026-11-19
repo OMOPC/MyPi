@@ -14,7 +14,7 @@
 
 ## Relations
 
-- Depends on `platform::shell` for the session's shell, the one-shot argument shape and the
+- Depends on `platform::shell` for the session's backend, the one-shot argument shape and the
   encoding it sets, on `platform::proc` for the process group, and on `platform::stop` for the
   stop action.
 - Depends on `contract::env` for `ShellEnv` (backend, timeout) and `Aliases`.
@@ -27,7 +27,7 @@
 
 1. `shell` and `kairos`: every command goes through `admit`; the guard runs once, on the final text.
 2. `admit`'s alias expansion and `alias add`'s stored command: both use the one segment scanner.
-3. `ShellEnv.timeout` and `config.server.agent.tools.bashTimeout`: the loop fills the value, and the
+3. `ShellEnv.timeout` and `config.server.agent.tools.shellTimeout`: the loop fills the value, and the
    tool reports the deadline through `ToolOutput::failure`.
 4. The guard and the unix shells: `pwsh` and `niu` run the line as written; a change to the guard
    does not change them.

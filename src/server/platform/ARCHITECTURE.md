@@ -43,7 +43,7 @@ Everything else in this folder is private.
   bootstrap), the api (the clock when it opens a session or lands a message, the log, the data
   directory the database file sits in), the agent (the clock when a block lands, the log, and the
   temp directory the artifact files are materialized under, plus the shell and the process tree
-  the `bash` tool runs on). Storage asks it **nothing**: every
+  the `shell` tool runs on). Storage asks it **nothing**: every
   instant arrives as a value, and the caller reads the clock.
 - **Who platform asks**: nobody of ours — the standard library and the operating system only. The
   guard table in `src/lib.rs` keeps it that way (the entry forbids this folder from naming any other
@@ -75,9 +75,9 @@ Everything else in this folder is private.
 2. **`stamp::inject` has no caller.** The timestamp injection happens when a user message is written,
    and where exactly that is stays undecided until the instant-messaging mode gets its own design
    (`memo.md`); `config.server.platform.stamp.*` has no reader for the same reason.
-3. **Windows.** `env.rs`, `shell.rs`, `proc.rs` and `time.rs` carry both families. One place still
-   assumes unix: the parent-death guarantee below the leader (a job object covers the whole tree on
-   windows; unix only covers the leader).
-4. **The shell backend is not selectable yet.** `Shell::resolve` exists; nothing reads a configured
-   name, so every session takes the platform default. `Shell::native` is `bash` on unix and `pwsh`
-   on windows, and the `niu` (niubash) backend is reachable only through `resolve`.
+3. **Windows.** `env.rs`, `shell.rs`, `proc.rs` and `time.rs` carry both families. Two places still
+   assume unix: the browser paths, and the parent-death guarantee below the leader (a job object
+   covers the whole tree on windows; unix only covers the leader). 第 16 条 lists the sites.
+4. **The shell backend is selectable.** `config.server.agent.tools.shell` names `auto`, `bash`,
+   `zsh`, `pwsh` or `niu`; `Shell::detect` probes this platform's order for `auto`, and a backend
+   the platform does not run is refused when the session is booked.

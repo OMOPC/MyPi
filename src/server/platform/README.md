@@ -16,16 +16,15 @@ and stopped (`proc.rs`), what a session means by "stop" (`stop.rs`), and what ha
 ```text
 Shell { kind: Bash | Zsh | Pwsh | Niu, program }
 
-Shell::native()                      this platform's default: bash on unix, pwsh on windows
-Shell::resolve(name)                 a configured name → the backend; a foreign shell is refused
+Shell::detect()                      this platform's order for `auto`: $SHELL, bash, zsh on unix; pwsh, niu on windows
+Shell::resolve(name)                 a configured name → the backend; `auto` and an empty value probe; a foreign shell is refused
 Shell::command(line)                 the program, its one-shot shape, and the UTF-8 setup the backend needs
 Shell::path_token(path)              the one quoted token naming a stored text as a file
 Shell::guarded()                     unix shells only
 ```
 
 The backend is a value, not a trait: the tool receives a resolved `Shell` and never asks which
-system it is on. `names()` lists what this build runs, and it is the only list configuration may
-name.
+system it is on. `names()` lists what this build runs; `auto` probes them in the platform's order.
 
 ### The process tree
 
@@ -153,7 +152,7 @@ process runs, gone when it stops.
    call the clock and hand the stamp over with the block, and nothing in this layer reads it back.
 4. **The templates are not read at the moment they are used.** Configuration hands the template text
    and the switch in; who reads them, and when, is that layer's business.
-5. **Two callers read the environment themselves.** The workspace and the bash guard call the
+5. **Two callers read the environment themselves.** The workspace and the shell guard call the
    standard library's temp directory and `HOME` directly instead of asking this layer, so "one mouth
    for the environment" is a rule the code does not keep everywhere yet.
 

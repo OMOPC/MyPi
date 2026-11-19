@@ -106,7 +106,7 @@ impl Api {
             retain_tail: cfg.retain_tail(),
         };
         let ask = Arc::new(Request::new(options)?);
-        let ledger = Loop::new(writer.clone(), settings, ask, events, &cfg);
+        let ledger = Loop::new(writer.clone(), settings, ask, events, &cfg)?;
         // A session nobody watches any more is the loop's to unbook.
         relay.close_with({
             let ledger = ledger.clone();

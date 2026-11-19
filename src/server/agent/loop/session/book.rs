@@ -90,7 +90,7 @@ impl Loop {
         ask: Arc<dyn Ask>,
         out: Sender<Event>,
         cfg: &crate::server::config::Config,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let path = writer.path();
         let export = Arc::new(super::export::Files::new(path.clone(), cfg.export_dir()));
         let (lines, bytes) = cfg.limits();
@@ -113,8 +113,8 @@ impl Loop {
                 members: grep.members,
             },
             shell: crate::server::agent::tools::contract::env::ShellEnv {
-                timeout: cfg.bash_timeout(),
-backend: crate::server::platform::shell::Shell::native(),
+timeout: cfg.shell_timeout(),
+                backend: cfg.shell()?,
             },
             aliases: cfg.aliases(),
             models: cfg
@@ -144,7 +144,7 @@ backend: crate::server::platform::shell::Shell::native(),
             source: source.clone(),
             rules: cfg.web_rules(),
         };
-        Self {
+        Ok(Self {
             inner: Arc::new(Inner {
                 writer,
                 settings,
@@ -160,7 +160,7 @@ backend: crate::server::platform::shell::Shell::native(),
                     .collect(),
                 task_timeout: cfg.task_timeout(),
             }),
-        }
+        })
     }
 
     /// The list a session's `todo` calls add up to: the switch, then a replay. The api door hands

@@ -52,44 +52,42 @@ pub struct Shell {
 }
 
 impl Shell {
-    // This platform's default: `bash` on unix, `pwsh` on windows.
-    pub fn native() -> Self {
-        let kind = match os::current().family {
-            Family::Unix => Kind::Bash,
-            Family::Windows => Kind::Pwsh,
-        };
-        Self {
-            kind,
-            program: PathBuf::from(kind.name()),
+// This platform's order when the configuration says `auto`: `$SHELL`, bash, zsh on unix; pwsh, niu on windows.
+    pub fn detect() -> Result<Self> {
+        match os::current().family {
+            Family::Unix => detect_unix(),
+            Family::Windows => detect_windows(),
         }
     }
 
-    // A configured name → the backend; a shell the platform does not run is refused here.
+    // A configured name -> the backend; `auto` and an empty value probe the platform.
     pub fn resolve(name: Option<&str>) -> Result<Self> {
-        let Some(name) = name.map(str::trim).filter(|n| !n.is_empty()) else {
-            return Ok(Self::native());
-        };
-        let kind = match name {
-            "bash" => Kind::Bash,
-            "zsh" => Kind::Zsh,
-            "pwsh" => Kind::Pwsh,
-            "niu" => Kind::Niu,
-            other => bail!(
-                "unknown shell `{other}`; this build knows {}",
-                names().join(", ")
-            ),
-        };
-        if !kind.available() {
-            bail!(
-                "`{name}` does not run on {}; this platform offers {}",
-                os::current().name,
-                names().join(", ")
-            );
+        match name.map(str::trim).filter(|n| !n.is_empty()) {
+            None | Some("auto") => Self::detect(),
+            Some(name) => {
+                let kind = match name {
+                    "bash" => Kind::Bash,
+                    "zsh" => Kind::Zsh,
+                    "pwsh" => Kind::Pwsh,
+                    "niu" => Kind::Niu,
+                    other => bail!(
+                        "unknown shell `{other}`; this build knows auto, {}",
+                        names().join(", ")
+                    ),
+                };
+                if !kind.available() {
+                    bail!(
+                        "`{name}` does not run on {}; this platform offers {}",
+                        os::current().name,
+                        names().join(", ")
+                    );
+                }
+                Ok(Self {
+                    kind,
+                    program: PathBuf::from(kind.name()),
+                })
+            }
         }
-        Ok(Self {
-            kind,
-            program: PathBuf::from(kind.name()),
-        })
     }
 
     pub fn kind(&self) -> Kind {
@@ -145,6 +143,84 @@ fn utf8_locale() -> &'static str {
 // Ask pwsh for UTF-8 on the pipe first; a failed setting never refuses the command.
 fn pwsh_line(line: &str) -> String {
     format!("try {{ [Console]::OutputEncoding = [Text.Encoding]::UTF8 }} catch {{}}; {line}")
+}
+
+// Probe unix in order, using `$SHELL` when it names a shell we run, then PATH.
+fn detect_unix() -> Result<Shell> {
+    let preferred = std::env::var("SHELL").ok().and_then(|raw| {
+        let path = PathBuf::from(&raw);
+        let kind = match path.file_name()?.to_str()? {
+            "bash" => Kind::Bash,
+            "zsh" => Kind::Zsh,
+            _ => return None,
+        };
+        let program = if path.is_absolute() {
+            is_executable(&path).then_some(path)?
+        } else {
+            find_on_path(kind.name())?
+        };
+        Some((kind, program))
+    });
+    let found = preferred.or_else(|| {
+        [Kind::Bash, Kind::Zsh]
+            .into_iter()
+            .find_map(|kind| find_on_path(kind.name()).map(|program| (kind, program)))
+    });
+    found
+        .map(|(kind, program)| Shell { kind, program })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no shell found: $SHELL, bash and zsh are not executable; set config.server.agent.tools.shell to auto or one of {}",
+                names().join(", ")
+            )
+        })
+}
+
+// Probe windows in order: pwsh, then niu.
+fn detect_windows() -> Result<Shell> {
+    [Kind::Pwsh, Kind::Niu]
+        .into_iter()
+        .find_map(|kind| find_on_path(kind.name()).map(|program| (kind, program)))
+        .map(|(kind, program)| Shell { kind, program })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no shell found: pwsh.exe and niu.exe are not on PATH; set config.server.agent.tools.shell to auto or one of {}",
+                names().join(", ")
+            )
+        })
+}
+
+// PATH lookup only: a shell is never run to ask its version.
+fn find_on_path(program: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).find_map(|dir| {
+        let mut candidates = vec![dir.join(program)];
+        if cfg!(windows) {
+            candidates.insert(0, dir.join(format!("{program}.exe")));
+        }
+        candidates
+            .into_iter()
+            .find(|candidate| is_executable(candidate))
+    })
+}
+
+// A file the current user can run: the executable bit on unix, an existing file on windows.
+fn is_executable(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(windows)]
+    {
+        true
+    }
 }
 
 // Single-quoted for a POSIX shell; a quote closes, escapes and reopens.

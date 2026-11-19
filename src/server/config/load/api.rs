@@ -18,8 +18,7 @@ use super::super::schema::{
     KEY_CONFIG_SERVER_AGENT_LOOP_TOOLS_MEMO_FOLDER,
     KEY_CONFIG_SERVER_AGENT_LOOP_TOOLS_TASK_TIMEOUT_SECS,
     KEY_CONFIG_SERVER_AGENT_SUBAGENT_MAX_TOOL_CALLS, KEY_CONFIG_SERVER_AGENT_TOOLS_ALIASES,
-    KEY_CONFIG_SERVER_AGENT_TOOLS_BASH_TIMEOUT, KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_BIN,
-    KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_EXTRA_ARGS,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_BIN, KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_EXTRA_ARGS,
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_IDLE_SECS, KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_PORT,
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_PROFILE_DIR,
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_USER_AGENT,
@@ -27,7 +26,8 @@ use super::super::schema::{
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX,
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS,
     KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES, KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES,
-    KEY_CONFIG_SERVER_AGENT_TOOLS_READ_PERSISTENT_DOCS, KEY_CONFIG_SERVER_API_DEFAULT_MODEL,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_READ_PERSISTENT_DOCS, KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL,
+    KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL_TIMEOUT, KEY_CONFIG_SERVER_API_DEFAULT_MODEL,
     KEY_CONFIG_SERVER_REQUEST_COMPACT_INSTRUCTION_FILE,
     KEY_CONFIG_SERVER_REQUEST_COMPACT_RETAIN_TAIL, KEY_CONFIG_SERVER_REQUEST_STREAMING,
     KEY_CONFIG_WEB_BRING_TO_FRONT,
@@ -88,12 +88,22 @@ impl Config {
         }
     }
 
-    /// One bash command's wall-clock cap.
-    pub fn bash_timeout(&self) -> std::time::Duration {
+    // The shell backend this session runs its command lines on.
+    pub fn shell(&self) -> anyhow::Result<crate::server::platform::shell::Shell> {
+        let effective = self.effective(None);
+        let name = effective
+            .values
+            .get(KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL)
+            .and_then(Value::as_text);
+        crate::server::platform::shell::Shell::resolve(name)
+    }
+
+    // One shell command's wall-clock cap.
+    pub fn shell_timeout(&self) -> std::time::Duration {
         let seconds = self
             .effective(None)
             .values
-            .get(KEY_CONFIG_SERVER_AGENT_TOOLS_BASH_TIMEOUT)
+            .get(KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL_TIMEOUT)
             .and_then(Value::as_int)
             .unwrap_or(600)
             .max(1);
