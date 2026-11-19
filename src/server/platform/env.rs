@@ -12,8 +12,7 @@ pub fn home() -> Option<PathBuf> {
     }
 }
 
-/// Persistent, machine-generated data: the sessions database, the browser
-/// profile. `$XDG_DATA_HOME/mypi` on unix, `~/.mypi/data` on windows.
+// Persistent, machine-generated data: the sessions database and the browser profile; $XDG_DATA_HOME/mypi on unix, ~/.mypi/data on windows.
 pub fn data_dir() -> PathBuf {
     match os::current().family {
         Family::Unix => base("XDG_DATA_HOME", ".local/share").join("mypi"),
@@ -21,8 +20,7 @@ pub fn data_dir() -> PathBuf {
     }
 }
 
-/// Configuration the user edits: `$XDG_CONFIG_HOME/mypi` on unix, `~/.mypi` on windows.
-/// A missing `config.yaml` is written here.
+// Configuration the user edits: $XDG_CONFIG_HOME/mypi on unix, ~/.mypi on windows; a missing config.yaml is written here.
 pub fn config_dir() -> PathBuf {
     match os::current().family {
         Family::Unix => base("XDG_CONFIG_HOME", ".config").join("mypi"),
@@ -91,7 +89,7 @@ fn base(variable: &str, fallback: &str) -> PathBuf {
     }
 }
 
-/// A folder under the user's home; the same name here when there is no home.
+// A folder under the user's home; the same name here when there is no home.
 fn in_home(folder: &str) -> PathBuf {
     match home() {
         Some(home) => home.join(folder),

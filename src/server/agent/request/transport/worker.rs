@@ -53,11 +53,9 @@ pub type SharedWorker = Arc<Mutex<HttpWorker>>;
 /// The environment variable that turns this executable into a worker.
 pub const WORKER_ENV: &str = "MYPI_HTTP_WORKER";
 
-/// One session's worker: the child that owns its sockets, made on demand and stopped on demand.
+// One session's worker: the child that owns its sockets, made on demand and stopped on demand.
 pub struct SessionWorker {
-    /// The worker that owns the sockets, made on demand and taken on stop. Its process is kept
-    /// beside it: a stop must never wait for the worker's own lock, which the request that has to
-    /// be interrupted holds while it reads.
+    // The worker owns the sockets; the process sits beside it so a stop never waits for the worker lock an interrupted request holds while it reads.
     slot: Mutex<Option<(SharedWorker, crate::server::platform::proc::Process)>>,
 }
 
@@ -79,7 +77,7 @@ impl SessionWorker {
         slot.as_ref().map(|(worker, _)| worker.clone())
     }
 
-    /// Stop the child that owns the sockets. A later request spawns its own.
+    // Stop the child that owns the sockets. A later request spawns its own.
     pub fn kill(&self) {
         let old = self.slot.lock().ok().and_then(|mut slot| slot.take());
         let Some((_, process)) = old else {

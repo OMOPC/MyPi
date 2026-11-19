@@ -328,7 +328,7 @@ unsafe extern "C" {
     fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
 }
 
-/// The Windows `SYSTEMTIME`, as the time-zone API writes it.
+// The Windows SYSTEMTIME, as the time-zone API writes it.
 #[cfg(windows)]
 #[repr(C)]
 struct WinSystemTime {
@@ -342,7 +342,7 @@ struct WinSystemTime {
     millis: u16,
 }
 
-/// The Windows `TIME_ZONE_INFORMATION`: both biases are in minutes, positive west of Greenwich.
+// The Windows TIME_ZONE_INFORMATION: both biases are in minutes, positive west of Greenwich.
 #[cfg(windows)]
 #[repr(C)]
 struct TimeZoneInformation {
@@ -371,7 +371,7 @@ fn local_offset() -> i64 {
     })
 }
 
-/// Local time minus UTC at one moment, in seconds.
+// Local time minus UTC at one moment, in seconds.
 #[cfg(unix)]
 fn local_offset_at(now: i64) -> i64 {
     let mut tm: Tm = unsafe { std::mem::zeroed() };
@@ -381,8 +381,7 @@ fn local_offset_at(now: i64) -> i64 {
     tm.tm_gmtoff
 }
 
-/// Local time minus UTC at one moment, in seconds. Windows has no `localtime_r`; the zone API
-/// reports the bias in minutes (west positive) and whether daylight time is in force.
+// Local time minus UTC at one moment, in seconds; Windows has no localtime_r, so the zone API's bias in minutes (west positive) is used.
 #[cfg(windows)]
 fn local_offset_at(_now: i64) -> i64 {
     const DAYLIGHT: u32 = 2;

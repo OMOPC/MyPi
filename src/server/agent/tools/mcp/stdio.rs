@@ -233,7 +233,7 @@ impl Server {
             .with_context(|| format!("MCP server `{}` write failed", self.name))
     }
 
-    /// The server's tree: what stopping it takes down.
+    // The server's tree: what stopping it takes down.
     pub(crate) fn process(&self) -> proc::Process {
         self.process.clone()
     }

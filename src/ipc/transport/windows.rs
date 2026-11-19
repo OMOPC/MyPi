@@ -72,7 +72,7 @@ unsafe extern "system" {
     fn CancelIoEx(pipe: *mut c_void, overlapped: *mut c_void) -> i32;
 }
 
-/// A pipe name as UTF-16, NUL-terminated.
+// A pipe name as UTF-16, NUL-terminated.
 fn wide(name: &str) -> Vec<u16> {
     OsStr::new(name)
         .encode_wide()
@@ -80,7 +80,7 @@ fn wide(name: &str) -> Vec<u16> {
         .collect()
 }
 
-/// One unused pipe instance: the server's door for the next front end.
+// One unused pipe instance: the server's door for the next front end.
 fn instance(name: &str) -> io::Result<*mut c_void> {
     let wide = wide(name);
     let handle = unsafe {
@@ -101,14 +101,14 @@ fn instance(name: &str) -> io::Result<*mut c_void> {
     Ok(handle)
 }
 
-/// The listening end. One instance is kept ready for the next front end.
+// The listening end. One instance is kept ready for the next front end.
 pub struct Listener {
     name: String,
     path: PathBuf,
     pending: Mutex<usize>,
 }
 
-/// One connected end.
+// One connected end.
 pub struct Stream {
     handle: Arc<Handle>,
     closed: Arc<AtomicBool>,
@@ -155,8 +155,7 @@ pub fn bind(name: &str) -> io::Result<Listener> {
     })
 }
 
-/// A pipe name is a kernel object, not a file: there is nothing to unlink. The name goes away
-/// when the server closes its last handle.
+// A pipe name is a kernel object, not a file: nothing to unlink, and the name goes away when the server closes its last handle.
 pub fn unlink(_name: &str) {}
 
 impl Listener {
