@@ -310,7 +310,7 @@ fn submit(origin: Origin, follow: Follow, cmd: &mut Command) -> io::Result<Proce
 
 // Move the command to the fork thread, leaving the caller with an inert one.
 fn take(cmd: &mut Command) -> Command {
-    std::mem::replace(cmd, Command::new(cmd.get_program().to_os_string()))
+    std::mem::replace(cmd, Command::new(cmd.get_program()))
 }
 
 // Runs on the fork thread only: the whole birth of one tree, from exec to its waiter.

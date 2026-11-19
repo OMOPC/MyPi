@@ -1,25 +1,25 @@
-//! Which system this is.
+// Which system this is.
 
-/// The one distinction that changes behavior today.
+// The one distinction that changes behavior today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
-    /// Linux, macOS, the BSDs.
+    // Linux, macOS, the BSDs.
     Unix,
-    /// Windows.
+    // Windows.
     Windows,
 }
 
-/// This machine, as far as the build knows it.
+// This machine, as far as the build knows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Os {
     pub family: Family,
-    /// `std::env::consts::OS`: `"linux"`, `"macos"`, `"windows"`, ….
+    // `std::env::consts::OS`: `"linux"`, `"macos"`, `"windows"`, ….
     pub name: &'static str,
-    /// `std::env::consts::ARCH`: `"x86_64"`, `"aarch64"`, ….
+    // `std::env::consts::ARCH`: `"x86_64"`, `"aarch64"`, ….
     pub arch: &'static str,
 }
 
-/// The system this binary was built for.
+// The system this binary was built for.
 pub fn current() -> Os {
     Os {
         family: if cfg!(windows) {

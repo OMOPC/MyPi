@@ -17,8 +17,8 @@ What is here, what each file holds, who talks to whom. Current state only.
 
 ## What it talks to
 
-- **`agent::r#loop`**: `Loop::{book, booked, deliver, interrupt, drop, change, mailbox, todo}`,
-  `Birth`, `Message`, `Change`, `Retention`, and the live line `Event`.
+- **`agent::r#loop`**: `Loop::{book, booked, deliver, interrupt, drop, forget, change, write_mail,
+  clear_mail, model, todo}`, `Birth`, `Message`, `Change`, `Retention`, and the live line `Event`.
 - **`agent::request`**: `Request::new(Options)` once, at startup; `Options` carries the providers,
   the retry policy, the per-address output caps, the streaming mode and the compaction tail.
 - **`agent::tools`**: `registry::{names, roster}` when `init` writes the archive.
@@ -37,7 +37,7 @@ Api::receive
   → register  ── hello / bye
   → call      ── route::call   → call/*  ── Reader
   → post      ── route::post   → meta unpack → post/*  ── Writer, Loop, Config
-                                  ↑ result → Relay::signal
+                                  ↑ result → Relay::signal, then close
   → subscribe ── route::subscribe → watch | submit | compact | mail | close ── Relay, Loop
   → reply frame, or the error frame
 
@@ -67,7 +67,7 @@ Relay::start
 3. `post/init.rs`'s archive and `Loop`'s request assembly: both expand the same names through
    `registry::roster`, so a session's stored manuals and its live manuals are the same bytes.
 4. `Api::open`'s `Options` and `Config`'s accessors: a value added to one needs its key in the other.
-5. `post/delete.rs` and `relay::forget`: a session leaves the table, the relay and the database.
+5. `post/delete.rs` and `relay::close`: a session leaves the table, the relay and the database.
 
 ## Not wired
 

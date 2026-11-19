@@ -1,11 +1,10 @@
-//! In-memory diagnostics: what happened to **us** — retries, timeouts, dropped connections.
-//! Nothing here ever enters a request.
+// In-memory diagnostics: what happened to **us** — retries, timeouts, dropped connections. Nothing here ever enters a request.
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// How loud a record is.
+// How loud a record is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
     Info,
@@ -23,24 +22,21 @@ impl Level {
     }
 }
 
-/// One line of local narration.
+// One line of local narration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record {
-    /// Milliseconds since the Unix epoch (seconds-resolution clocks are
-    /// useless when diagnosing a retry storm).
+    // Milliseconds since the Unix epoch (seconds-resolution clocks are useless when diagnosing a retry storm).
     pub at_ms: u128,
     pub level: Level,
-    /// Where it came from — usually the model id or a session id.
+    // Where it came from — usually the model id or a session id.
     pub scope: String,
     pub text: String,
 }
 
-// Ring capacity. 256 lines is several sessions' worth of retry noise and a few
-// KB of RAM; anything older is not worth a scrollback.
+// Ring capacity. 256 lines is several sessions' worth of retry noise and a few KB of RAM; anything older is not worth a scrollback.
 const CAPACITY: usize = 256;
 
-/// The bounded buffer, kept apart from the global so the capacity is a
-/// parameter rather than a constant baked into the type.
+// The bounded buffer, kept apart from the global so the capacity is a parameter rather than a constant baked into the type.
 #[derive(Debug)]
 struct Ring {
     recs: VecDeque<Record>,
@@ -83,7 +79,7 @@ fn now_ms() -> u128 {
         .unwrap_or(0)
 }
 
-/// Append one record, dropping the oldest when full.
+// Append one record, dropping the oldest when full.
 pub fn push(level: Level, scope: impl Into<String>, text: impl Into<String>) {
     let rec = Record {
         at_ms: now_ms(),
@@ -109,12 +105,12 @@ pub fn error(scope: impl Into<String>, text: impl Into<String>) {
     push(Level::Error, scope, text);
 }
 
-/// The most recent records, oldest first. `limit` = 0 means "everything held".
+// The most recent records, oldest first. `limit` = 0 means "everything held".
 pub fn recent(limit: usize) -> Vec<Record> {
     ring().lock().expect("log lock poisoned").recent(limit)
 }
 
-/// The records one `scope` produced, newest last.
+// The records one `scope` produced, newest last.
 pub fn by_scope(scope: &str) -> Vec<Record> {
     ring()
         .lock()
@@ -126,7 +122,7 @@ pub fn by_scope(scope: &str) -> Vec<Record> {
         .collect()
 }
 
-/// How many records we currently hold.
+// How many records we currently hold.
 pub fn len() -> usize {
     ring().lock().expect("log lock poisoned").recs.len()
 }

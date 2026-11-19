@@ -39,24 +39,11 @@ fn local_zone() -> &'static Zone {
     ZONE.get_or_init(|| load_zone(None).unwrap_or_else(|| Zone::fixed(0)))
 }
 
-// The named zone, else the machine's, else nothing.
+// The named offset, else the machine's, else nothing.
 fn load_zone(name: Option<&str>) -> Option<Zone> {
-    if let Some(name) = name.map(str::trim).filter(|name| !name.is_empty()) {
-        // A fixed offset like `UTC+8` needs no file at all.
-        if let Some(off) = fixed_offset(name) {
-            return Some(Zone::fixed(off));
-        }
-        // A bare name is looked up in the system's zoneinfo; an absolute path is read where it points.
-        let path = if name.starts_with('/') {
-            std::path::PathBuf::from(name)
-        } else {
-            std::path::PathBuf::from("/usr/share/zoneinfo").join(name)
-        };
-        if let Ok(bytes) = std::fs::read(&path)
-            && let Some(zone) = parse_tzif(&bytes)
-        {
-            return Some(zone);
-        }
+    // Only a fixed offset is a configuration value; a geographic name falls through to the machine.
+    if let Some(off) = name.map(str::trim).and_then(fixed_offset) {
+        return Some(Zone::fixed(off));
     }
     system_zone()
 }
@@ -75,15 +62,14 @@ fn system_zone() -> Option<Zone> {
 
 // `UTC+8` / `GMT-5` / `UTC+8:30` → the seconds to add to UTC for local time.
 fn fixed_offset(name: &str) -> Option<i32> {
+    let name = name.trim();
     let rest = name
         .strip_prefix("UTC")
-        .or_else(|| name.strip_prefix("GMT"))
-        .unwrap_or(name);
+        .or_else(|| name.strip_prefix("GMT"))?;
     let (sign, digits) = rest.split_at_checked(1)?;
-    // POSIX sign: `UTC+8` means "eight hours ahead of UTC", i.e. local = UTC - 8h.
     let mult = match sign {
-        "+" => -1,
-        "-" => 1,
+        "+" => 1,
+        "-" => -1,
         _ => return None,
     };
     let (h, m) = match digits.split_once(':') {
@@ -181,6 +167,19 @@ pub(crate) fn offset_at(unix: i64) -> i32 {
     local_zone().offset_at(unix)
 }
 
+// The offset the process runs in, as `UTC+8` / `UTC-5` / `UTC+8:30`.
+pub fn display() -> String {
+    let offset = offset_at(unix_now());
+    let sign = if offset < 0 { '-' } else { '+' };
+    let offset = offset.unsigned_abs();
+    let (h, m) = (offset / 3600, (offset % 3600) / 60);
+    if m == 0 {
+        format!("UTC{sign}{h}")
+    } else {
+        format!("UTC{sign}{h}:{m:02}")
+    }
+}
+
 pub(crate) fn local_parts(unix: i64) -> (i64, u32, u32, u32, u32, u32) {
     let local = unix + local_zone().offset_at(unix) as i64;
     let days = local.div_euclid(86_400);
@@ -223,8 +222,7 @@ fn stamp_from_unix(local: i64) -> String {
     )
 }
 
-// Howard Hinnant's `civil_from_days`: days since 1970-01-01 → (y, m, d).
-// Floored arithmetic, so it is correct for negative (pre-1970) inputs too.
+// Howard Hinnant's `civil_from_days`: days since 1970-01-01 → (y, m, d). Floored arithmetic, so it is correct for negative (pre-1970) inputs too.
 pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = z.div_euclid(146_097);

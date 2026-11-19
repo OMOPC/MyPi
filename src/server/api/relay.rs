@@ -1,5 +1,4 @@
-// The session stream: one table of connections, one current turn per session, and the buffer a
-// late watcher catches up from.
+// The session stream: the connection table, the turn each session is in, and the buffer a late watcher catches up from.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Sender};
@@ -26,7 +25,7 @@ struct Entry {
     tx: Sender<Frame>,
 }
 
-// The turn a session is in, the door that opened it, and the viewer that did.
+// The turn a session is in, the name that opened it, and the viewer that did.
 struct Active {
     turn: i64,
     opened_by: &'static str,
@@ -55,8 +54,7 @@ pub(crate) struct Relay {
 }
 
 impl Relay {
-    // Hand back the one event sender the loop writes to: every frame a front end hears leaves by
-    // this queue, in the order the loop sent it.
+    // Hand back the one event sender the loop writes to: every frame a front end hears leaves by this queue, in the order the loop sent it.
     pub(crate) fn start() -> Result<(Relay, Sender<Event>)> {
         let relay = Relay {
             state: Arc::new(Mutex::new(State::default())),
@@ -167,7 +165,7 @@ impl Relay {
         session: i64,
         viewer: &str,
         turn: i64,
-        door: &'static str,
+        opened_by: &'static str,
         opening: &str,
     ) {
         let gone = {
@@ -180,7 +178,7 @@ impl Relay {
                 session,
                 Active {
                     turn,
-                    opened_by: door,
+                    opened_by,
                     viewer: viewer.to_string(),
                 },
             );
@@ -295,7 +293,7 @@ impl Relay {
             other => other,
         };
 
-        let (turn, door) = self.turn_of(session);
+        let (turn, opened_by) = self.turn_of(session);
 
         match element {
             Element::Stream(stream) => {
@@ -318,7 +316,7 @@ impl Relay {
                     Stream::Boundary => ("boundary", json!({})),
                     Stream::Wake(text) => ("wake", json!({"text": text})),
                 };
-                self.stream(session, turn, door, kind, extra);
+                self.stream(session, turn, opened_by, kind, extra);
             }
             Element::Tool(tool) => {
                 let (kind, extra) = match tool {
@@ -353,17 +351,9 @@ impl Relay {
                         }),
                     ),
                 };
-                self.stream(session, turn, door, kind, extra);
+                self.stream(session, turn, opened_by, kind, extra);
             }
-            Element::Notice(notice) => {
-                let level = match notice.level {
-                    NoticeLevel::Info => "info",
-                    NoticeLevel::Warn => "warn",
-                    NoticeLevel::Error => "error",
-                };
-                let payload = json!({"session": session, "level": level, "content": notice.text});
-                self.deliver(session, Frame::new("stream", "notice", payload), None);
-            }
+            Element::Notice(notice) => self.notice(session, notice.level, notice.text),
             // Handled above: the slot opening names the turn instead of pushing a frame.
             Element::Mailbox { .. } => {}
             Element::Structure {
@@ -374,8 +364,7 @@ impl Relay {
         }
     }
 
-    // The slot was taken: the writer recorded at write time owns the turn, and the door is the
-    // slot. A letter taken into a turn that is already running keeps that turn's door.
+    // The slot was taken: the writer recorded at write time owns the turn, and an idle session's opener is the slot. A letter taken into a running turn keeps that turn's opener.
     fn slot_opened(&self, session: i64, turn: i64) -> Option<String> {
         let mut state = self.state();
         let viewer = state.pending.remove(&session).filter(|who| !who.is_empty());
@@ -397,27 +386,27 @@ impl Relay {
         viewer
     }
 
-    // One piece of live output, labelled with the turn and the door that opened it.
-    fn stream(&self, session: i64, turn: i64, door: &'static str, kind: &str, extra: Value) {
+    // One piece of live output, labelled with the turn and the name that opened it.
+    fn stream(&self, session: i64, turn: i64, opened_by: &'static str, kind: &str, extra: Value) {
         let mut payload = json!({"session": session, "turn": turn, "kind": kind});
         if let (Some(object), Some(extra)) = (payload.as_object_mut(), extra.as_object()) {
             for (key, value) in extra {
                 object.insert(key.clone(), value.clone());
             }
         }
-        self.deliver(session, Frame::new("stream", door, payload), None);
+        self.deliver(session, Frame::new("stream", opened_by, payload), None);
     }
 
     // The turn closed: its ranges go out last, then the buffer and the turn go.
     fn structure(&self, session: i64, turn: i64, ranges: Vec<[i64; 2]>, compact: bool) {
-        let (_, door) = self.turn_of(session);
+        let (_, opened_by) = self.turn_of(session);
         let payload = json!({
             "session": session,
             "turn": turn,
             "ranges": ranges,
             "compact": compact,
         });
-        self.deliver(session, Frame::new("stream", door, payload), None);
+        self.deliver(session, Frame::new("stream", opened_by, payload), None);
         let mut state = self.state();
         state.buffers.remove(&session);
         state.active.remove(&session);
@@ -452,23 +441,12 @@ impl Relay {
             .entry(session)
             .or_default()
             .push(frame.clone());
-        let mut dead = Vec::new();
-        for (id, tx) in targets {
-            if tx.send(frame.clone()).is_err() {
-                dead.push(id);
-            }
-        }
-        for id in dead {
-            state.conns.remove(&id);
-        }
-        let gone = drop_unfollowed(&mut state);
-        drop(state);
-        self.report(gone);
+        self.fanout(state, targets, frame);
     }
 
     // One frame for one viewer's connection, never buffered: the writer's own copy of a signal.
     fn send_one(&self, session: i64, viewer: &str, frame: Frame) {
-        let mut state = self.state();
+        let state = self.state();
         let targets: Vec<(u64, Sender<Frame>)> = state
             .conns
             .iter()
@@ -476,6 +454,16 @@ impl Relay {
             .filter(|(_, entry)| entry.viewer.as_deref() == Some(viewer))
             .map(|(id, entry)| (*id, entry.tx.clone()))
             .collect();
+        self.fanout(state, targets, frame);
+    }
+
+    // Hand one frame to the targets, drop the dead connections, and report the sessions that just lost their last watcher.
+    fn fanout(
+        &self,
+        mut state: MutexGuard<'_, State>,
+        targets: Vec<(u64, Sender<Frame>)>,
+        frame: Frame,
+    ) {
         let mut dead = Vec::new();
         for (id, tx) in targets {
             if tx.send(frame.clone()).is_err() {

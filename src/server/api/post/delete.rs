@@ -1,18 +1,24 @@
 // `delete` — a child is refused; a parent takes its children with it.
 
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::server::agent::r#loop::NoticeLevel;
 use crate::server::api::route::i64_of;
-use crate::server::api::{Api, Refuse, subscribe};
+use crate::server::api::{Api, Refuse};
 use crate::server::storage::Reader;
 use crate::server::storage::Table;
 use crate::server::storage::query::{Cond, Order, Query, Sheet};
 
 use super::emit;
 
-pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refuse> {
+// The rows this write removed; the api closes their streams after the signal goes out.
+pub(crate) struct Deleted {
+    pub session: i64,
+    pub ids: Vec<i64>,
+}
+
+pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Deleted, Refuse> {
     let session = i64_of(ask, "session")?;
     emit::require_writer(api, viewer, session)?;
     if api.relay().busy(session) {
@@ -58,7 +64,6 @@ pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refus
     api.writer().delete_rows(Table::Sessions, &ids)?;
     for id in &ids {
         api.ledger().drop(*id);
-        subscribe::close::apply(api, *id);
     }
-    Ok(json!({"session": session}))
+    Ok(Deleted { session, ids })
 }

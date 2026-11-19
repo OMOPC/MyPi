@@ -25,7 +25,7 @@ pub(crate) fn open(
     viewer: &str,
     session: i64,
     message: Message,
-    door: &'static str,
+    opened_by: &'static str,
 ) -> Result<Value, Refuse> {
     if api.relay().busy(session) {
         return Err(Refuse::Busy("the session is already in a turn".into()));
@@ -48,6 +48,6 @@ pub(crate) fn open(
     api.ensure_booked(session)?;
     let turn = api.ledger().deliver(session, message)?;
     api.relay()
-        .open(conn, session, viewer, turn, door, &opening);
+        .open(conn, session, viewer, turn, opened_by, &opening);
     Ok(json!({"turn": turn}))
 }

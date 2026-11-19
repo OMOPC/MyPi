@@ -61,4 +61,6 @@ computed in physical rows, so a short list never pushes the last entry off scree
 
 ## 4. Config fields
 
-None.
+| key | what it decides |
+|---|---|
+| `config.server.platform.timezone` | the fixed offset (`UTC+8`) used to age the list's timestamps |

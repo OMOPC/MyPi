@@ -18,8 +18,9 @@ use crate::server::storage::{Reader, Writer};
 
 use super::relay::Relay;
 use super::route;
+use super::subscribe;
 
-// Why a door refused.
+// Why a write refused.
 pub enum Refuse {
     Unknown(String),
     Bad(String),
@@ -154,6 +155,9 @@ impl Api {
                         Ok(reply) => {
                             if let Some(signal) = reply.signal {
                                 self.relay.signal(signal, &viewer);
+                            }
+                            for session in &reply.closed {
+                                subscribe::close::apply(self, *session);
                             }
                             Some(Frame::reply_to(&frame, reply.done))
                         }

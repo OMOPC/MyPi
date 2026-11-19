@@ -1,14 +1,14 @@
 // `mailbox` — the front end's one pending message: written whole, or taken back.
 
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::server::agent::r#loop::Letter;
 use crate::server::api::post::emit;
 use crate::server::api::route::{i64_of, opt_str_of};
 use crate::server::api::{Api, Refuse};
 
-pub(crate) fn apply(api: &Api, conn: u64, viewer: &str, ask: &Value) -> Result<Value, Refuse> {
+pub(crate) fn apply(api: &Api, conn: u64, viewer: &str, ask: &Value) -> Result<(), Refuse> {
     let session = i64_of(ask, "session")?;
     emit::require_writer(api, viewer, session)?;
     let text = opt_str_of(ask, "text")?.unwrap_or_default();
@@ -18,7 +18,7 @@ pub(crate) fn apply(api: &Api, conn: u64, viewer: &str, ask: &Value) -> Result<V
     if text.trim().is_empty() && prefix.is_none() && suffix.is_none() {
         api.ledger().clear_mail(session)?;
         api.relay().mail(conn, session, None);
-        return Ok(json!({}));
+        return Ok(());
     }
     let letter = Letter {
         prefix,
@@ -28,5 +28,5 @@ pub(crate) fn apply(api: &Api, conn: u64, viewer: &str, ask: &Value) -> Result<V
     api.ensure_booked(session)?;
     api.ledger().write_mail(session, letter)?;
     api.relay().mail(conn, session, Some(viewer));
-    Ok(json!({}))
+    Ok(())
 }

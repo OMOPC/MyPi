@@ -1,5 +1,4 @@
-//! platform — the layer that asks the operating system: time, stamps, directories, environment, log,
-//! the shell and the process tree.
+// platform — the layer that asks the operating system: time, stamps, directories, environment, log, the shell and the process tree.
 
 pub mod env;
 pub mod log;

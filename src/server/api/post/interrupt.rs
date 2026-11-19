@@ -8,9 +8,9 @@ use crate::server::api::{Api, Refuse};
 
 use super::emit;
 
-pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<Value, Refuse> {
+pub(crate) fn apply(api: &Api, viewer: &str, ask: &Value) -> Result<(), Refuse> {
     let session = i64_of(ask, "session")?;
     emit::require_writer(api, viewer, session)?;
     api.ledger().interrupt(session);
-    Ok(serde_json::json!({}))
+    Ok(())
 }

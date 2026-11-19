@@ -15,8 +15,7 @@ pub(crate) fn context(
     stamps: &[Stamp],
     baseline: Option<u64>,
 ) -> (Option<u64>, bool) {
-    // The newest stamp by block id, not by arrival: a compaction's borrowed rounds hold old
-    // blocks, and they are read after the summary that replaced them.
+    // The newest stamp by block id, not by arrival: a compaction's borrowed rounds hold old blocks, and they are read after the summary that replaced them.
     let Some(newest) = stamps.iter().max_by_key(|stamp| stamp.at) else {
         return (baseline, baseline.is_some());
     };

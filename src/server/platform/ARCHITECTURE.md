@@ -12,7 +12,7 @@ keeps — is in `README.md`.
 | `mod.rs` | the declarations |
 | `os.rs` | which system this is: `Family`, `Os` (family, name, architecture) and `current()` — decided at compile time, no probing, no subprocess |
 | `env.rs` | the directories and the environment variables behind them: home, data directory, config directory, the system temp directory, and one raw variable |
-| `time.rs` | the process's time zone, and the program's one stamp shape: `init`, `now_stamp`, `age_seconds`, `days_from_stamp` |
+| `time.rs` | the process's fixed offset, and the program's one stamp shape: `init`, `display`, `now_stamp`, `age_seconds`, `days_from_stamp` |
 | `stamp.rs` | the timestamp templates: `parse` and `render` turn two instants into the prefix and suffix of one user message |
 | `log.rs` | the in-process ring of what happened to us: a level, a scope, a message and a millisecond |
 | `shell.rs` | which shell runs a command line: `Kind`, `Shell`, `default`, `resolve`, `names`, the one-shot argument shape, and the quoted path a stored text becomes |
@@ -26,8 +26,8 @@ keeps — is in `README.md`.
 | `os::{Family, Os, current()}` | which family, name and architecture this is |
 | `env::{home, data_dir, config_dir, temp_dir, downloads_dir}` | the directories, XDG-based on unix, `%APPDATA%`/`%LOCALAPPDATA%` on windows; `downloads_dir` reads `XDG_DOWNLOAD_DIR` and falls back to `~/Downloads`; the IPC endpoint directory belongs to `ipc::endpoint` |
 | `env::{var, var_os}` | one environment variable, as text or raw |
-| `time::init(name)` | take the zone from configuration, once, at startup (`None` = whatever the machine says) |
-| `time::now_stamp()` | now, in the process's zone, as `YYYY-MM-DD HH:MM:SS` |
+| `time::init(name)` | take the offset from configuration, once, at startup (`None` or a geographic name = the machine's) |
+| `time::now_stamp()` | now, in the process's offset, as `YYYY-MM-DD HH:MM:SS` |
 | `time::age_seconds(stamp)` | how old a stamp is |
 | `time::days_from_stamp(stamp)` | a stamp's day count since 1970-01-01 (for weekdays) |
 | `stamp::{Parts, parse, weekday, render, inject}` | the injection templates: render a template against two instants, or both halves of one message at once |
@@ -51,8 +51,8 @@ Everything else in this folder is private.
 - **One mouth for the environment**: `env.rs` is the only file that reads environment variables, and
   the only place a directory is decided. `time.rs` is the only file that reads zoneinfo. `log.rs`
   holds the process's one ring.
-- **One process, one zone**: the zone is taken once and never changes; the ring and the zone are the
-  two things this layer keeps in memory.
+- **One process, one offset**: the offset is taken once from the configuration or the machine and
+  never changes; the ring and the offset are the two things this layer keeps in memory.
 
 ## Parts that must stay in step
 
@@ -64,7 +64,7 @@ Everything else in this folder is private.
    fallback everywhere else.
 4. The log's record shape (level, scope, message, milliseconds) — whoever reads the ring, including
    a front end, sees exactly these fields.
-5. `time::init` and the lazy fallback in `time.rs`: if nobody initializes the zone, the machine's own
+5. `time::init` and the lazy fallback in `time.rs`: if nobody initializes the offset, the machine's own
    wins. A process that wants the configured one has to call `init` before its first stamp.
 
 ## Not wired yet
@@ -79,5 +79,5 @@ Everything else in this folder is private.
    assumes unix: the parent-death guarantee below the leader (a job object covers the whole tree on
    windows; unix only covers the leader).
 4. **The shell backend is not selectable yet.** `Shell::resolve` exists; nothing reads a configured
-   name, so every session takes the platform default. `Shell::default` is `bash` on unix and `pwsh`
+   name, so every session takes the platform default. `Shell::native` is `bash` on unix and `pwsh`
    on windows, and the `niu` (niubash) backend is reachable only through `resolve`.

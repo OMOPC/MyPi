@@ -19,8 +19,7 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
             Some(turn_id) => turn_id,
             None => continue,
         };
-        // A borrowed round holds ranges another round already owns: it takes no place of its
-        // own, and its blocks are drawn under the round they were borrowed from.
+        // A borrowed round holds ranges another round already owns: it takes no place of its own, and its blocks are drawn under the round they were borrowed from.
         let borrowed = reader
             .turn(turn_id)?
             .map(|turn| turn["stop_reason"].as_str() == Some("borrowed"))
@@ -53,8 +52,7 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
     } else {
         serde_json::to_value(&todo).map_err(|e| Refuse::Internal(e.to_string()))?
     };
-    // The effort is memory-only: the loop is the only place that knows it, and a fresh front
-    // end learns it here rather than from a row.
+    // The effort is memory-only: the loop is the only place that knows it, and a fresh front end learns it here rather than from a row.
     let effort = api
         .ledger()
         .effort(session)

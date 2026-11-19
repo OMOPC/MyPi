@@ -5,6 +5,11 @@ use serde_json::Value;
 use crate::ui::tui::action::{Action, Key, KeyCode, Mods};
 use crate::ui::tui::zone::{Claim, Frame, Kind, Outcome, Request, TermSize, Turns, Zone, ZoneId};
 
+use super::render;
+
+// The one configuration key this zone reads: a fixed offset like `UTC+8`.
+const TZ_KEY: &str = "config.server.platform.timezone";
+
 /// No modifiers held.
 const PLAIN: Mods = Mods {
     ctrl: false,
@@ -254,6 +259,11 @@ impl ResumeZone {
                 None => self.load(&frame.content),
             },
             ("call", "delete") => self.failed = frame.content.get("error").is_some(),
+            ("call", "config") => {
+                if let Some(value) = frame.content.get("value").and_then(Value::as_str) {
+                    render::set_local_offset(value);
+                }
+            }
             ("local", "opened") => self.arrived(&frame.content),
             _ => {}
         }
@@ -440,7 +450,10 @@ impl Zone for ResumeZone {
     }
 
     fn start(&mut self, size: TermSize, memo: &crate::ui::tui::zone::Memo) -> Vec<Request> {
-        let out = self.enter(size, memo);
+        let mut out = self.enter(size, memo);
+        out.push(Request::Config {
+            key: TZ_KEY.to_string(),
+        });
         self.bump();
         out
     }

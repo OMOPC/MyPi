@@ -1,7 +1,7 @@
 // `memo` — user notes: add and mod append a version, del removes every version.
 
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::server::api::route::{i64_of, opt_str_of, str_of};
 use crate::server::api::{Api, Refuse};
@@ -15,16 +15,7 @@ enum Scope {
     Global,
 }
 
-impl Scope {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Current => "current",
-            Self::Global => "global",
-        }
-    }
-}
-
-pub(crate) fn apply(api: &Api, ask: &Value) -> Result<Value, Refuse> {
+pub(crate) fn apply(api: &Api, ask: &Value) -> Result<(), Refuse> {
     let op = str_of(ask, "op")?;
     let scope = scope(ask)?;
     let name = name(str_of(ask, "name")?)?;
@@ -40,11 +31,11 @@ pub(crate) fn apply(api: &Api, ask: &Value) -> Result<Value, Refuse> {
                     ts: crate::server::platform::time::now_stamp(),
                 }],
             })?;
-            Ok(json!({"scope": scope.as_str(), "name": name}))
+            Ok(())
         }
         "del" => {
-            let removed = delete(api, scope, ask, &name)?;
-            Ok(json!({"scope": scope.as_str(), "name": name, "removed": removed}))
+            delete(api, scope, ask, &name)?;
+            Ok(())
         }
         other => Err(Refuse::Bad(format!("no such memo op: {other}"))),
     }

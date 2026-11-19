@@ -37,8 +37,7 @@ struct Quote {
 pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
     let reader = Reader::open(api.db())?;
     let turns = reader.turns(session)?;
-    // The list names the rounds; the round rows carry the intervals and how each ended. The
-    // estimate needs both, so it reads the joined view rather than the bare list.
+    // The list names the rounds; the round rows carry the intervals and how each ended. The estimate needs both, so it reads the joined view rather than the bare list.
     let list = reader.list(session)?;
     let rounds: BTreeMap<i64, &Value> = turns
         .iter()
@@ -94,8 +93,7 @@ pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
             tally.written += block["usage_cache_write"].as_i64().unwrap_or(0);
         }
     }
-    // Stamps in block order: a compaction's borrowed rounds sit after the summary in the list but
-    // carry older blocks, and the cut is a block id.
+    // Stamps in block order: a compaction's borrowed rounds sit after the summary in the list but carry older blocks, and the cut is a block id.
     stamps.sort_by_key(|stamp| stamp.at);
 
     // The subagents: one pool, the sessions this conversation spawned, each billed at its own model.

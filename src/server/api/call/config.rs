@@ -4,13 +4,20 @@ use anyhow::Result;
 use serde_json::{Value, json};
 
 use crate::server::api::{Api, Refuse};
-use crate::server::config::{KEY_CONFIG_SERVER_API_DEFAULT_MODEL, ResolvedModel};
+use crate::server::config::{
+    KEY_CONFIG_SERVER_API_DEFAULT_MODEL, KEY_CONFIG_SERVER_PLATFORM_TIMEZONE, ResolvedModel,
+};
+use crate::server::platform::time;
 
 pub(crate) fn answer(api: &Api, key: &str) -> Result<Value, Refuse> {
     let cfg = api.cfg();
+    // The offset is answered normalized: the machine's own when the key is unset or a name.
+    if key == KEY_CONFIG_SERVER_PLATFORM_TIMEZONE {
+        return Ok(Value::String(time::display()));
+    }
     // The default model is answered resolved: an unset key still names the table's fallback.
     if key == KEY_CONFIG_SERVER_API_DEFAULT_MODEL {
-        // This door asks before any session exists: the process's own directory answers.
+        // This call asks before any session exists: the process's own directory answers.
         let cwd = std::env::current_dir().unwrap_or_default();
         let address = cfg
             .default_model(None, &cwd)

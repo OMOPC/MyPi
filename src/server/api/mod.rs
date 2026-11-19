@@ -1,4 +1,4 @@
-// api — the front-end surface: the doors, the reader, and the session streams.
+// api — the front-end surface: the writes, the reader, and the session streams.
 
 pub(crate) mod call;
 mod convert;
@@ -7,6 +7,6 @@ mod relay;
 mod route;
 pub(crate) mod subscribe;
 
-mod api;
+mod dispatch;
 
-pub use api::{Api, Conn, Refuse};
+pub use dispatch::{Api, Conn, Refuse};

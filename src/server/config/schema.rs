@@ -42,7 +42,7 @@ keys! {
     KEY_CONFIG_SERVER_AGENT_LOOP_TOOLS_TASK_TIMEOUT_SECS = "config", "server.agent.loop.tools.task", "timeoutSecs", Int, DefaultValue::Int(3600), "How long one sub-session may run before it is stopped.", true;
     KEY_CONFIG_SERVER_AGENT_LOOP_TOOLS_MEMO_FOLDER = "config", "server.agent.loop.tools", "memoFolder", Text, DefaultValue::Text(""), "Where memo exports land; empty = the platform's download folder.", true;
     KEY_CONFIG_SERVER_STORAGE_BATCH_TOOLS = "config", "server.storage", "batchTools", Int, DefaultValue::Int(10), "Completed tool calls per write batch.", true;
-    KEY_CONFIG_SERVER_PLATFORM_TIMEZONE = "config", "server.platform", "timezone", Text, DefaultValue::Null, "Time zone by name; empty = the system's.", true;
+    KEY_CONFIG_SERVER_PLATFORM_TIMEZONE = "config", "server.platform", "timezone", Text, DefaultValue::Null, "Fixed UTC offset, e.g. UTC+8; empty or a name = the machine's offset.", true;
     KEY_CONFIG_SERVER_PLATFORM_STAMP_ENABLED = "config", "server.platform.stamp", "enabled", Bool, DefaultValue::Bool(false), "Inject timestamps into new user messages.", true;
     KEY_CONFIG_SERVER_PLATFORM_STAMP_PREFIX = "config", "server.platform.stamp", "prefix", Text, DefaultValue::Text("Last Time You Replied: {last}\n"), "Template placed before the user's text.", true;
     KEY_CONFIG_SERVER_PLATFORM_STAMP_SUFFIX = "config", "server.platform.stamp", "suffix", Text, DefaultValue::Text("\nSent From {now}"), "Template placed after the user's text.", true;

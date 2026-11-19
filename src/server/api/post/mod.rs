@@ -1,4 +1,4 @@
-// Post — the write side: one name per write, its arguments and its stream result.
+// Post — the write side: `meta` unpacks to the session writes, and the rest are one name each.
 
 pub(crate) mod cwd;
 pub(crate) mod default_model;

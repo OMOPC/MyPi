@@ -12,8 +12,7 @@ pub fn home() -> Option<PathBuf> {
     }
 }
 
-// Persistent, machine-generated data: the sessions database and the browser profile.
-// `$XDG_DATA_HOME/mypi` on unix, `%LOCALAPPDATA%\mypi` on windows.
+// Persistent, machine-generated data: the sessions database and the browser profile. `$XDG_DATA_HOME/mypi` on unix, `%LOCALAPPDATA%\mypi` on windows.
 pub fn data_dir() -> PathBuf {
     match os::current().family {
         Family::Unix => base("XDG_DATA_HOME", ".local/share").join("mypi"),
@@ -21,8 +20,7 @@ pub fn data_dir() -> PathBuf {
     }
 }
 
-// Configuration the user edits: `$XDG_CONFIG_HOME/mypi` on unix, `%APPDATA%\mypi` on windows.
-// A missing config.yaml is written here.
+// Configuration the user edits: `$XDG_CONFIG_HOME/mypi` on unix, `%APPDATA%\mypi` on windows. A missing config.yaml is written here.
 pub fn config_dir() -> PathBuf {
     match os::current().family {
         Family::Unix => base("XDG_CONFIG_HOME", ".config").join("mypi"),

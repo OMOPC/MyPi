@@ -49,8 +49,7 @@ fn dirs(reader: &Reader, dir: &str) -> Result<HashSet<i64>> {
         .collect())
 }
 
-// Besides the session's own columns, a row carries what the picker draws: the first user message,
-// the transcript's size, the time of the last block, and how many memos the session holds.
+// Besides the session's own columns, a row carries what the picker draws: the first user message, the transcript's size, the time of the last block, and how many memos the session holds.
 fn extras(reader: &Reader, row: Value) -> Result<Value, Refuse> {
     let Some(session) = row.get("id").and_then(Value::as_i64) else {
         return Ok(row);

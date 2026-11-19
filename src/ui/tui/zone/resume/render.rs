@@ -7,7 +7,6 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use super::zone::{ResumeZone, Row, Scope};
-use crate::server::platform::time as platform_time;
 use crate::ui::tui::text::bytes as byte_size;
 use crate::ui::tui::text::card::{card_edge, card_edge_labeled, card_row};
 use crate::ui::tui::theme::fixed;
@@ -299,9 +298,42 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+// `UTC+8` / `GMT-5` / `UTC+8:30` → seconds east of UTC; anything else is UTC.
+fn parse_offset(name: &str) -> i64 {
+    let name = name.trim();
+    let Some(rest) = name
+        .strip_prefix("UTC")
+        .or_else(|| name.strip_prefix("GMT"))
+    else {
+        return 0;
+    };
+    let Some((sign, digits)) = rest.split_at_checked(1) else {
+        return 0;
+    };
+    let mult = match sign {
+        "+" => 1,
+        "-" => -1,
+        _ => return 0,
+    };
+    let (h, m) = digits.split_once(':').unwrap_or((digits, "0"));
+    let (Ok(h), Ok(m)) = (h.parse::<i64>(), m.parse::<i64>()) else {
+        return 0;
+    };
+    if h > 24 || m >= 60 {
+        return 0;
+    }
+    mult * (h * 3600 + m * 60)
+}
+
+// The offset the server answered; UTC until that answer lands.
+static OFFSET: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+pub(super) fn set_local_offset(name: &str) {
+    OFFSET.store(parse_offset(name), std::sync::atomic::Ordering::Relaxed);
+}
+
 fn local_offset() -> i64 {
-    static OFFSET: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
-    *OFFSET.get_or_init(|| platform_time::offset_at(platform_time::unix_now()) as i64)
+    OFFSET.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 // Relative age in Chinese: just now / N minutes / N hours / N days.

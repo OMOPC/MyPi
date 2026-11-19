@@ -114,7 +114,7 @@ impl Loop {
             },
             bash: crate::server::agent::tools::contract::env::BashEnv {
                 timeout: cfg.bash_timeout(),
-                shell: crate::server::platform::shell::Shell::default(),
+                shell: crate::server::platform::shell::Shell::native(),
             },
             aliases: cfg.aliases(),
             models: cfg

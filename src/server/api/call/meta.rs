@@ -8,7 +8,7 @@ use crate::server::storage::Reader;
 
 pub(crate) fn answer(api: &Api, session: i64) -> Result<Value, Refuse> {
     let reader = Reader::open(api.db())?;
-    Ok(reader
+    reader
         .session(session)?
-        .ok_or_else(|| Refuse::Bad(format!("no session {session}")))?)
+        .ok_or_else(|| Refuse::Bad(format!("no session {session}")))
 }

@@ -16,7 +16,7 @@ and stopped (`proc.rs`), what a session means by "stop" (`stop.rs`), and what ha
 ```text
 Shell { kind: Bash | Zsh | Pwsh | Niu, program }
 
-Shell::default()                     this platform's default: bash on unix, pwsh on windows
+Shell::native()                      this platform's default: bash on unix, pwsh on windows
 Shell::resolve(name)                 a configured name → the backend; a foreign shell is refused
 Shell::command(line)                 the program plus its one-shot shape: `-c`, or `-NoProfile -NonInteractive -Command`
 Shell::path_token(path)              the one quoted token naming a stored text as a file
@@ -63,14 +63,10 @@ A template carries two names — `{{now}}` and `{{last}}` — with an optional f
 stays visible. A moment a template asks for and does not get means that half — prefix or suffix — is
 not injected at all.
 
-### The zone
+### The offset
 
-On unix the zone is a transition table, not one offset: a long process across a DST switch still
-computes the right local time, because each moment looks up its own stretch. The table comes from the
-zoneinfo file the configuration names — a bare name is looked up under the system's zoneinfo
-directory, an absolute path is used as it is — and `/etc/localtime` is the fallback. On windows the
-system reports the offset in effect at startup, and the process keeps that fixed offset for its
-lifetime. `TZ` is not consulted.
+One fixed offset, written as `UTC+8`, `GMT-5` or `UTC+8:30`; the process keeps it for its lifetime.
+A missing or geographic name falls back to the machine's own zone, read once at startup and reduced to its offset. `TZ` is not consulted.
 
 ### The directories
 
@@ -87,7 +83,7 @@ run time. The environment is read on demand, through this layer's one mouth.
 
 1. **One mouth for the environment.** One file reads environment variables; every other caller asks
    it by name.
-2. **One zone per process.** Taken once, at startup, from the configuration.
+2. **One offset per process.** Taken once, at startup, from the configuration, else the machine.
 3. **Values come in, never read out.** This layer opens no configuration file and names no
    configuration type: the layer above reads the file and hands plain values over. Configuration asks
    this layer for directories, so this layer must never reach back into it.
@@ -104,12 +100,12 @@ run time. The environment is read on demand, through this layer's one mouth.
 9. **A stop reaches every tree at once.** One slow tree must not hold the others; the signal fans
    out instead of running each action in turn. `settle` waits for that fan-out where a caller is
    about to touch what the actions are taking down.
-10. **Tests are not a concern of this layer.** Timing, zone tables, the environment and the process
-   tree are checked by running the program; this folder carries no unit tests.
+10. **Tests are not a concern of this layer.** Timing, the offset, the environment and the process
+    tree are checked by running the program; this folder carries no unit tests.
 
 ### What lives in memory
 
-Two things, and only these: the process's zone, and the log ring. A shell is resolved on demand
+Two things, and only these: the process's offset, and the log ring. A shell is resolved on demand
 and handed to its caller; this layer keeps no default shell of its own.
 
 ## 2. Design intent
@@ -117,16 +113,15 @@ and handed to its caller; this layer keeps no default shell of its own.
 **One mouth for the environment.** Environment variables are read in one place, so a directory is
 decided once.
 
-**One zone per process, taken once.** Two stamps written minutes apart cannot disagree about the
+**One offset per process, taken once.** Two stamps written minutes apart cannot disagree about the
 offset, and the store treats a stamp as opaque text.
 
-**A bad zone name never fails the run.** The clock keeps ticking and only the label is wrong.
+**A bad offset name never fails the run.** The clock keeps ticking and only the label is wrong.
 
-**A transition table on unix, one offset on windows.** On unix each moment looks up its own stretch,
-so a long process across a DST switch still computes the right local time. On windows the offset in
-effect at startup is kept: there is no zoneinfo table to read.
+**One fixed offset, everywhere.** Every moment is read with the offset chosen at startup, so a long
+process keeps one label across a DST switch; that switch is the user's to write, not the machine's.
 
-**`TZ` is not consulted.** The zone is a configured value and the machine is the fallback.
+**`TZ` is not consulted.** The offset comes from the configuration, else from the machine once.
 
 **A typo in a format stays visible.** Unrecognized text is copied through instead of being dropped.
 
@@ -144,7 +139,7 @@ process runs, gone when it stops.
 **Directories follow the platform's own convention.** XDG on unix, `%APPDATA%` and
 `%LOCALAPPDATA%` on windows; an unknown system gets the current directory.
 
-**No unit tests here.** Timing, zone tables and the environment are checked by running the program.
+**No unit tests here.** Timing, the offset and the environment are checked by running the program.
 
 ## 3. Open questions
 
@@ -168,7 +163,7 @@ Read through `Config`; this layer opens no file.
 
 | key | what it decides |
 |---|---|
-| `config.server.platform.timezone` | the zone this process runs in; unset means whatever the machine says |
+| `config.server.platform.timezone` | the fixed offset this process runs in (`UTC+8`); unset or a geographic name = the machine's offset, read once at startup |
 | `config.server.platform.stamp.enabled` | whether a user message gets a timestamp prefix and suffix at all (off by default) |
 | `config.server.platform.stamp.prefix` / `.suffix` | the two templates, rendered when the message is written |
 | `config.server.platform.ipc` | which cross-process endpoint kind to use (`os` / `unix` / `pipe`); read by the entry point, not by this layer |

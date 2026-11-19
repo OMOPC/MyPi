@@ -1,7 +1,6 @@
-//! Timestamp injection: one user message's prefix and suffix, rendered from
-//! the templates in the configuration at the moment that message is written.
+// Timestamp injection: one user message's prefix and suffix, rendered from the templates in the configuration at the moment that message is written.
 
-/// The pieces of one local stamp.
+// The pieces of one local stamp.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Parts {
     pub y: i64,
@@ -10,11 +9,11 @@ pub struct Parts {
     pub h: u32,
     pub mi: u32,
     pub s: u32,
-    /// Days since 1970-01-01. The weekday math runs on this.
+    // Days since 1970-01-01. The weekday math runs on this.
     pub days: i64,
 }
 
-/// Split a `YYYY-MM-DD HH:MM:SS` stamp. `None` = not a stamp.
+// Split a `YYYY-MM-DD HH:MM:SS` stamp. `None` = not a stamp.
 pub fn parse(stamp: &str) -> Option<Parts> {
     let b = stamp.as_bytes();
     if b.len() < 19 {
@@ -48,24 +47,22 @@ pub fn parse(stamp: &str) -> Option<Parts> {
 
 const WEEKDAYS: [&str; 7] = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
-/// The weekday name. 1970-01-01 was a Thursday.
+// The weekday name. 1970-01-01 was a Thursday.
 pub fn weekday(days: i64) -> &'static str {
     WEEKDAYS[((days + 4).rem_euclid(7)) as usize]
 }
 
-/// What one `{{…}}` turned into.
+// What one `{{…}}` turned into.
 enum Marker {
-    /// Rendered text.
+    // Rendered text.
     Text(String),
-    /// Not one of ours: leave the `{{…}}` exactly as written.
+    // Not one of ours: leave the `{{…}}` exactly as written.
     Unknown,
-    /// It asks for a moment we cannot produce (no previous reply, an
-    /// unreadable stamp). Nothing gets injected at all.
+    // It asks for a moment we cannot produce (no previous reply, an unreadable stamp). Nothing gets injected at all.
     Missing,
 }
 
-/// Render one template. `None` = nothing to inject: the template asks for a
-/// moment that is not available.
+// Render one template. `None` = nothing to inject: the template asks for a moment that is not available.
 pub fn render(template: &str, now: &str, last: Option<&str>) -> Option<String> {
     let mut out = String::with_capacity(template.len() + 32);
     let mut rest = template;
@@ -89,7 +86,7 @@ pub fn render(template: &str, now: &str, last: Option<&str>) -> Option<String> {
     Some(out)
 }
 
-/// Expand one `{{name}}` or `{{name:format}}`.
+// Expand one `{{name}}` or `{{name:format}}`.
 fn marker(body: &str, now: &str, last: Option<&str>) -> Marker {
     let (name, format) = match body.split_once(':') {
         Some((name, format)) => (name.trim(), Some(format)),
@@ -104,8 +101,7 @@ fn marker(body: &str, now: &str, last: Option<&str>) -> Marker {
         _ => return Marker::Unknown,
     };
     match format {
-        // No format: the stamp itself, exactly as the rest of the program
-        // spells it.
+        // No format: the stamp itself, exactly as the rest of the program spells it.
         None => Marker::Text(value.to_string()),
         Some(format) => match parse(value) {
             Some(parts) => Marker::Text(expand(format, &parts)),
@@ -114,8 +110,7 @@ fn marker(body: &str, now: &str, last: Option<&str>) -> Marker {
     }
 }
 
-/// Expand a format string. Both vocabularies are scanned left to right;
-/// `%` wins a tie because it can never start a letter name.
+// Expand a format string. Both vocabularies are scanned left to right; `%` wins a tie because it can never start a letter name.
 fn expand(format: &str, p: &Parts) -> String {
     let mut out = String::with_capacity(format.len() + 8);
     let mut i = 0;
@@ -147,8 +142,7 @@ fn expand(format: &str, p: &Parts) -> String {
     out
 }
 
-/// A letter name at the head of `rest`, with its byte width. Longest first:
-/// `yyyy` has to win over `yy`, and `day` over `dd`.
+// A letter name at the head of `rest`, with its byte width. Longest first: `yyyy` has to win over `yy`, and `day` over `dd`.
 fn letters(rest: &str, p: &Parts) -> Option<(usize, String)> {
     const NAMES: [&str; 8] = ["yyyy", "day", "yy", "mm", "dd", "hh", "mi", "ss"];
     let name = NAMES.into_iter().find(|n| rest.starts_with(n))?;
@@ -169,7 +163,7 @@ fn letter_value(name: &str, p: &Parts) -> String {
     }
 }
 
-/// The strftime vocabulary, deliberately small: `None` = not ours, the caller copies it through.
+// The strftime vocabulary, deliberately small: `None` = not ours, the caller copies it through.
 fn strftime(c: char, p: &Parts) -> Option<String> {
     Some(match c {
         'Y' => format!("{:04}", p.y),
@@ -186,8 +180,7 @@ fn strftime(c: char, p: &Parts) -> Option<String> {
     })
 }
 
-/// One user message's injection: prefix and suffix, each `None` when its template renders to
-/// nothing. Arguments: the switch, both templates, now, and the previous reply.
+// One user message's injection: prefix and suffix, each `None` when its template renders to nothing. Arguments: the switch, both templates, now, and the previous reply.
 pub fn inject(
     enabled: bool,
     prefix: &str,

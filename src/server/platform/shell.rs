@@ -1,4 +1,4 @@
-//! The session's shell: which program runs a command line, and how a stored text reads as a file.
+// The session's shell: which program runs a command line, and how a stored text reads as a file.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 
 use super::os::{self, Family};
 
-/// The shell family a command line is written for.
+// The shell family a command line is written for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Bash,
@@ -26,7 +26,7 @@ impl Kind {
         }
     }
 
-    /// A family runs only the shells it owns.
+    // A family runs only the shells it owns.
     fn available(self) -> bool {
         match os::current().family {
             Family::Unix => matches!(self, Kind::Bash | Kind::Zsh),
@@ -35,7 +35,7 @@ impl Kind {
     }
 }
 
-/// Every shell this binary accepts, in the order configuration lists them.
+// Every shell this binary accepts, in the order configuration lists them.
 pub fn names() -> Vec<&'static str> {
     [Kind::Bash, Kind::Zsh, Kind::Pwsh, Kind::Niu]
         .into_iter()
@@ -44,7 +44,7 @@ pub fn names() -> Vec<&'static str> {
         .collect()
 }
 
-/// One shell backend: the program, plus the shape one command line takes.
+// One shell backend: the program, plus the shape one command line takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shell {
     kind: Kind,
@@ -52,8 +52,8 @@ pub struct Shell {
 }
 
 impl Shell {
-    /// This platform's default: `bash` on unix, `pwsh` on windows.
-    pub fn default() -> Self {
+    // This platform's default: `bash` on unix, `pwsh` on windows.
+    pub fn native() -> Self {
         let kind = match os::current().family {
             Family::Unix => Kind::Bash,
             Family::Windows => Kind::Pwsh,
@@ -64,10 +64,10 @@ impl Shell {
         }
     }
 
-    /// A configured name → the backend; a shell the platform does not run is refused here.
+    // A configured name → the backend; a shell the platform does not run is refused here.
     pub fn resolve(name: Option<&str>) -> Result<Self> {
         let Some(name) = name.map(str::trim).filter(|n| !n.is_empty()) else {
-            return Ok(Self::default());
+            return Ok(Self::native());
         };
         let kind = match name {
             "bash" => Kind::Bash,
@@ -100,12 +100,12 @@ impl Shell {
         self.kind.name()
     }
 
-    /// The unix shells are the guarded ones; `pwsh` and `niu` run the line as written.
+    // The unix shells are the guarded ones; `pwsh` and `niu` run the line as written.
     pub fn guarded(&self) -> bool {
         matches!(self.kind, Kind::Bash | Kind::Zsh)
     }
 
-    /// One command line, ready to spawn: the program plus its own one-shot argument shape.
+    // One command line, ready to spawn: the program plus its own one-shot argument shape.
     pub fn command(&self, line: &str) -> Command {
         let mut cmd = Command::new(&self.program);
         match self.kind {
@@ -120,7 +120,7 @@ impl Shell {
         cmd
     }
 
-    /// The single shell token naming one stored file, quoted so the path survives as one word.
+    // The single shell token naming one stored file, quoted so the path survives as one word.
     pub fn path_token(&self, path: &Path) -> String {
         let text = path.display().to_string();
         match self.kind {
@@ -130,12 +130,12 @@ impl Shell {
     }
 }
 
-/// Single-quoted for a POSIX shell; a quote closes, escapes and reopens.
+// Single-quoted for a POSIX shell; a quote closes, escapes and reopens.
 fn posix(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// Single-quoted for PowerShell; a quote doubles.
+// Single-quoted for PowerShell; a quote doubles.
 fn pwsh_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "''"))
 }

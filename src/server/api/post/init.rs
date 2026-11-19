@@ -15,8 +15,7 @@ use crate::server::storage::{Ref, RequestMeta, Row, Submit};
 use super::emit;
 
 pub(crate) fn apply(api: &Api, ask: &Value) -> Result<Value, Refuse> {
-    // The launch directory exists; only where it may stand is asked, and a barred one lands in
-    // the temp dir.
+    // The launch directory exists; only where it may stand is asked, and a barred one lands in the temp dir.
     let cwd = crate::server::agent::tools::workspace::launch_dir(str_of(ask, "cwd")?);
     let name = opt_str_of(ask, "name")?.map(str::to_string);
     let profile = opt_str_of(ask, "profile")?.map(str::to_string);
@@ -36,8 +35,7 @@ pub(crate) fn apply(api: &Api, ask: &Value) -> Result<Value, Refuse> {
             (default.provider_name, default.entry.id)
         }
     };
-    // A main session never resolves the child's `final`: no name, no manual, whatever the profile
-    // lists.
+    // A main session never resolves the child's `final`: no name, no manual, whatever the profile lists.
     let tools: Vec<String> = resolved
         .tools
         .unwrap_or_else(registry::defaults)

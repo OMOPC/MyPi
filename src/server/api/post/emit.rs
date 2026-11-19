@@ -1,4 +1,4 @@
-// What every write door shares: the writer gate, the event, and the model pair.
+// What every write shares: the writer gate and the model pair.
 
 use anyhow::Result;
 use serde_json::Value;

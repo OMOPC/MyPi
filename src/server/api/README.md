@@ -158,7 +158,6 @@ turn's first frame, always — not usually.
 | event | `kind` | `name` | payload |
 |---|---|---|---|
 | write signal | `stream` | `signal` | the write's fields plus `signal` |
-| slot taken | `stream` | `signal` | `signal: mailbox` |
 | live output | `stream` | the name that opened the turn | `session`, `turn`, `kind`, the piece |
 | notice | `stream` | `notice` | `session`, `level`, `content` |
 | slot taken | `stream` | `signal` | `signal: mailbox`, and `text` for every watcher but the writer |
@@ -180,10 +179,9 @@ turn's first frame, always — not usually.
 - A turn's opening words reach the other front ends as `signal: user`; a letter taken into a running
   turn reaches them as `signal: mailbox`. Both name the words in `text` and both skip the writer,
   which echoes its own message already. The writer's own copy of the slot signal carries no `text`:
-  that absence is how a front end knows the words are its own to echo.
-  opened is announced by the loop on the same channel and is recorded under the viewer that wrote
-  the slot, named `mailbox`; the same moment puts `signal: mailbox` on the stream. A turn a job
-  woke names `wake`.
+  that absence is how a front end knows the words are its own to echo. A turn opened from the slot
+  on an idle session names `mailbox`; a letter taken into a running turn keeps that turn's opener.
+  A turn a job woke names `wake`.
 - The buffer belongs to the session, holds everything this turn said, and is handed to a connection
   that starts watching mid-turn. It is emptied when the round structure goes out, and dropped when
   the last watcher leaves.
