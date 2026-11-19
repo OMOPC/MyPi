@@ -1,15 +1,14 @@
-//! Unix sockets: Linux and macOS.
+// Unix sockets: Linux and macOS.
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-/// The listening end.
+// The listening end.
 pub struct Listener {
     inner: std::os::unix::net::UnixListener,
-    path: PathBuf,
 }
 
-/// One connected end.
+// One connected end.
 pub struct Stream(std::os::unix::net::UnixStream);
 
 impl Clone for Stream {
@@ -20,10 +19,7 @@ impl Clone for Stream {
 
 pub fn bind(path: &Path) -> io::Result<Listener> {
     let inner = std::os::unix::net::UnixListener::bind(path)?;
-    Ok(Listener {
-        inner,
-        path: path.to_path_buf(),
-    })
+    Ok(Listener { inner })
 }
 
 pub fn connect(path: &Path) -> io::Result<Stream> {
@@ -38,14 +34,10 @@ impl Listener {
     pub fn accept(&self) -> io::Result<Stream> {
         self.inner.accept().map(|(s, _)| Stream(s))
     }
-
-    pub fn local_path(&self) -> &Path {
-        &self.path
-    }
 }
 
 impl Stream {
-    /// Close both directions: a blocking read on any clone returns end of file.
+    // Close both directions: a blocking read on any clone returns end of file.
     pub fn shutdown(&self) {
         let _ = self.0.shutdown(std::net::Shutdown::Both);
     }

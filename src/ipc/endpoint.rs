@@ -119,8 +119,3 @@ fn platform_dir() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
         .join("mypi")
 }
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn platform_dir() -> PathBuf {
-    std::env::temp_dir().join("mypi")
-}
