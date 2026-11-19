@@ -267,8 +267,7 @@ fn resolve_child(dir: &Path, name: &str) -> Option<(PathBuf, bool)> {
     file.is_file().then_some((file, false))
 }
 
-// Does this text declare a module that lives in its own file? An inline `mod x { … }` and a
-// `#[cfg]`-hidden declaration both stay out: the first has no file, the second no answer.
+// Does this text declare a module that lives in its own file? An inline `mod x { … }` and a `#[cfg]`-hidden declaration both stay out: the first has no file, the second no answer.
 pub(super) fn declares_modules(text: &str) -> bool {
     text.lines().any(|line| {
         let line = strip_vis(strip_attrs(line.trim_start()));
@@ -334,7 +333,7 @@ fn export_items(path: &Path, text: &str) -> Vec<String> {
             buf.push(' ');
             buf.push_str(lines[j].trim());
         }
-        let cut = buf.find(|c| c == '{' || c == ';').unwrap_or(buf.len());
+        let cut = buf.find(['{', ';']).unwrap_or(buf.len());
         let signature = buf[..cut]
             .split_whitespace()
             .collect::<Vec<_>>()

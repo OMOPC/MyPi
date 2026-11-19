@@ -26,7 +26,6 @@ use super::super::schema::{
     KEY_CONFIG_SERVER_AGENT_TOOLS_BROWSER_USER_AGENT,
     KEY_CONFIG_SERVER_AGENT_TOOLS_EDIT_FULL_ITEM_BUDGET,
     KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX,
-    KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS, KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS,
     KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_BYTES, KEY_CONFIG_SERVER_AGENT_TOOLS_OUTPUT_MAX_LINES,
     KEY_CONFIG_SERVER_AGENT_TOOLS_READ_PERSISTENT_DOCS, KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL,
     KEY_CONFIG_SERVER_AGENT_TOOLS_SHELL_TIMEOUT, KEY_CONFIG_SERVER_API_DEFAULT_MODEL,
@@ -72,7 +71,7 @@ impl Config {
     }
 
     // What `grep` expands and what it folds. Every count is a threshold, never a target.
-    pub fn grep_limits(&self) -> crate::server::config::GrepLimits {
+    pub fn grep_limits(&self) -> (usize, usize) {
         let effective = self.effective(None);
         let count = |key: &'static str, fallback: usize| {
             effective
@@ -82,12 +81,10 @@ impl Config {
                 .map(|n| n.max(0) as usize)
                 .unwrap_or(fallback)
         };
-        crate::server::config::GrepLimits {
-            deep: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX, 6),
-            fold: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX, 25),
-            impls: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_IMPLS, 8),
-            members: count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_XRAY_ITEMS, 12),
-        }
+        (
+            count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_DEEP_MAX, 6),
+            count(KEY_CONFIG_SERVER_AGENT_TOOLS_GREP_FOLD_MAX, 25),
+        )
     }
 
     // The shell backend this session runs its command lines on; the first unanswered start detects one and writes it here.

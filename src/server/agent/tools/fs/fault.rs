@@ -1,9 +1,9 @@
-// The batch's shared audit: one check per written unit, run by its own language after the last write.
-// A fault on a written edit hangs under it; the unit's report rides on the last written answer.
+// The batch's shared audit: one check per written unit, run by its own language after the last write. A fault on a written edit hangs under it; the unit's report rides on the last written answer.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use super::change;
 use super::lang::graph::parts;
 use super::lang::verdict::{Check, Fault, Unparsed, Verdict};
 use super::skeleton;
@@ -368,7 +368,7 @@ fn insert(results: &mut [ToolResult], call_id: &str, at: usize, lines: &[String]
     let Some(result) = slot(results, call_id) else {
         return;
     };
-    let mut text: Vec<String> = result.result.lines().map(str::to_string).collect();
+    let mut text = change::lines_of(&result.result);
     let at = at.min(text.len());
     for (offset, line) in lines.iter().enumerate() {
         text.insert(at + offset, line.clone());

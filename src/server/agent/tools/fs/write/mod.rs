@@ -1,4 +1,4 @@
-//! write: overwrite a whole file.
+// write: overwrite a whole file.
 
 mod tool;
 

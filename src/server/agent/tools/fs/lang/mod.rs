@@ -14,8 +14,10 @@ use graph::{Around, Decl, Domain, Loader, RawEdge, Unit};
 pub(crate) use table::{Line, Table};
 use verdict::{Check, Outcome, Verdict};
 
-// What a language knows about its units and their edges. Only `edges` is required: with no edges
-// there is no graph, and the other slots degrade one at a time.
+// How one neighbourhood reads on screen.
+type View = fn(&Around, &Loader, &BTreeSet<PathBuf>) -> Vec<Row>;
+
+// What a language knows about its units and their edges. Only `edges` is required: with no edges there is no graph, and the other slots degrade one at a time.
 pub(crate) struct Hub {
     // What one file reaches, already resolved to landing files.
     pub(crate) edges: fn(&Path, &str, &Loader) -> Vec<RawEdge>,
@@ -28,20 +30,18 @@ pub(crate) struct Hub {
     // Where to look for whoever points at a unit.
     pub(crate) domain: Option<fn(&Path) -> Option<Domain>>,
     // How to print one neighbourhood; the machine has a default.
-    pub(crate) view: Option<fn(&Around, &Loader, &BTreeSet<PathBuf>) -> Vec<Row>>,
+    pub(crate) view: Option<View>,
 }
 
 // One text's turn through the formatter a language names.
 pub(crate) type Format = fn(&str, &Path, &Stop) -> Outcome;
 
-// What every language owes the tools: the suffixes it answers to, its table, the answers about a
-// piece, and the two external tools it knows how to drive.
+// What every language owes the tools: the suffixes it answers to, its table, the answers about a piece, and the two external tools it knows how to drive.
 pub(crate) struct Language {
     pub(crate) suffixes: &'static [&'static str],
     pub(crate) table: fn(&str) -> Table,
     pub(crate) shape: fn(&Line) -> Option<&str>,
-    // The relations it can index: `A::b` members and a name's own declarations; `None` when it
-    // names nothing.
+    // The relations it can index: `A::b` members and a name's own declarations; `None` when it names nothing.
     pub(crate) relations: Option<&'static Relations>,
     // What it knows about units, edges and neighbourhoods; `None` when it has no module view.
     pub(crate) hub: Option<&'static Hub>,
@@ -52,11 +52,10 @@ pub(crate) struct Language {
     pub(crate) test: Option<Tests>,
 }
 
-// How one language indexes relations: given the whole crate's sources, it reads a query and
-// answers the rows that declare what it names. A language's own affair, never the tool's.
+// How one language indexes relations: given the whole crate's sources, it reads a query and answers the rows that declare what it names. A language's own affair, never the tool's.
 pub(crate) struct Relations {
     // The rows a query answers, and the source indices they drew from.
-    pub(crate) scan: fn(&[Source], &Path, &str, usize, usize) -> Relation,
+    pub(crate) scan: fn(&[Source], &Path, &str) -> Relation,
 }
 
 // One source a relation reads: its path, text and line table.
@@ -90,6 +89,9 @@ pub(crate) struct Checker {
     pub(crate) run: fn(&Path, &[PathBuf], &Stop) -> Check,
 }
 
+// The tests one text declares inside these 1-based line ranges, by name.
+type Find = fn(&str, &Table, &[(usize, usize)]) -> Vec<String>;
+
 // How one language finds the tests a batch just wrote and runs those alone.
 pub(crate) struct Tests {
     // The unit a file belongs to; `None` when no unit holds it.
@@ -97,7 +99,7 @@ pub(crate) struct Tests {
     // What a report calls that unit.
     pub(crate) title: fn(&Path) -> String,
     // The tests this text declares inside these 1-based line ranges, by name.
-    pub(crate) find: fn(&str, &Table, &[(usize, usize)]) -> Vec<String>,
+    pub(crate) find: Find,
     // Run exactly these tests in that unit, given the files this batch wrote into it.
     pub(crate) run: fn(&Path, &[PathBuf], &[String], &Stop) -> Verdict,
 }
@@ -154,6 +156,7 @@ fn sweep(dir: &Path, out: &mut Vec<PathBuf>) {
         }
     }
 }
+
 // One file's line table: the sorter its suffix names, or every line as its own piece.
 pub(crate) fn table(path: &Path, text: &str) -> Table {
     match owner(path) {

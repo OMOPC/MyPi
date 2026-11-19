@@ -32,7 +32,7 @@ fn find(text: &str, table: &Table, ranges: &[(usize, usize)]) -> Vec<String> {
         let last = table.end(at).unwrap_or(at);
         let hit = ranges
             .iter()
-            .any(|(from, to)| first + 1 <= *to && *from <= last + 1);
+            .any(|(from, to)| first < *to && *from <= last + 1);
         if hit && !names.contains(&name) {
             names.push(name);
         }
@@ -102,8 +102,7 @@ fn name_of(exact: &str) -> Option<String> {
     None
 }
 
-// Run exactly these tests in one unit: the compiler names its own tests, and each is asked for by
-// its full path so nothing else runs.
+// Run exactly these tests in one unit: the compiler names its own tests, and each is asked for by its full path so nothing else runs.
 fn run(root: &Path, files: &[PathBuf], names: &[String], stop: &Stop) -> Verdict {
     let mut ran = 0usize;
     let mut faults: Vec<Fault> = Vec::new();
@@ -341,7 +340,7 @@ fn targets(root: &Path, files: &[PathBuf]) -> Vec<Vec<String>> {
     let mut out: Vec<Vec<String>> = Vec::new();
     for file in files {
         let args = target_of(root, file);
-        if !out.iter().any(|held| *held == args) {
+        if !out.contains(&args) {
             out.push(args);
         }
     }

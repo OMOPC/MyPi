@@ -12,7 +12,8 @@ use crate::server::agent::request::contract::ToolCall;
 use crate::server::agent::tools::contract::env::{Answer, Env, License, Shell, Slot};
 use crate::server::agent::tools::contract::halt::INTERRUPTED;
 use crate::server::agent::tools::contract::output::ToolOutput;
-use crate::server::agent::tools::contract::view::CallRecord;
+
+use crate::server::agent::tools::fs::change;
 use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
@@ -83,7 +84,7 @@ pub(crate) const TOOL: Tool = Tool {
              `unfold` lists every fault of the batch's check and tests instead of folding it.",
     params: PARAMS,
     run,
-    summary,
+    summary: summary::path,
 };
 
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
@@ -102,15 +103,13 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         .workspace
         .with_write(&path, || compute(&path, license, &plans, &stop))?;
     let built = match built {
-        // A sibling of this batch reaches its own turn, finds the stop still set, and says the same
-        // thing about the same untouched file: it is said here, never kept for `env.handed`.
+        // A sibling of this batch reaches its own turn, finds the stop still set, and says the same thing about the same untouched file: it is said here, never kept for `env.handed`.
         Run::Stopped => {
             return Ok(ToolOutput::text(receipt::interrupted(&raw)).failure(INTERRUPTED));
         }
-        // A file never read, one that drifted on disk, or a batch that could not be read whole:
-        // it holds no licence, and the next splice reads it first.
+        // A file never read, one that drifted on disk, or a batch that could not be read whole: it holds no licence, and the next splice reads it first.
         Run::Refused(why) => {
-            revoke(env, &path);
+            env.seen.revoke(&path);
             return Ok(ToolOutput::text(receipt::refused(&raw, &why)).failure(why));
         }
         Run::Done(built) => built,
@@ -118,14 +117,11 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     // The compiler waits for the batch's last write: the audit finishes every written answer then.
     let answers = built.answers(&plans, &path, &raw);
     if built.clean() {
-        env.seen
-            .files
-            .insert(path.clone(), License::of(&built.shown));
+        env.seen.stamp(path.clone(), &built.shown);
     } else {
-        revoke(env, &path);
+        env.seen.revoke(&path);
     }
-    // Every written Rust call hands its shell to the audit: its faults hang under its edits when
-    // the batch's check has run, and the crate's report rides on the last written answer.
+    // Every written Rust call hands its shell to the audit: its faults hang under its edits when the batch's check has run, and the crate's report rides on the last written answer.
     let audit = (built.written.is_some() && !matches!(built.word, Word::Plain))
         .then(|| lang::checker(&path))
         .flatten()
@@ -215,14 +211,6 @@ fn names(call: &ToolCall, env: &Env, path: &Path) -> bool {
     env.workspace.resolve(raw, true).ok().as_deref() == Some(path)
 }
 
-// A batch that is not whole takes the file's licence away, one missed range out of many included:
-// the answer says where its lines stand, and the model reads or greps before it splices again.
-fn revoke(env: &mut Env, path: &Path) {
-    if let Some(license) = env.seen.files.get_mut(path) {
-        license.approval = false;
-    }
-}
-
 // One item of one call: its slice of the batch's edits, or why it could not be read.
 struct Piece {
     // Which item of the call's `edits`, 1-based.
@@ -232,8 +220,7 @@ struct Piece {
     why: Option<String>,
 }
 
-// What one merged run leaves behind: owned, so the compiler can read the crate after the file's
-// lock is gone.
+// What one merged run leaves behind: owned, so the compiler can read the crate after the file's lock is gone.
 struct Built {
     // The file before the write.
     base: String,
@@ -269,11 +256,10 @@ impl Built {
             && !matches!(self.word, Word::Unparsed(_))
     }
 
-    // One answer per call of the batch: its own edits, its own verdict, and where the audit's
-    // check lines will hang.
+    // One answer per call of the batch: its own edits, its own verdict, and where the audit's check lines will hang.
     fn answers(&self, plans: &[Plan], path: &Path, shown: &str) -> Vec<(Answer, Vec<Slot>)> {
         let lines: Vec<&str> = self.shown.lines().collect();
-        let base: Vec<String> = self.base.lines().map(str::to_string).collect();
+        let base = change::lines_of(&self.base);
         let table = lang::table(path, &self.shown);
         let spots = self.spots();
         let refusal: Vec<Option<Why>> = {
@@ -343,8 +329,7 @@ impl Built {
                     },
                     &rows,
                 );
-                // A landed call draws no blocks, so the audit keeps its faults in the check's own
-                // list instead of hanging them under an edit that has none.
+                // A landed call draws no blocks, so the audit keeps its faults in the check's own list instead of hanging them under an edit that has none.
                 if marks.is_empty() {
                     slots.clear();
                 } else {
@@ -364,9 +349,7 @@ impl Built {
             .collect()
     }
 
-    // Where every edit's own lines sit in the shown text, written or refused. A refused range
-    // shares no line with a written one, so every written range is entirely above it or entirely
-    // below; the ones above each add their own change of length, in order, and nothing cancels.
+    // Where every edit's own lines sit in the shown text, written or refused. A refused range shares no line with a written one, so every written range is entirely above it or entirely below; the ones above each add their own change of length, in order, and nothing cancels.
     fn spots(&self) -> Vec<(usize, usize)> {
         let mut out = vec![(0, 0); self.edits.len()];
         for (position, index) in self.held.iter().enumerate() {
@@ -387,8 +370,7 @@ impl Built {
             let edit = &self.edits[*index];
             let shift = written
                 .iter()
-                .filter(|(_, end, _)| *end <= edit.start)
-                .next_back()
+                .rfind(|(_, end, _)| *end <= edit.start)
                 .map(|(_, _, shift)| *shift)
                 .unwrap_or(0);
             let first = (edit.start as isize + shift).max(0) as usize + 1;
@@ -403,11 +385,10 @@ impl Built {
 enum Run {
     Stopped,
     Refused(String),
-    Done(Built),
+    Done(Box<Built>),
 }
 
-// The whole group: the snapshot, one write, and one answer per call. `Stopped` = the turn was
-// stopped before the write, so the file is exactly as it was and no call has an answer.
+// The whole group: the snapshot, one write, and one answer per call. `Stopped` = the turn was stopped before the write, so the file is exactly as it was and no call has an answer.
 fn compute(path: &Path, license: Option<License>, plans: &[Plan], stop: &Stop) -> Result<Run> {
     let text = std::fs::read_to_string(path).context("failed to read file")?;
     let base: Vec<&str> = text.lines().collect();
@@ -453,8 +434,7 @@ fn compute(path: &Path, license: Option<License>, plans: &[Plan], stop: &Stop) -
                 .map(|(at, why)| (kept[*at], why.clone()))
                 .collect();
             word = settled.word;
-            // Every held edit gets one, in the order they were handed over: a marker the formatter
-            // lost falls back to the plain splice's own arithmetic.
+            // Every held edit gets one, in the order they were handed over: a marker the formatter lost falls back to the plain splice's own arithmetic.
             landings = plain
                 .into_iter()
                 .enumerate()
@@ -487,7 +467,7 @@ fn compute(path: &Path, license: Option<License>, plans: &[Plan], stop: &Stop) -
         write_atomic(path, write)?;
     }
     let shown = written.clone().unwrap_or_else(|| text.clone());
-    Ok(Run::Done(Built {
+    Ok(Run::Done(Box::new(Built {
         base: text,
         shown,
         edits,
@@ -499,11 +479,10 @@ fn compute(path: &Path, license: Option<License>, plans: &[Plan], stop: &Stop) -
         word,
         blamed,
         written,
-    }))
+    })))
 }
 
-// The batch's edits in arrival order, each call's items, and the calls whose arguments could not be
-// read at all.
+// The batch's edits in arrival order, each call's items, and the calls whose arguments could not be read at all.
 type Flattened = (Vec<Edit>, Vec<Vec<Piece>>, Vec<Option<String>>);
 
 fn flatten(plans: &[Plan], base: &[&str]) -> Flattened {
@@ -546,9 +525,4 @@ fn flatten(plans: &[Plan], base: &[&str]) -> Flattened {
         pieces.push(rows);
     }
     (edits, pieces, unreadable)
-}
-
-// One line for a history listing: which file.
-fn summary(call: &CallRecord) -> String {
-    summary::path(call)
 }

@@ -1,4 +1,4 @@
-//! edit: replace one unique run of text.
+// edit: replace one unique run of text.
 
 mod tool;
 

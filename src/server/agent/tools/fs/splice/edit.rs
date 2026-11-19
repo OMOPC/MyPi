@@ -136,8 +136,7 @@ pub(crate) fn call_edits(items: &[Item], base: &[&str]) -> Vec<Result<Vec<Edit>>
         .collect()
 }
 
-// A `new` string with its macros filled in, and the 0-based ranges it wants cut away.
-// `@@COPY(a..b)@@` and `@@CUT(a..b)@@` name lines of the snapshot, 1-based inclusive, and are filled with those lines as they stand. Filling is one pass: a token inside the copied lines is copied, never followed.
+// A `new` string with its macros filled in, and the 0-based ranges it wants cut away. `@@COPY(a..b)@@` and `@@CUT(a..b)@@` name lines of the snapshot, 1-based inclusive, and are filled with those lines as they stand. Filling is one pass: a token inside the copied lines is copied, never followed.
 fn rewritten(new: &str, base: &[&str], item: &Item) -> Result<(String, Vec<(usize, usize)>)> {
     let label = item.label();
     let mut text = String::with_capacity(new.len());
@@ -210,7 +209,7 @@ pub(crate) fn collide(a: &Edit, b: &Edit) -> bool {
 
 // The snapshot with every change in place, applied from the bottom up so the lines above keep their numbers while they are still being used.
 pub(crate) fn spliced(text: &str, edits: &[&Edit]) -> String {
-    let mut out: Vec<String> = text.lines().map(str::to_string).collect();
+    let mut out = change::lines_of(text);
     let mut ordered: Vec<&&Edit> = edits.iter().collect();
     // Ranges first among equal starts: an insertion on a range's own first line lands above it.
     ordered.sort_by_key(|edit| (edit.start, edit.start != edit.end));

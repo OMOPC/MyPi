@@ -1,11 +1,11 @@
-//! The `edit` tool: replace one unique run of text.
+// The `edit` tool: replace one unique run of text.
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result, anyhow, bail};
 use serde_json::Value;
 
-use crate::server::agent::tools::contract::env::{Env, License};
+use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::output::ToolOutput;
-use crate::server::agent::tools::contract::view::CallRecord;
+
 use crate::server::agent::tools::fs::change;
 use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
@@ -15,6 +15,7 @@ use crate::server::agent::tools::workspace::write_atomic;
 const PATH: usize = 0;
 const OLD: usize = 1;
 const NEW: usize = 2;
+const UNFOLD: usize = 3;
 
 const PARAMS: &[Param] = &[
     Param::new("path", Kind::Text, "File path."),
@@ -28,17 +29,25 @@ const PARAMS: &[Param] = &[
         Kind::Text,
         "The replacement; any number of lines. Empty deletes the target.",
     ),
+    Param::df(
+        "unfold",
+        Kind::Flag,
+        "List every fault of the batch's shared check instead of folding it.",
+        "false",
+    ),
 ];
 
 pub(crate) const TOOL: Tool = Tool {
     name: "edit",
     about: "Replace one unique run of text in one file. MUST read the file first; NEVER guess its \
-            text. New file → `write`; by line number → `splice`.",
+            text. New file → `write`; by line number → `splice`. Type-checked with the batch, \
+            reported on the last write.",
     fields: "path, old and new are always needed: the file, the text that must appear exactly \
-             once, and what stands in its place.",
+             once, and what stands in its place.\n\
+             `unfold` lifts the shared check's fold for every written file of the batch.",
     params: PARAMS,
     run,
-    summary,
+    summary: summary::path,
 };
 
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
@@ -46,30 +55,70 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let p = env.workspace.resolve(&path, true)?;
     let old = args.str(OLD)?;
     let new = args.str(NEW)?;
+    let unfold = args.flag(UNFOLD).unwrap_or(false);
 
-    let updated = env.workspace.with_write(&p, || {
+    // A write needs a read: the conversation holds the licence, and a refused one is taken away.
+    let licensed = env
+        .seen
+        .files
+        .get(&p)
+        .is_some_and(|license| license.approval);
+    if !licensed {
+        env.seen.revoke(&p);
+        bail!(
+            "`{}` is unauthorized: it has not been read in this conversation",
+            p.display()
+        );
+    }
+
+    let edited = env.workspace.with_write(&p, || {
         let text = std::fs::read_to_string(&p).context("failed to read file")?;
         let table = lang::table(&p, &text);
-        let (updated, memo, message) = exact_text(&text, &table, &old, &new, env.full_item_budget)?;
-        write_atomic(&p, &updated)?;
-        Ok((updated, memo, message))
+        let edited = exact_text(&text, &table, &old, &new, env.full_item_budget)?;
+        write_atomic(&p, &edited.text)?;
+        Ok(edited)
     })?;
-    let (updated, memo, message) = updated;
-    env.seen.files.insert(p.clone(), License::of(&updated));
-    Ok(ToolOutput::with_memo(
-        format!("{message}: {}", p.display()),
-        memo,
-    ))
+    env.seen.stamp(p.clone(), &edited.text);
+    let last = edited.at + edited.lines.saturating_sub(1);
+    let text = format!("{}: {}", edited.receipt, p.display());
+
+    // The compiler answers for the file after the batch's last write; its faults hang under the changed lines.
+    if let Some(checker) = lang::checker(&p)
+        && let Some(root) = (checker.unit)(&p)
+    {
+        env.shells.push(Shell {
+            call_id: env.current.clone(),
+            mine: (checker.shown)(&root, &p),
+            root,
+            file: p.clone(),
+            unfold,
+            seam: false,
+            slots: vec![Slot {
+                landing: Some((edited.at, last.max(edited.at))),
+                insert_at: text.lines().count(),
+            }],
+        });
+    }
+    Ok(ToolOutput::with_memo(text, edited.memo))
 }
 
-/// Replace one unique run of text.
+// One exact replacement: the new text, the item around it, the receipt, and where it landed.
+pub(crate) struct Edited {
+    pub(crate) text: String,
+    pub(crate) memo: Value,
+    pub(crate) receipt: String,
+    pub(crate) at: usize,
+    pub(crate) lines: usize,
+}
+
+// Replace one unique run of text.
 pub(crate) fn exact_text(
     text: &str,
     table: &lang::Table,
     old: &str,
     new: &str,
     cap: usize,
-) -> Result<(String, Value, String)> {
+) -> Result<Edited> {
     anyhow::ensure!(!old.is_empty(), "`old` must not be empty");
 
     match text.matches(old).count() {
@@ -80,20 +129,17 @@ pub(crate) fn exact_text(
             let old_lines = change::lines_of(old).len();
             let new_lines = change::lines_of(new).len();
             let total = text.lines().count() + new_lines - old_lines;
-            Ok((
-                text.replacen(old, new, 1),
-                change::context(table, text, at, old_lines, cap),
-                change::receipt(at, old_lines, new_lines, total),
-            ))
+            Ok(Edited {
+                text: text.replacen(old, new, 1),
+                memo: change::context(table, text, at, old_lines, cap),
+                receipt: change::receipt(at, old_lines, new_lines, total),
+                at,
+                lines: new_lines,
+            })
         }
         n => Err(anyhow!(
             "`old` appears {n} times; make it longer with surrounding context, \
              or use `splice` to replace by line number"
         )),
     }
-}
-
-/// One line for a history listing: which file.
-fn summary(call: &CallRecord) -> String {
-    summary::path(call)
 }

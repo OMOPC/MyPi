@@ -4,10 +4,10 @@ use super::LANGUAGE;
 use super::scan::{self, Blank};
 use crate::server::agent::tools::fs::lang::{Line, Table};
 
-/// The suffix this sorter answers to.
+// The suffix this sorter answers to.
 pub(crate) const SUFFIXES: &[&str] = &["rs"];
 
-/// Words that begin a piece once its modifiers are behind it.
+// Words that begin a piece once its modifiers are behind it.
 const HEADS: &[&str] = &[
     "fn",
     "struct",
@@ -25,15 +25,15 @@ const HEADS: &[&str] = &[
     "macro",
 ];
 
-/// Words that may stand before a head, or between two of them (`pub async unsafe fn`).
+// Words that may stand before a head, or between two of them (`pub async unsafe fn`).
 const MODIFIERS: &[&str] = &[
     "pub", "const", "unsafe", "async", "default", "auto", "gen", "extern",
 ];
 
-/// A function at least this long hands out key lines inside its body.
+// A function at least this long hands out key lines inside its body.
 const LONG: usize = 15;
 
-/// One file's line table.
+// One file's line table.
 pub(crate) fn table(text: &str) -> Table {
     let raw: Vec<&str> = text.lines().collect();
     let code = scan::strip(text, token);
@@ -45,7 +45,7 @@ pub(crate) fn table(text: &str) -> Table {
     table
 }
 
-/// Every declaration: the line it opens on, the line it ends on, and what it binds.
+// Every declaration: the line it opens on, the line it ends on, and what it binds.
 fn pieces(raw: &[&str], code: &[String], ends: &[Option<usize>], table: &mut Table) {
     for (at, line) in code.iter().enumerate() {
         let Some(kind) = head_of(line.trim_start()) else {
@@ -64,7 +64,7 @@ fn pieces(raw: &[&str], code: &[String], ends: &[Option<usize>], table: &mut Tab
     }
 }
 
-/// Comment and attribute blocks: their first and last lines are key, whatever they hold.
+// Comment and attribute blocks: their first and last lines are key, whatever they hold.
 fn hats(raw: &[&str], code: &[String], table: &mut Table) {
     let n = raw.len();
     let mut at = 0;
@@ -87,8 +87,7 @@ fn hats(raw: &[&str], code: &[String], table: &mut Table) {
             }
             break;
         }
-        // A hat that owns nothing is prose, and prose gets no number — except at the file's own
-        // head, which is always worth a line a change can name.
+        // A hat that owns nothing is prose, and prose gets no number — except at the file's own head, which is always worth a line a change can name.
         if start == 0 || (end + 1 < n && !raw[end + 1].trim().is_empty()) {
             table.span(start, end, None, None);
         }
@@ -96,14 +95,14 @@ fn hats(raw: &[&str], code: &[String], table: &mut Table) {
     }
 }
 
-/// A long function's own control-flow blocks: `if`, `match`, `loop`, and the closures after a `=`.
+// A long function's own control-flow blocks: `if`, `match`, `loop`, and the closures after a `=`.
 fn control(code: &[String], ends: &[Option<usize>], table: &mut Table) {
     for (open, close) in scan::frames(code, '{', '}') {
         if head_of(code[open].trim_start()) != Some("fn") || close <= open + LONG {
             continue;
         }
-        for at in open + 1..close {
-            if !control_head(code[at].trim()) || table.key(at) {
+        for (at, line) in code.iter().enumerate().take(close).skip(open + 1) {
+            if !control_head(line.trim()) || table.key(at) {
                 continue;
             }
             let end = ends.get(at).copied().flatten().unwrap_or(at);
@@ -112,8 +111,7 @@ fn control(code: &[String], ends: &[Option<usize>], table: &mut Table) {
     }
 }
 
-/// The head word of a declaration, once its modifiers are behind it; `None` when the line opens
-/// no piece. `pub async fn` → `fn`, `pub(crate) mod` → `mod`.
+// The head word of a declaration, once its modifiers are behind it; `None` when the line opens no piece. `pub async fn` → `fn`, `pub(crate) mod` → `mod`.
 fn head_of(line: &str) -> Option<&'static str> {
     for raw in line.split_whitespace() {
         if raw.starts_with('#') || raw.starts_with('!') {
@@ -137,10 +135,7 @@ fn head_of(line: &str) -> Option<&'static str> {
     None
 }
 
-/// A header's ends: the line the body opens on, and whether there is a body at all.
-///
-/// Brackets are counted, so a wrapped `where` clause and nested generics stay inside the header;
-/// `->` and `=>` contribute no closing angle.
+// A header's ends: the line the body opens on, and whether there is a body at all. Brackets are counted, so a wrapped `where` clause and nested generics stay inside the header; `->` and `=>` contribute no closing angle.
 fn span(code: &[String], start: usize) -> Option<(usize, bool)> {
     let mut paren = 0i64;
     let mut square = 0i64;
@@ -168,7 +163,7 @@ fn span(code: &[String], start: usize) -> Option<(usize, bool)> {
     None
 }
 
-/// A header's lines joined into one, so a wrapped signature reads as one line.
+// A header's lines joined into one, so a wrapped signature reads as one line.
 fn header_text(raw: &[&str], head: usize, open: usize) -> String {
     let mut text = String::new();
     for line in raw.iter().take(open + 1).skip(head) {
@@ -184,9 +179,7 @@ fn header_text(raw: &[&str], head: usize, open: usize) -> String {
     text
 }
 
-/// What a declaration is: the head template it reads by, and the line's own header with its
-/// body's opener dropped. `pub async fn send` → `pub async fn` and `pub async fn send`;
-/// `impl Display for Env` → `impl a for b` and `impl Display for Env`.
+// What a declaration is: the head template it reads by, and the line's own header with its body's opener dropped. `pub async fn send` → `pub async fn` and `pub async fn send`; `impl Display for Env` → `impl a for b` and `impl Display for Env`.
 fn names_of(kind: &'static str, header: &str) -> (String, Option<String>) {
     let exact = without_body(header, kind);
     let mut label = words_before(&exact, kind);
@@ -200,8 +193,7 @@ fn names_of(kind: &'static str, header: &str) -> (String, Option<String>) {
     (label, Some(exact))
 }
 
-/// A header with its body's own punctuation behind it: `fn f() {}` → `fn f()`, `struct S;` →
-/// `struct S`, while a `use` tree keeps its braces.
+// A header with its body's own punctuation behind it: `fn f() {}` → `fn f()`, `struct S;` → `struct S`, while a `use` tree keeps its braces.
 fn without_body(header: &str, kind: &str) -> String {
     let mut exact = header.trim();
     if let Some(rest) = exact.strip_suffix(';') {
@@ -219,8 +211,7 @@ fn without_body(header: &str, kind: &str) -> String {
     exact.to_string()
 }
 
-/// The modifier words standing before the head word, joined: `pub async unsafe fn` → `pub async
-/// unsafe`.
+// The modifier words standing before the head word, joined: `pub async unsafe fn` → `pub async unsafe`.
 fn words_before(header: &str, kind: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     for word in header.split_whitespace() {
@@ -232,7 +223,7 @@ fn words_before(header: &str, kind: &str) -> String {
     out.join(" ")
 }
 
-/// A token's leading identifier: `pub(crate)` → `pub`, `impl<T>` → `impl`.
+// A token's leading identifier: `pub(crate)` → `pub`, `impl<T>` → `impl`.
 fn raw_word(token: &str) -> String {
     token
         .chars()
@@ -240,7 +231,7 @@ fn raw_word(token: &str) -> String {
         .collect()
 }
 
-/// The kind of piece a line opens: the head word of its label, so `impl a for b` reads `impl`.
+// The kind of piece a line opens: the head word of its label, so `impl a for b` reads `impl`.
 pub(crate) fn shape(line: &Line) -> Option<&str> {
     let label = line.label.as_deref()?;
     label.split_whitespace().find(|word| HEADS.contains(word))
@@ -263,8 +254,7 @@ fn bracket_delta(code: &str) -> i32 {
     delta
 }
 
-/// A line that opens a multi-line block inside a long function, in three passes: a keyword, the
-/// same keyword behind an expression prefix, then a macro call or a closure.
+// A line that opens a multi-line block inside a long function, in three passes: a keyword, the same keyword behind an expression prefix, then a macro call or a closure.
 fn control_head(line: &str) -> bool {
     let line = line.trim();
     // A line may close the block above and open the next one: `} else if cond {`.
@@ -275,12 +265,11 @@ fn control_head(line: &str) -> bool {
     if control_word(expression_tail(head)) {
         return true;
     }
-    // A macro or a closure counts only when its `{` ends the line: `.map(|x| x + 1)` is one line,
-    // and a folded `|` is not a block.
+    // A macro or a closure counts only when its `{` ends the line: `.map(|x| x + 1)` is one line, and a folded `|` is not a block.
     line.ends_with('{') && (line.contains("!{") || line.contains("! {") || closure(line))
 }
 
-/// The words that open a block, whole: `elsewhere()` and `loop_count` are not two of them.
+// The words that open a block, whole: `elsewhere()` and `loop_count` are not two of them.
 fn control_word(line: &str) -> bool {
     if line.starts_with("if ") || line.starts_with("match ") || line.starts_with("while ") {
         return true;
@@ -298,7 +287,7 @@ fn control_word(line: &str) -> bool {
     false
 }
 
-/// The expression a block may open behind: after `let x =`, after an assignment, after a jump.
+// The expression a block may open behind: after `let x =`, after an assignment, after a jump.
 fn expression_tail(line: &str) -> &str {
     // `let Some(x) = foo() else {` opens its block at the `else`, not at the call.
     if line.starts_with("let ") && line.trim_end().ends_with("else {") {
@@ -316,7 +305,7 @@ fn expression_tail(line: &str) -> &str {
     }
 }
 
-/// The right side of an assignment, and only an assignment: a comparison is not one.
+// The right side of an assignment, and only an assignment: a comparison is not one.
 fn assignment(line: &str) -> Option<&str> {
     let (left, right) = line.split_once('=')?;
     let left = left.trim_end();
@@ -326,30 +315,30 @@ fn assignment(line: &str) -> Option<&str> {
     Some(right)
 }
 
-/// `spawn(move || {` and `.map(|x| {`: the line opens with a closure's brace.
+// `spawn(move || {` and `.map(|x| {`: the line opens with a closure's brace.
 fn closure(line: &str) -> bool {
     line.strip_suffix('{')
         .map(str::trim_end)
         .is_some_and(|head| head.ends_with('|'))
 }
 
-/// The Rust delimiters: comments, quoted and raw literals, char literals and their prefixes.
+// The Rust delimiters: comments, quoted and raw literals, char literals and their prefixes.
 fn token(blank: &mut Blank, c: char) -> bool {
     match c {
         '/' if blank.peek(1) == Some('/') => {
             blank.skip(2);
-            blank.to_eol();
+            blank.skip_to_eol();
             blank.gap();
         }
         '/' if blank.peek(1) == Some('*') => {
             blank.skip(2);
-            blank.to_block(true);
+            blank.skip_block(true);
             blank.gap();
         }
         '"' => {
             blank.skip(1);
             blank.gap();
-            blank.to_quote('"');
+            blank.skip_quote('"');
         }
         '\'' => return quote(blank),
         'r' | 'b' => return prefixed(blank, c),
@@ -358,7 +347,7 @@ fn token(blank: &mut Blank, c: char) -> bool {
     true
 }
 
-/// A char literal closes within a few characters; a lifetime never closes.
+// A char literal closes within a few characters; a lifetime never closes.
 fn quote(blank: &mut Blank) -> bool {
     if blank.peek(1) == Some('\\') {
         for k in 2..14 {
@@ -381,7 +370,7 @@ fn quote(blank: &mut Blank) -> bool {
     true
 }
 
-/// `r"…"`, `r#"…"#`, `b"…"`, `b'…'`, `br#"…"#`: the prefixes that keep a literal whole.
+// `r"…"`, `r#"…"#`, `b"…"`, `b'…'`, `br#"…"#`: the prefixes that keep a literal whole.
 fn prefixed(blank: &mut Blank, c: char) -> bool {
     if c == 'r' {
         let mut k = 1;
@@ -392,7 +381,7 @@ fn prefixed(blank: &mut Blank, c: char) -> bool {
             let hashes = k - 1;
             blank.skip(k + 1);
             blank.gap();
-            blank.to_raw(hashes);
+            blank.skip_raw(hashes);
             return true;
         }
     }
@@ -401,7 +390,7 @@ fn prefixed(blank: &mut Blank, c: char) -> bool {
             Some('"') => {
                 blank.skip(2);
                 blank.gap();
-                blank.to_quote('"');
+                blank.skip_quote('"');
                 return true;
             }
             Some('\'') => {
@@ -417,7 +406,7 @@ fn prefixed(blank: &mut Blank, c: char) -> bool {
                     let hashes = k - 2;
                     blank.skip(k + 1);
                     blank.gap();
-                    blank.to_raw(hashes);
+                    blank.skip_raw(hashes);
                     return true;
                 }
             }

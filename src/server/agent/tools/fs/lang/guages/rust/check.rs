@@ -37,9 +37,7 @@ pub(super) fn title(root: &Path) -> String {
     })
 }
 
-// Type-check one crate to completion, in the compiler's own order. No deadline: a batch checks
-// once, and only the turn's stop ends it. Cargo has no per-file mode, so the files this batch
-// wrote only say which unit to check, never which part of one.
+// Type-check one crate to completion, in the compiler's own order. No deadline: a batch checks once, and only the turn's stop ends it. Cargo has no per-file mode, so the files this batch wrote only say which unit to check, never which part of one.
 fn run(root: &Path, _touched: &[PathBuf], stop: &Stop) -> Check {
     let mut cmd = Command::new(cargo());
     cmd.args(["check", "--message-format=json", "--quiet"])

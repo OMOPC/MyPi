@@ -1,4 +1,4 @@
-//! read: files by line numbers, directories by name.
+// read: files by line numbers, directories by name.
 
 mod dir;
 mod items;

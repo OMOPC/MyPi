@@ -2,10 +2,10 @@
 
 use crate::server::agent::tools::fs::lang::{Language, Line, Table};
 
-/// The suffixes this sorter answers to.
+// The suffixes this sorter answers to.
 pub(crate) const SUFFIXES: &[&str] = &["md", "markdown"];
 
-/// What this language owes the registry: its suffixes, its table, and the two questions.
+// What this language owes the registry: its suffixes, its table, and the two questions.
 pub(crate) static LANGUAGE: Language = Language {
     suffixes: SUFFIXES,
     table,
@@ -18,7 +18,7 @@ pub(crate) static LANGUAGE: Language = Language {
     test: None,
 };
 
-/// One file's line table.
+// One file's line table.
 pub(crate) fn table(text: &str) -> Table {
     let raw: Vec<&str> = text.lines().collect();
     let mut out = Table::new(raw.len(), &LANGUAGE);
@@ -44,19 +44,18 @@ pub(crate) fn table(text: &str) -> Table {
     out
 }
 
-/// What a piece of this file is: `heading`, `fence`, `list`, `quote`, `html`, `front`.
+// What a piece of this file is: `heading`, `fence`, `list`, `quote`, `html`, `front`.
 pub(crate) fn shape(line: &Line) -> Option<&str> {
     line.label.as_deref()
 }
 
-/// The front matter's pair of `---` at the file's head; the line the rest of the file starts on.
-/// An unclosed `---` is a thematic break, which carries nothing.
+// The front matter's pair of `---` at the file's head; the line the rest of the file starts on. An unclosed `---` is a thematic break, which carries nothing.
 fn front(raw: &[&str], table: &mut Table) -> usize {
     if raw.first().map(|line| line.trim_end()) != Some("---") {
         return 0;
     }
-    for at in 1..raw.len() {
-        if raw[at].trim_end() == "---" {
+    for (at, line) in raw.iter().enumerate().skip(1) {
+        if line.trim_end() == "---" {
             table.span(0, at, Some("front".to_string()), Some("---".to_string()));
             return at + 1;
         }
@@ -64,7 +63,7 @@ fn front(raw: &[&str], table: &mut Table) -> usize {
     0
 }
 
-/// The fence this line opens: its mark, and how many marks it runs.
+// The fence this line opens: its mark, and how many marks it runs.
 fn fence(line: &str) -> Option<(char, usize)> {
     let text = line.trim_start();
     let mark = match text.chars().next() {
@@ -75,14 +74,14 @@ fn fence(line: &str) -> Option<(char, usize)> {
     (run >= 3).then_some((mark, run))
 }
 
-/// Whether this line closes a fence opened with `run` marks of `mark`, and carries nothing else.
+// Whether this line closes a fence opened with `run` marks of `mark`, and carries nothing else.
 fn closes(line: &str, mark: char, run: usize) -> bool {
     let text = line.trim();
     let marks = text.chars().take_while(|one| *one == mark).count();
     marks >= run && marks == text.chars().count()
 }
 
-/// A fenced block: its two fence lines are key, and nothing inside it is read as structure.
+// A fenced block: its two fence lines are key, and nothing inside it is read as structure.
 fn fenced(raw: &[&str], table: &mut Table, open: usize, mark: char, run: usize) -> usize {
     let info = info(raw[open], mark);
     match (open + 1..raw.len()).find(|at| closes(raw[*at], mark, run)) {
@@ -97,13 +96,13 @@ fn fenced(raw: &[&str], table: &mut Table, open: usize, mark: char, run: usize) 
     }
 }
 
-/// The word a fence names itself with: ```` ```rust ```` reads `rust`.
+// The word a fence names itself with: ```` ```rust ```` reads `rust`.
 fn info(line: &str, mark: char) -> Option<String> {
     let rest = line.trim().trim_start_matches(mark).trim();
     (!rest.is_empty()).then(|| rest.to_string())
 }
 
-/// A heading's level, when this line is one: one to six marks, then a space or the line's end.
+// A heading's level, when this line is one: one to six marks, then a space or the line's end.
 fn heading(line: &str) -> Option<usize> {
     let text = line.trim_start();
     let level = text.chars().take_while(|one| *one == '#').count();
@@ -114,12 +113,12 @@ fn heading(line: &str) -> Option<usize> {
     (rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t')).then_some(level)
 }
 
-/// Whether this line is quoted.
+// Whether this line is quoted.
 fn quoted(line: &str) -> bool {
     line.trim_start().starts_with('>')
 }
 
-/// A run of quoted lines: its first and its last are key.
+// A run of quoted lines: its first and its last are key.
 fn quote(raw: &[&str], table: &mut Table, open: usize) -> usize {
     let mut at = open;
     while at < raw.len() && quoted(raw[at]) {
@@ -130,7 +129,7 @@ fn quote(raw: &[&str], table: &mut Table, open: usize) -> usize {
     at
 }
 
-/// The tag this line opens an HTML block with; a line whose `<` names no tag is prose.
+// The tag this line opens an HTML block with; a line whose `<` names no tag is prose.
 fn html(line: &str) -> Option<String> {
     let rest = line.trim_start().strip_prefix('<')?;
     let tag: String = rest
@@ -143,8 +142,7 @@ fn html(line: &str) -> Option<String> {
         .then_some(tag)
 }
 
-/// One HTML block: the line naming its tag and the line closing it. A tag that never closes owns
-/// only its own line.
+// One HTML block: the line naming its tag and the line closing it. A tag that never closes owns only its own line.
 fn block(raw: &[&str], table: &mut Table, open: usize, tag: &str) -> usize {
     let closing = format!("</{tag}");
     let close = (open..raw.len())
@@ -155,7 +153,7 @@ fn block(raw: &[&str], table: &mut Table, open: usize, tag: &str) -> usize {
     close + 1
 }
 
-/// Whether this line starts a list item: a bullet, or a number with `.` or `)`, then a space.
+// Whether this line starts a list item: a bullet, or a number with `.` or `)`, then a space.
 fn marker(line: &str) -> bool {
     let text = line.trim_start();
     let mut rest = text.chars();
@@ -178,7 +176,7 @@ fn marker(line: &str) -> bool {
     matches!(after, Some(' ') | Some('\t'))
 }
 
-/// One list: its first and its last line are key, and outer item lines that stand alone when items nest.
+// One list: its first and its last line are key, and outer item lines that stand alone when items nest.
 fn listed(raw: &[&str], table: &mut Table, open: usize) -> usize {
     let base = indent(raw[open]);
     let mut outer: Vec<usize> = Vec::new();
@@ -220,15 +218,14 @@ fn listed(raw: &[&str], table: &mut Table, open: usize) -> usize {
     at
 }
 
-/// How far this line is indented: a list's nesting is its indentation and nothing else.
+// How far this line is indented: a list's nesting is its indentation and nothing else.
 fn indent(line: &str) -> usize {
     line.chars()
         .take_while(|one| *one == ' ' || *one == '\t')
         .count()
 }
 
-/// Every heading's section: its heading line is key, its reach is remembered for the tools that
-/// ask which section a line sits in. The section's own last line is prose, and prose gets no number.
+// Every heading's section: its heading line is key, its reach is remembered for the tools that ask which section a line sits in. The section's own last line is prose, and prose gets no number.
 fn sections(raw: &[&str], table: &mut Table, headings: &[(usize, usize)]) {
     let last = raw.len().saturating_sub(1);
     for (index, (at, level)) in headings.iter().enumerate() {
@@ -242,7 +239,7 @@ fn sections(raw: &[&str], table: &mut Table, headings: &[(usize, usize)]) {
     }
 }
 
-/// The last line of a range that carries something: trailing blank lines are nobody's section.
+// The last line of a range that carries something: trailing blank lines are nobody's section.
 fn trail(raw: &[&str], from: usize, end: usize) -> usize {
     let mut end = end.min(raw.len().saturating_sub(1));
     while end > from && raw[end].trim().is_empty() {

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::server::agent::tools::contract::env::{GrepLimits, License, Seen};
+use crate::server::agent::tools::contract::env::{GrepLimits, Seen};
 use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::{self, Relation, Source};
 use crate::server::agent::tools::fs::skeleton;
@@ -13,6 +13,7 @@ use super::scan;
 const LEDGER_MAX: usize = 500;
 
 // One answered call's text, and the files whose lines it showed.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn answer(
     query: &str,
     mode: &str,
@@ -69,7 +70,7 @@ pub(crate) fn answer(
                 table: &file.table,
             })
             .collect();
-        let relation = (relations.scan)(&sources, &zone.root, query, caps.members, caps.impls);
+        let relation = (relations.scan)(&sources, &zone.root, query);
         for &index in &relation.used {
             shown.insert(index);
         }
@@ -174,18 +175,16 @@ fn whole(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
         if !above.is_empty() {
             out.push_str(&format!("  in: {}\n", above.join(" > ")));
         }
-        for index in item.open..=item.close {
-            let text = raw[index];
+        for (index, text) in raw.iter().enumerate().take(item.close + 1).skip(item.open) {
             let mark = (item.hits.contains(&index) || file.table.key(index)).then_some(index + 1);
-            out.push_str(&skeleton::numbered(width, mark, &text));
+            out.push_str(&skeleton::numbered(width, mark, text));
             out.push('\n');
         }
     }
     out
 }
 
-// Tier 2: the outline of every item — its ancestors' head lines once per file, then its key lines
-// and hit lines, the item's own head row carrying where the piece closes.
+// Tier 2: the outline of every item — its ancestors' head lines once per file, then its key lines and hit lines, the item's own head row carrying where the piece closes.
 fn outline(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
     let mut out = format!("{label}\n");
     let mut heads: BTreeSet<usize> = BTreeSet::new();
@@ -196,19 +195,18 @@ fn outline(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String
                 out.push('\n');
             }
         }
-        for index in item.open..=item.close {
+        for (index, text) in raw.iter().enumerate().take(item.close + 1).skip(item.open) {
             if !file.table.key(index) && !item.hits.contains(&index) {
                 continue;
             }
-            out.push_str(&skeleton::numbered(width, Some(index + 1), raw[index]));
+            out.push_str(&skeleton::numbered(width, Some(index + 1), text));
             out.push('\n');
         }
     }
     out
 }
 
-// The census's rows: one per file that holds an item, widest first, within the room, and how many
-// files the room could not hold.
+// The census's rows: one per file that holds an item, widest first, within the room, and how many files the room could not hold.
 fn census(
     files: &[scan::File],
     zone: &scan::Zone,
@@ -221,7 +219,7 @@ fn census(
         .filter(|(_, file)| !file.items.is_empty())
         .map(|(at, file)| (at, parts::rel(&zone.root, &file.path), file.items.len()))
         .collect();
-    rows.sort_by(|a, b| b.2.cmp(&a.2));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.2));
     let mut out = String::new();
     for (at, path, count) in rows.iter().take(room) {
         out.push_str(&format!("  {path}  {}\n", parts::plural(*count, "item")));
@@ -234,7 +232,6 @@ fn census(
 pub(crate) fn stamp(seen: &mut Seen, files: &[scan::File], shown: &BTreeSet<usize>) {
     for at in shown {
         let file = &files[*at];
-        seen.files
-            .insert(file.path.clone(), License::of(&file.text));
+        seen.stamp(file.path.clone(), &file.text);
     }
 }

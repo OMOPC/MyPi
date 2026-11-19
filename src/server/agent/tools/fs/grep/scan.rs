@@ -138,8 +138,7 @@ pub(crate) struct Item {
     pub hits: Vec<usize>,
 }
 
-// The items a file's hits make: each hit takes its nearest enclosing piece, a span that lands
-// inside an item joins it, and a later span that swallows items absorbs them into one.
+// The items a file's hits make: each hit takes its nearest enclosing piece, a span that lands inside an item joins it, and a later span that swallows items absorbs them into one.
 fn items(table: &Table, hits: &[usize]) -> Vec<Item> {
     let mut out: Vec<Item> = Vec::new();
     for &line in hits {

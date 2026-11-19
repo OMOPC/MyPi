@@ -9,12 +9,16 @@ use crate::server::agent::tools::fs::lang::{self, Line, Relation, Relations, Row
 // How Rust's relations read: a namespace or a type, indexed by `::`.
 pub(crate) const RELATIONS: Relations = Relations { scan };
 
+// Members one block lists, and impl blocks one type's x-ray lists.
+const MEMBERS: usize = 12;
+const IMPLS: usize = 8;
+
 // The rows a query answers: `A::b` a module or type member, a lone name its declarations and impls.
-fn scan(sources: &[Source], root: &Path, query: &str, items: usize, impls: usize) -> Relation {
+fn scan(sources: &[Source], root: &Path, query: &str) -> Relation {
     let mut used = Vec::new();
     if let Some((a, b)) = two_segments(query) {
         let mut rows = Vec::new();
-        let mine = type_rows(sources, root, &a, &b, items, &mut used);
+        let mine = type_rows(sources, root, &a, &b, MEMBERS, &mut used);
         match mine.is_empty() {
             true => rows.push(Row {
                 heading: None,
@@ -58,7 +62,7 @@ fn scan(sources: &[Source], root: &Path, query: &str, items: usize, impls: usize
         return Relation { rows, used };
     }
     if let Some(name) = single_name(query) {
-        let rows = x_ray_rows(sources, root, name, items, impls, &mut used);
+        let rows = x_ray_rows(sources, root, name, MEMBERS, IMPLS, &mut used);
         if rows.is_empty() {
             return Relation {
                 rows: Vec::new(),
@@ -349,8 +353,8 @@ fn member_row(table: &Table, at: usize) -> String {
 // Lines inside one piece's body whose own line binds `name`: a variant, a field, a const.
 fn members(raw: &[&str], from: usize, to: usize, name: &str) -> Vec<usize> {
     let mut out = Vec::new();
-    for at in from..to.min(raw.len()) {
-        let line = raw[at].trim();
+    for (at, text) in raw.iter().enumerate().take(to.min(raw.len())).skip(from) {
+        let line = text.trim();
         let Some(rest) = line.strip_prefix(name) else {
             continue;
         };
@@ -381,8 +385,7 @@ fn binds(table: &Table, line: &Line, word: &str) -> bool {
     }
 }
 
-// `impl Tr for A` → `(A, Tr)`; `impl A` → `(A, None)`. A higher-ranked bound writes `for<'a>`,
-// with no space before its angle, so only the spaced `for` splits a header.
+// `impl Tr for A` → `(A, Tr)`; `impl A` → `(A, None)`. A higher-ranked bound writes `for<'a>`, with no space before its angle, so only the spaced `for` splits a header.
 fn impl_names(header: &str) -> (Option<String>, Option<String>) {
     match header.rfind(" for ") {
         Some(at) => (type_name(&header[at + 5..]), own_target(&header[..at])),
@@ -430,8 +433,7 @@ fn type_name(text: &str) -> Option<String> {
             rest = next;
             continue;
         }
-        if trimmed.starts_with('\'') {
-            let after = &trimmed[1..];
+        if let Some(after) = trimmed.strip_prefix('\'') {
             let len = after
                 .find(|c: char| !(c.is_alphanumeric() || c == '_'))
                 .unwrap_or(after.len());

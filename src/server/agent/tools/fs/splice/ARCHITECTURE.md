@@ -15,7 +15,7 @@ What is here, what each file holds, who talks to whom. Current state only.
 ## What it talks to
 
 - **`contract::env::Env`**: `workspace` (the cwd and the per-path write lock), `seen` (a file's
-  licence: its line count and content hash, granted by `read` or `grep`), `batch` / `current` /
+  licence: its line count and content hash, granted by a read, a grep, or a clean write), `batch` / `current` /
   `handed` (the calls of this batch, so calls on one file become one write), `stop`, `shells`.
 - **`contract::view`**: `CallRecord`, for the one-line history summary.
 - **`fs::lang`**: the line table the answer numbers by, the formatter a suffix names, and the

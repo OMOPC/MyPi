@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result, anyhow};
 use super::{dir, items, sniff};
 use crate::server::agent::request::contract::ItemOk;
 use crate::server::agent::request::message::ImagePart;
-use crate::server::agent::tools::contract::env::{Env, License};
+use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
 use crate::server::agent::tools::fs::lang::graph::{self, Loader};
@@ -275,7 +275,7 @@ fn block(
     };
 
     if let Some(text) = &whole {
-        env.seen.files.insert(path.to_path_buf(), License::of(text));
+        env.seen.stamp(path.to_path_buf(), text);
     }
 
     // The body, then the module view, then the footer: what was left out comes last.
@@ -351,8 +351,7 @@ struct Body {
     status: Option<String>,
 }
 
-// The window's lines, prefixed by a gutter as wide as the file's own numbers, capped by bytes.
-// The gutter is `total`'s digit count plus one pipe, so a numbered line and an unnumbered one start in the same column and an empty line costs a newline and nothing else.
+// The window's lines, prefixed by a gutter as wide as the file's own numbers, capped by bytes. The gutter is `total`'s digit count plus one pipe, so a numbered line and an unnumbered one start in the same column and an empty line costs a newline and nothing else.
 fn assemble<'a>(
     first: usize,
     total: usize,

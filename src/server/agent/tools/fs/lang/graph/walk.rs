@@ -1,5 +1,4 @@
-// The upward walk: one whole level at a time under a deadline, or the whole tree once.
-// A level that runs out of time is dropped whole: half a level reads as "nobody else points here".
+// The upward walk: one whole level at a time under a deadline, or the whole tree once. A level that runs out of time is dropped whole: half a level reads as "nobody else points here".
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -64,10 +63,7 @@ fn levels(
     let mut stop = None;
     let mut complete = false;
     let mut level = 1;
-    loop {
-        let Some(base) = dir.ancestors().nth(level) else {
-            break;
-        };
+    while let Some(base) = dir.ancestors().nth(level) {
         if !base.starts_with(&domain.root) {
             break;
         }

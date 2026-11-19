@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use super::tool::header;
-use crate::server::agent::tools::contract::env::{Env, License};
+use crate::server::agent::tools::contract::env::Env;
 use crate::server::agent::tools::fs::lang::graph::loader;
 use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::{self, Line, Table};
@@ -86,11 +86,11 @@ fn block(raw: &[&str], table: &Table, at: usize, width: usize) -> String {
         Some(outer) => format!("{exact} ({outer})  {}..{}\n", at + 1, end + 1),
         None => format!("{exact}  {}..{}\n", at + 1, end + 1),
     };
-    for index in at..=end {
-        match raw[index].trim().is_empty() {
+    for (index, line) in raw.iter().enumerate().take(end + 1).skip(at) {
+        match line.trim().is_empty() {
             true => out.push('\n'),
             false => {
-                out.push_str(&skeleton::numbered(width, Some(index + 1), raw[index]));
+                out.push_str(&skeleton::numbered(width, Some(index + 1), line));
                 out.push('\n');
             }
         }
@@ -128,5 +128,5 @@ fn empty(path: &Path, needle: &str, cwd: &Path) -> String {
 
 // The file is one the model has now seen, under `splice`'s own definition.
 fn stamp(env: &mut Env, path: &Path, text: &str) {
-    env.seen.files.insert(path.to_path_buf(), License::of(text));
+    env.seen.stamp(path.to_path_buf(), text);
 }

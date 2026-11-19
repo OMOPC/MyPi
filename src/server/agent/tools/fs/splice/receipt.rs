@@ -1,7 +1,4 @@
-// What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits —
-// `path:first-last`, the item it sits in, and numbered source. A block that stands there carries
-// `+`; a deletion shows the lines it removed with `-`. The batch's audit hangs its lines where each
-// edit's block ended.
+// What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits — `path:first-last`, the item it sits in, and numbered source. A block that stands there carries `+`; a deletion shows the lines it removed with `-`. The batch's audit hangs its lines where each edit's block ended.
 
 use serde_json::{Value, json};
 
@@ -38,8 +35,7 @@ pub(crate) enum State {
     // It lost to an edit the batch had already accepted.
     Overlap,
 
-    // Its anchor words name a line that reads otherwise: the range it asked for, where its own
-    // lines sit now, and what it read instead.
+    // Its anchor words name a line that reads otherwise: the range it asked for, where its own lines sit now, and what it read instead.
     Mismatch {
         sent: (usize, usize),
         now: (usize, usize),
@@ -68,8 +64,7 @@ pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row]) -> (String, Value, Vec<usize
         .iter()
         .filter(|row| matches!(row.state, State::Applied { .. }))
         .count();
-    // A call that landed whole has nothing to show: the model's next move rests on the file itself,
-    // not on a diff it already knows it sent.
+    // A call that landed whole has nothing to show: the model's next move rests on the file itself, not on a diff it already knows it sent.
     let head = head(path, word, landed, rows.len());
     if landed == rows.len() && !rows.is_empty() && head.ends_with(": OK") {
         return (head, memo(rows), Vec::new());

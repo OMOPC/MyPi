@@ -3,7 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -95,6 +95,20 @@ pub struct Seen {
     pub dirs: std::collections::HashSet<PathBuf>,
     // Every file the model has read in this conversation: its license to write it.
     pub files: BTreeMap<PathBuf, License>,
+}
+
+impl Seen {
+    // Record one file's text as the version this conversation has seen.
+    pub(crate) fn stamp(&mut self, path: PathBuf, text: &str) {
+        self.files.insert(path, License::of(text));
+    }
+
+    // Take away one file's licence to be written until it is read again.
+    pub(crate) fn revoke(&mut self, path: &Path) {
+        if let Some(license) = self.files.get_mut(path) {
+            license.approval = false;
+        }
+    }
 }
 
 // One file's licence to be written by `splice`: a read granted it, a batch that is not whole or a drift on disk can revoke it.
@@ -197,17 +211,13 @@ pub struct Limits {
     pub bytes: usize,
 }
 
-// What `grep` folds by: four counts, two for the items and two for the x-ray.
+// What `grep` folds by: two counts, one for the items and one for the fold.
 #[derive(Debug, Clone, Copy)]
 pub struct GrepLimits {
     // Items an answer expands whole, every line of them.
     pub deep: usize,
     // Items it sketches; more than this folds to per-file counts.
     pub fold: usize,
-    // `impl` blocks one x-ray may list.
-    pub impls: usize,
-    // Members one block may list.
-    pub members: usize,
 }
 
 // The model roster a session offers its children: address → display name.

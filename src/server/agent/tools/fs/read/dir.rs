@@ -14,9 +14,7 @@ use crate::server::platform::time;
 // Direct files at or past this count fold into counts.
 const FOLD_AT: usize = 10;
 
-// One directory's listing, as its own counts and its body. The root is special: `src/` becomes a
-// section of its own. `docs` names the documents the user keeps current, which take no part in any
-// level's verdict.
+// One directory's listing, as its own counts and its body. The root is special: `src/` becomes a section of its own. `docs` names the documents the user keeps current, which take no part in any level's verdict.
 pub(crate) fn listing(path: &Path, cwd: &Path, docs: &[String]) -> Result<(String, String)> {
     let root = canonicalize_lenient(cwd);
     let target = canonicalize_lenient(path);
@@ -106,8 +104,7 @@ fn expand_one(list: &mut List, dir: &Entry, depth: usize, docs: &[String]) {
     }
 }
 
-// One level's entries with the level's own verdict applied: a level whose documents are all newer
-// than everything beside them keeps no stamps and marks the documents instead.
+// One level's entries with the level's own verdict applied: a level whose documents are all newer than everything beside them keeps no stamps and marks the documents instead.
 fn level(dir: &Path, skip: Option<&Path>, docs: &[String]) -> Vec<Entry> {
     let mut rows: Vec<Entry> = entries_all(dir)
         .into_iter()
@@ -128,8 +125,7 @@ fn level(dir: &Path, skip: Option<&Path>, docs: &[String]) -> Vec<Entry> {
     rows
 }
 
-// Whether the documents this level holds are newer than every other file beside them, so no stamp
-// is needed to know they stand as written. A level holding no such document answers yes.
+// Whether the documents this level holds are newer than every other file beside them, so no stamp is needed to know they stand as written. A level holding no such document answers yes.
 fn current_docs(rows: &[Entry]) -> bool {
     let mut oldest_doc: Option<SystemTime> = None;
     let mut newest_other: Option<SystemTime> = None;
@@ -165,8 +161,7 @@ struct Entry {
 }
 
 impl Entry {
-    // The name as one line shows it: the stamp first when the level carries stamps, then the name
-    // and the tag its level gave it.
+    // The name as one line shows it: the stamp first when the level carries stamps, then the name and the tag its level gave it.
     fn label(&self) -> String {
         let named = format!("{}{}", self.name, self.tag);
         match self.at {
@@ -211,8 +206,7 @@ fn row(name: String, path: PathBuf, dir: bool, docs: &[String]) -> Entry {
     }
 }
 
-// A name's part in the rule: only `.md` takes part, and only the stem is compared with the
-// configured ones. Upper case means no lower-case letter and at least one upper-case one.
+// A name's part in the rule: only `.md` takes part, and only the stem is compared with the configured ones. Upper case means no lower-case letter and at least one upper-case one.
 fn classify(name: &str, docs: &[String]) -> Kind {
     let Some(stem) = name.strip_suffix(".md") else {
         return Kind::Plain;

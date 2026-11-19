@@ -1,4 +1,4 @@
-//! grep: a word's hits, with the structure around each one.
+// grep: a word's hits, with the structure around each one.
 
 mod render;
 mod scan;

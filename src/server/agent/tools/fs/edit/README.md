@@ -9,10 +9,14 @@ never written somewhere the model did not mean.
 ### One call
 
 `path`, `old`, `new`. `old` is one unique run of the file's text; a run that appears zero or
-several times is refused. `new` is whatever stands in its place.
+several times is refused. `new` is whatever stands in its place. `unfold` lifts the shared check's
+fold for every written file of the batch.
 
 `edit` takes no array: its payload is large enough that a batch would move the same bytes into one
-argument. One call is one path in, one read, one atomic write.
+argument. One call is one path in, one read, one atomic write. The file must already be in
+`env.seen`: a path this conversation has not read is refused, and so is one whose last write did
+not land clean. A refusal takes the licence away, so the next attempt must read or grep the file
+first.
 
 A session gets either `edit` or `splice`, never both; the rule is in `../../README.md`.
 
@@ -23,6 +27,12 @@ One line names what went, what took its place, and how far the rest moved:
 ```text
 replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.rs
 ```
+
+### The batch's audit
+
+A written Rust file joins the batch's audit like `write` and `splice`: each error and warning stands
+under the answer, on the lines the change now occupies, and the crate's list carries only what no
+written call could hold. A stop leaves the file untouched.
 
 ### The memo
 
@@ -49,6 +59,8 @@ excerpt, signs the changed lines, and paints the rest.
   not unique is a question, not a write.
 - **One path, one read, one write.** The tool holds the per-path lock across the whole change, so
   no other call sees a half-applied edit.
+- **A read is the licence.** The tool refuses a path the conversation has not read, and checks the
+  same licence `splice` checks; the model cannot write by guessing text.
 - **The receipt is the proof.** The answer says what moved below the change, so the model does not
   re-read the file to learn the new coordinates.
 

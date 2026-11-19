@@ -1,10 +1,10 @@
 // The `write` tool: overwrite a whole file. The batch's audit type-checks it after the batch's last write; this call only formats, writes, and hands the file's shell to the audit.
 use anyhow::Result;
 
-use crate::server::agent::tools::contract::env::{Env, License, Shell, Slot};
+use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
 use crate::server::agent::tools::contract::halt::stopped;
 use crate::server::agent::tools::contract::output::ToolOutput;
-use crate::server::agent::tools::contract::view::CallRecord;
+
 use crate::server::agent::tools::fs::fault;
 use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::fs::lang::verdict::Outcome;
@@ -40,7 +40,7 @@ pub(crate) const TOOL: Tool = Tool {
              `unfold` lifts the shared check's fold for every written file of the batch.",
     params: PARAMS,
     run,
-    summary,
+    summary: summary::path,
 };
 
 // Write the whole file, **overwriting** an existing one. The counterpart of `edit`: `edit` refuses ambiguous matches, `write` refuses nothing. The caller brings the full content.
@@ -86,7 +86,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
     env.workspace
         .with_write(&p, || write_atomic(&p, &written))?;
-    env.seen.files.insert(p.clone(), License::of(&written));
+    env.seen.stamp(p.clone(), &written);
     let bytes = written.len();
     let mut text = format!(
         "{} {} ({bytes} bytes)",
@@ -120,9 +120,4 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         });
     }
     Ok(ToolOutput::text(text))
-}
-
-// One line for a history listing: which file.
-fn summary(call: &CallRecord) -> String {
-    summary::path(call)
 }

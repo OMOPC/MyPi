@@ -1,5 +1,4 @@
-// The skeleton a report draws: numbered source lines, the pieces of a line range, the seam around
-// an error.
+// The skeleton a report draws: numbered source lines, the pieces of a line range, the seam around an error.
 
 use super::lang::Table;
 use crate::server::agent::tools::summary;
@@ -21,8 +20,7 @@ pub(crate) fn width(total: usize) -> usize {
     total.to_string().len()
 }
 
-// One source line behind its gutter: the number right-aligned, then the pipe, then the text. A
-// blank number leaves the same width of spaces, so both kinds start in one column.
+// One source line behind its gutter: the number right-aligned, then the pipe, then the text. A blank number leaves the same width of spaces, so both kinds start in one column.
 pub(crate) fn numbered(width: usize, mark: Option<usize>, line: &str) -> String {
     match mark {
         Some(at) => format!("{at:>width$}|{line}"),
@@ -40,8 +38,7 @@ pub(crate) fn innermost(table: &Table, at: usize) -> Option<Block> {
     })
 }
 
-// The lines around one range: two above, its own edges, two below, the middle folded when the
-// range is long.
+// The lines around one range: two above, its own edges, two below, the middle folded when the range is long.
 pub(crate) fn seam(raw: &[&str], first: usize, last: usize, width: usize) -> Vec<String> {
     let n = raw.len();
     if n == 0 {

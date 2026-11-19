@@ -1,5 +1,4 @@
-// The module graph machine: what one unit's neighbourhood looks like, and how it is printed.
-// It knows no language: a `Hub` supplies every fact, this layer only aggregates.
+// The module graph machine: what one unit's neighbourhood looks like, and how it is printed. It knows no language: a `Hub` supplies every fact, this layer only aggregates.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -40,11 +39,11 @@ pub(crate) fn render(
 // One unit of a language: a file, a directory, or a named thing with no entry file at all.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Unit {
-    /// The name the view prints; `a::b` for Rust, the note's stem for Markdown.
+    // The name the view prints; `a::b` for Rust, the note's stem for Markdown.
     pub(crate) name: String,
-    /// What identifies it: a canonical path.
+    // What identifies it: a canonical path.
     pub(crate) place: PathBuf,
-    /// The file that carries its text, when it has one.
+    // The file that carries its text, when it has one.
     pub(crate) entry: Option<PathBuf>,
 }
 
@@ -52,28 +51,28 @@ pub(crate) struct Unit {
 #[derive(Clone, Debug)]
 pub(crate) struct Decl {
     pub(crate) unit: Unit,
-    /// The line the parent writes it on, if the parent has a line to point at.
+    // The line the parent writes it on, if the parent has a line to point at.
     pub(crate) line: Option<usize>,
-    /// The file that line lives in.
+    // The file that line lives in.
     pub(crate) from: Option<PathBuf>,
-    /// The language's own words; the machine prints them and never interprets them.
+    // The language's own words; the machine prints them and never interprets them.
     pub(crate) tags: Vec<String>,
 }
 
 // One reference as a language reads it: where it is written, what it names, where it lands.
 #[derive(Clone, Debug)]
 pub(crate) struct RawEdge {
-    /// The 0-based line the reference starts on. A view prints it 1-based.
+    // The 0-based line the reference starts on. A view prints it 1-based.
     pub(crate) line: usize,
-    /// The reference as written, for a target that lands outside this tree.
+    // The reference as written, for a target that lands outside this tree.
     pub(crate) wrote: String,
-    /// The names this edge carries; empty when only the relation is known.
+    // The names this edge carries; empty when only the relation is known.
     pub(crate) symbols: Vec<String>,
-    /// Candidate landing files, in order; empty when it lands outside the tree.
+    // Candidate landing files, in order; empty when it lands outside the tree.
     pub(crate) targets: Vec<PathBuf>,
-    /// The forwarding entry files passed on the way, in order.
+    // The forwarding entry files passed on the way, in order.
     pub(crate) via: Vec<PathBuf>,
-    /// This edge is itself a forwarding declaration, not a consumer.
+    // This edge is itself a forwarding declaration, not a consumer.
     pub(crate) re_export: bool,
 }
 
@@ -98,18 +97,18 @@ pub(crate) struct Domain {
 pub(crate) enum Size {
     Lines(usize),
     Files(usize),
-    /// Nothing was readable.
+    // Nothing was readable.
     Unknown,
 }
 
 // One resolved reference, from a unit to a unit or to nothing.
 #[derive(Clone, Debug)]
 pub(crate) struct Edge {
-    /// The file this line is written in; a unit may hold several.
+    // The file this line is written in; a unit may hold several.
     pub(crate) at: PathBuf,
-    /// The unit it lands on; `None` when it lands outside the tree.
+    // The unit it lands on; `None` when it lands outside the tree.
     pub(crate) to: Option<Unit>,
-    /// The file it lands on, one step finer than the unit.
+    // The file it lands on, one step finer than the unit.
     pub(crate) to_file: Option<PathBuf>,
     pub(crate) wrote: String,
     pub(crate) line: usize,
@@ -126,7 +125,7 @@ pub(crate) struct Child {
     pub(crate) has_children: bool,
     pub(crate) tags: Vec<String>,
     pub(crate) interface: Vec<String>,
-    /// Its references that land inside the viewed unit's territory.
+    // Its references that land inside the viewed unit's territory.
     pub(crate) outgoing: Vec<Edge>,
 }
 
@@ -135,11 +134,11 @@ pub(crate) struct Child {
 pub(crate) struct Boundary {
     pub(crate) levels: usize,
     pub(crate) files: usize,
-    /// The directory the walk stopped at, when it stopped before the domain root.
+    // The directory the walk stopped at, when it stopped before the domain root.
     pub(crate) stop: Option<PathBuf>,
-    /// Whether the walk reached the domain root.
+    // Whether the walk reached the domain root.
     pub(crate) complete: bool,
-    /// Whether the unit is itself the domain root: there is nothing above it.
+    // Whether the unit is itself the domain root: there is nothing above it.
     pub(crate) no_above: bool,
 }
 
@@ -147,9 +146,9 @@ pub(crate) struct Boundary {
 #[derive(Clone, Debug)]
 pub(crate) struct Around {
     pub(crate) unit: Unit,
-    /// The file the model just read: the neighbourhood is that file's.
+    // The file the model just read: the neighbourhood is that file's.
     pub(crate) file: PathBuf,
-    /// The base every printed path is relative to.
+    // The base every printed path is relative to.
     pub(crate) base: PathBuf,
     pub(crate) interface: Vec<String>,
     pub(crate) children: Vec<Child>,

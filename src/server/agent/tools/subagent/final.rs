@@ -83,7 +83,8 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                     &args.str(OLD)?,
                     &args.str(NEW)?,
                     env.full_item_budget,
-                )?,
+                )
+                .map(|edited| (edited.text, edited.memo, edited.receipt))?,
             };
             draft.write(&updated)?;
             Ok(ToolOutput::text(message))

@@ -93,7 +93,7 @@ impl Loop {
         let path = writer.path();
         let export = Arc::new(super::export::Files::new(path.clone(), cfg.export_dir()));
         let (lines, bytes) = cfg.limits();
-        let grep = cfg.grep_limits();
+        let (deep, fold) = cfg.grep_limits();
         let global_mcp = cfg
             .paths()
             .global_root()
@@ -105,12 +105,7 @@ impl Loop {
         let source = super::source::Db::new(path.clone(), global_mcp, factory);
         let defaults = Defaults {
             limits: crate::server::agent::tools::contract::env::Limits { lines, bytes },
-            grep: crate::server::agent::tools::contract::env::GrepLimits {
-                deep: grep.deep,
-                fold: grep.fold,
-                impls: grep.impls,
-                members: grep.members,
-            },
+            grep: crate::server::agent::tools::contract::env::GrepLimits { deep, fold },
             shell: crate::server::agent::tools::contract::env::ShellEnv {
                 timeout: cfg.shell_timeout(),
                 backend: cfg.shell()?,

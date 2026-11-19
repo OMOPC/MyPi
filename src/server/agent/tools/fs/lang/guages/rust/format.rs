@@ -10,17 +10,16 @@ use crate::server::agent::tools::fs::gate;
 use crate::server::agent::tools::fs::lang::verdict::{Outcome, Unparsed};
 use crate::server::platform::stop::Stop;
 
-/// How long one formatter round trip may take before its tree is killed.
+// How long one formatter round trip may take before its tree is killed.
 const LIMIT: Duration = Duration::from_secs(5);
 
-/// How many bytes of formatted text this process remembers.
+// How many bytes of formatted text this process remembers.
 const CACHE: usize = 32;
 
-/// The edition an older manifest still accepts.
+// The edition an older manifest still accepts.
 const DEFAULT_EDITION: &str = "2021";
 
-/// Format one text, or say what stopped it. Only a verdict rustfmt reached is remembered: a
-/// timeout or a missing binary says nothing about the text and must not outlive the moment.
+// Format one text, or say what stopped it. Only a verdict rustfmt reached is remembered: a timeout or a missing binary says nothing about the text and must not outlive the moment.
 pub(crate) fn format(text: &str, path: &Path, stop: &Stop) -> Outcome {
     let edition = edition(path);
     let key = (edition.clone(), hash(text));
@@ -34,7 +33,7 @@ pub(crate) fn format(text: &str, path: &Path, stop: &Stop) -> Outcome {
     outcome
 }
 
-/// The crate's edition, from the nearest `Cargo.toml` above the file. Read once per directory.
+// The crate's edition, from the nearest `Cargo.toml` above the file. Read once per directory.
 fn edition(path: &Path) -> String {
     let Some(dir) = path.parent() else {
         return DEFAULT_EDITION.to_string();
@@ -49,7 +48,7 @@ fn edition(path: &Path) -> String {
     found
 }
 
-/// The edition of the crate rooted at `dir`, one entry per ancestor until a manifest appears.
+// The edition of the crate rooted at `dir`, one entry per ancestor until a manifest appears.
 fn edition_at(dir: &Path) -> String {
     for at in dir.ancestors() {
         let manifest = at.join("Cargo.toml");
@@ -64,7 +63,7 @@ fn edition_at(dir: &Path) -> String {
     DEFAULT_EDITION.to_string()
 }
 
-/// The first `edition = "…"` in a manifest.
+// The first `edition = "…"` in a manifest.
 fn edition_of(manifest: &str) -> Option<String> {
     for line in manifest.lines() {
         let line = line.trim();
@@ -85,7 +84,7 @@ fn edition_of(manifest: &str) -> Option<String> {
     None
 }
 
-/// One formatter round trip.
+// One formatter round trip.
 fn formatter(text: &str, edition: &str, stop: &Stop) -> Outcome {
     let bin = rustfmt();
     let mut cmd = Command::new(&bin);
@@ -105,13 +104,13 @@ fn formatter(text: &str, edition: &str, stop: &Stop) -> Outcome {
     }
 }
 
-/// The `rustfmt` to run: the one beside this executable first, then whatever PATH holds.
+// The `rustfmt` to run: the one beside this executable first, then whatever PATH holds.
 fn rustfmt() -> PathBuf {
     static FOUND: LazyLock<PathBuf> = LazyLock::new(|| gate::beside("rustfmt"));
     FOUND.clone()
 }
 
-/// rustfmt's stderr, cut to the one line and the line number a model can act on.
+// rustfmt's stderr, cut to the one line and the line number a model can act on.
 fn parse(stderr: &str) -> Unparsed {
     let mut message: Option<String> = None;
     let mut line = None;
@@ -141,7 +140,7 @@ fn parse(stderr: &str) -> Unparsed {
 
 type Key = (String, u64);
 
-/// The formatted texts this process has already produced, oldest first.
+// The formatted texts this process has already produced, oldest first.
 static MEMO: LazyLock<Mutex<Vec<(Key, Outcome)>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
 fn remembered(key: &Key) -> Option<Outcome> {
@@ -167,7 +166,7 @@ fn remember(key: Key, outcome: &Outcome) {
     held.push((key, outcome.clone()));
 }
 
-/// How many bytes one cached outcome holds.
+// How many bytes one cached outcome holds.
 fn weigh(outcome: &Outcome) -> usize {
     match outcome {
         Outcome::Formatted(text) => text.len(),
@@ -175,12 +174,12 @@ fn weigh(outcome: &Outcome) -> usize {
     }
 }
 
-/// A lock that survives a panicking holder: the state behind it is a cache, never a promise.
+// A lock that survives a panicking holder: the state behind it is a cache, never a promise.
 fn lock<T>(held: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     held.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// A text's content hash.
+// A text's content hash.
 fn hash(text: &str) -> u64 {
     use std::hash::{Hash as _, Hasher as _};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();

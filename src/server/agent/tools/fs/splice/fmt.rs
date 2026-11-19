@@ -1,5 +1,4 @@
-// The language's formatter as one pass over the merged text, with a comment around every block so the answer can
-// name the lines each one became. Nothing here withholds an edit.
+// The language's formatter as one pass over the merged text, with a comment around every block so the answer can name the lines each one became. Nothing here withholds an edit.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash as _, Hasher as _};
@@ -11,8 +10,7 @@ use crate::server::agent::tools::fs::lang::Format;
 use crate::server::agent::tools::fs::lang::verdict::Outcome;
 use crate::server::platform::stop::Stop;
 
-// The word a change's wrapper comment starts with. The comment carries a fingerprint of the
-// snapshot, so a line of the file that reads like a marker cannot be mistaken for one.
+// The word a change's wrapper comment starts with. The comment carries a fingerprint of the snapshot, so a line of the file that reads like a marker cannot be mistaken for one.
 const MARK: &str = "mypi:splice";
 
 // What the formatter made of one merged change.
@@ -26,8 +24,7 @@ pub(crate) struct Settled {
     // Where each change's own lines ended up, in the order the changes were handed over.
     pub landings: Vec<edit::Place>,
 
-    // The edits whose block the parser blames on its own, with its words: a report, never a
-    // filter. Positions into the edits handed over.
+    // The edits whose block the parser blames on its own, with its words: a report, never a filter. Positions into the edits handed over.
     pub blamed: Vec<(usize, String)>,
 }
 
@@ -46,11 +43,7 @@ pub(crate) enum Word {
     Undecided(String),
 }
 
-// Every edit spliced into the snapshot once with a comment around its block, then formatted in one
-// pass. The comments are the only way back from the formatter's output to each block's lines, so
-// the text that is written is that output without them. A text the formatter cannot parse is
-// written as it stands; each block is then tried on its own only to say which one it blames.
-// `None` = the turn was stopped, so nothing is written.
+// Every edit spliced into the snapshot once with a comment around its block, then formatted in one pass. The comments are the only way back from the formatter's output to each block's lines, so the text that is written is that output without them. A text the formatter cannot parse is written as it stands; each block is then tried on its own only to say which one it blames. `None` = the turn was stopped, so nothing is written.
 pub(crate) fn settle(
     base: &str,
     edits: &[Edit],
@@ -103,15 +96,13 @@ pub(crate) fn settle(
     }
 }
 
-// The snapshot with every change in place, unformatted: what is written when the formatter did
-// not lay it out.
+// The snapshot with every change in place, unformatted: what is written when the formatter did not lay it out.
 fn raw(base: &str, edits: &[Edit]) -> String {
     let refs: Vec<&Edit> = edits.iter().collect();
     edit::spliced(base, &refs)
 }
 
-// Which blocks do not parse on their own, one trial each: the report a refusal of the whole text
-// cannot give by itself. A trial that is not a verdict has nothing to say about its block.
+// Which blocks do not parse on their own, one trial each: the report a refusal of the whole text cannot give by itself. A trial that is not a verdict has nothing to say about its block.
 fn blame(
     base: &str,
     edits: &[Edit],
@@ -131,11 +122,7 @@ fn blame(
     Some(out)
 }
 
-// Where each change's own lines ended up, in the order the changes were handed over.
-//
-// A marker comment takes no line number of its own, so its neighbours are the exact lines the
-// change became. Positions count the text without the marker lines; `unmarked` reads them in the
-// text that is written.
+// Where each change's own lines ended up, in the order the changes were handed over. A marker comment takes no line number of its own, so its neighbours are the exact lines the change became. Positions count the text without the marker lines; `unmarked` reads them in the text that is written.
 fn marks(text: &str, tag: &str) -> Vec<edit::Place> {
     let mut blocks: Vec<edit::Place> = Vec::new();
     let mut open: Option<(usize, usize)> = None;
@@ -160,13 +147,7 @@ fn marks(text: &str, tag: &str) -> Vec<edit::Place> {
     blocks
 }
 
-// The formatted text without its marker lines, and how many lines before each one it lost.
-//
-// A marker is a comment, and a comment keeps a formatter from folding the blank lines around it; with
-// the markers gone, a run of blank lines is folded to one, as the formatter would have done. A line
-// a landing holds is never folded, so no block loses its own edges. The count says how many lines
-// were dropped above each line of the marked text, so a landing found there can be read in the text
-// that is written.
+// The formatted text without its marker lines, and how many lines before each one it lost. A marker is a comment, and a comment keeps a formatter from folding the blank lines around it; with the markers gone, a run of blank lines is folded to one, as the formatter would have done. A line a landing holds is never folded, so no block loses its own edges. The count says how many lines were dropped above each line of the marked text, so a landing found there can be read in the text that is written.
 fn unmarked(text: &str, tag: &str, landings: &[edit::Place]) -> (String, Vec<usize>) {
     let stripped: Vec<&str> = text
         .lines()
