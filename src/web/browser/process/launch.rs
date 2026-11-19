@@ -1,11 +1,11 @@
-//! Launch argv, the fork, and the wait for a DevTools port.
+//! Launch argv and the wait for a DevTools port.
 
 use anyhow::{Context as _, anyhow};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::LazyLock;
-use std::sync::mpsc::{Sender, SyncSender, channel, sync_channel};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
+
+use crate::server::platform::proc::{Origin, Process};
 
 use super::super::devtools::Client;
 use super::Browser;
@@ -19,17 +19,16 @@ pub(super) fn launch(cfg: &BrowserOptions, profile: &Path) -> anyhow::Result<Bro
         .with_context(|| format!("creating browser profile dir {}", profile.display()))?;
     let exe = executable(cfg);
     let mut cmd = command(&exe, profile, cfg);
-    #[cfg(target_os = "linux")]
-    crate::server::platform::proc::guard_orphan(&mut cmd);
-    let mut child = fork(cmd)?;
-    match wait_for_devtools(profile, &mut child) {
+    let process = Process::spawn(Origin::Browser, &mut cmd)
+        .map_err(|e| anyhow!("spawning the browser: {e}"))?;
+    match wait_for_devtools(profile, &process) {
         Ok(port) => Ok(Browser {
-            child: Some(child),
+            process: Some(process),
             port,
             attached: false,
         }),
         Err(e) => {
-            crate::server::platform::proc::terminate_tree(&mut child);
+            process.stop();
             Err(e)
         }
     }
@@ -71,7 +70,7 @@ fn command(exe: &Path, profile: &Path, cfg: &BrowserOptions) -> Command {
 
 /// DevToolsActivePort appears once the WS endpoint is listening; an early exit
 /// means a bad binary or a profile another process holds.
-fn wait_for_devtools(profile: &Path, child: &mut Child) -> anyhow::Result<u16> {
+fn wait_for_devtools(profile: &Path, process: &Process) -> anyhow::Result<u16> {
     let port_file = profile.join("DevToolsActivePort");
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
@@ -82,7 +81,7 @@ fn wait_for_devtools(profile: &Path, child: &mut Child) -> anyhow::Result<u16> {
         {
             return Ok(port);
         }
-        if child.try_wait()?.is_some() {
+        if process.try_wait()?.is_some() {
             anyhow::bail!("browser exited before opening DevTools port");
         }
         if Instant::now() > deadline {
@@ -90,37 +89,4 @@ fn wait_for_devtools(profile: &Path, child: &mut Child) -> anyhow::Result<u16> {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-}
-
-struct Job {
-    cmd: Command,
-    reply: SyncSender<std::io::Result<Child>>,
-}
-
-/// Fork from a thread that never ends, so a parent-death signal binds the
-/// browser to the server rather than to one connection.
-fn fork(cmd: Command) -> anyhow::Result<Child> {
-    static FORKER: LazyLock<Sender<Job>> = LazyLock::new(|| {
-        let (tx, rx) = channel::<Job>();
-        std::thread::Builder::new()
-            .name("web-fork".to_string())
-            .spawn(move || {
-                while let Ok(job) = rx.recv() {
-                    let mut cmd = job.cmd;
-                    let _ = job
-                        .reply
-                        .send(crate::server::platform::proc::spawn_grouped(&mut cmd));
-                }
-            })
-            .expect("cannot start the browser fork thread");
-        tx
-    });
-    let (reply, answer) = sync_channel(1);
-    FORKER
-        .send(Job { cmd, reply })
-        .expect("the fork thread outlives every caller");
-    answer
-        .recv()
-        .expect("the fork thread answers every job")
-        .map_err(|e| anyhow!("spawning the browser: {e}"))
 }

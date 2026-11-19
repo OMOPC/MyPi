@@ -1,8 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -44,8 +43,7 @@ pub enum Response {
 
 #[derive(Debug)]
 pub struct HttpWorker {
-    child: Child,
-    pid: Arc<AtomicU32>,
+    process: crate::server::platform::proc::Process,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
     next_id: u64,
@@ -55,11 +53,10 @@ pub type SharedWorker = Arc<Mutex<HttpWorker>>;
 /// The environment variable that turns this executable into a worker.
 pub const WORKER_ENV: &str = "MYPI_HTTP_WORKER";
 
-/// One session's worker: the child that owns its sockets, made on demand and killed on demand.
+// One session's worker: the child that owns its sockets, made on demand and stopped on demand.
 pub struct SessionWorker {
-    /// The child, and the pid of that same child: one entry, so a kill can never name a pid
-    /// the slot no longer holds — and can read it without taking the worker's own lock.
-    slot: Mutex<Option<(u32, SharedWorker)>>,
+    // The worker owns the sockets; the process sits beside it so a stop never waits for the worker lock an interrupted request holds while it reads.
+    slot: Mutex<Option<(SharedWorker, crate::server::platform::proc::Process)>>,
 }
 
 impl SessionWorker {
@@ -73,64 +70,40 @@ impl SessionWorker {
     pub fn request(&self) -> Option<SharedWorker> {
         let mut slot = self.slot.lock().ok()?;
         if slot.is_none() {
-            let fresh = HttpWorker::spawn().ok()?;
-            let pid = HttpWorker::pid(&fresh).unwrap_or(0);
-            *slot = Some((pid, fresh));
+            let worker = HttpWorker::spawn().ok()?;
+            let process = worker.lock().ok()?.process.clone();
+            *slot = Some((worker, process));
         }
-        slot.as_ref().map(|(_, worker)| worker.clone())
+        slot.as_ref().map(|(worker, _)| worker.clone())
     }
 
-    /// Kill the child that owns the sockets. A later request spawns its own.
+    // Stop the child that owns the sockets. A later request spawns its own.
     pub fn kill(&self) {
         let old = self.slot.lock().ok().and_then(|mut slot| slot.take());
-        let Some((pid, worker)) = old else {
-            crate::server::platform::log::info("worker", "no child to kill");
+        let Some((_, process)) = old else {
+            crate::server::platform::log::info("worker", "no child to stop");
             return;
         };
-        if pid == 0 {
-            crate::server::platform::log::info("worker", "the child carries no pid to kill");
-        } else {
-            crate::server::platform::log::info("worker", format!("killed the child on {pid}"));
-            HttpWorker::kill_pid(pid);
-        }
-        std::thread::spawn(move || {
-            if let Ok(mut worker) = worker.lock() {
-                worker.reap();
-            }
-        });
+        crate::server::platform::log::info(
+            "worker",
+            format!("stopped the child on {}", process.id()),
+        );
+        process.stop();
     }
 }
 
 impl Drop for SessionWorker {
     fn drop(&mut self) {
         let old = self.slot.lock().ok().and_then(|mut slot| slot.take());
-        let Some((pid, worker)) = old else {
+        let Some((_, process)) = old else {
             return;
         };
-        if pid != 0 {
-            HttpWorker::kill_pid(pid);
-        }
-        if let Ok(mut worker) = worker.lock() {
-            let _ = worker.child.kill();
-            let _ = worker.child.wait();
-        }
+        process.stop();
+        let _ = process.wait_timeout(Duration::from_millis(50));
     }
 }
 
 impl HttpWorker {
-    pub fn pid(slot: &SharedWorker) -> Option<u32> {
-        slot.lock()
-            .ok()
-            .map(|w| w.pid.load(Ordering::Relaxed))
-            .filter(|p| *p != 0)
-    }
-    /// The child leads its own group; a group already gone is the normal case.
-    pub fn kill_pid(pid: u32) {
-        crate::server::platform::proc::signal_group(
-            pid,
-            crate::server::platform::proc::Signal::Kill,
-        );
-    }
     pub fn spawn() -> Result<SharedWorker> {
         let exe = std::env::current_exe().context("cannot locate the mypi executable")?;
         let mut cmd = Command::new(exe);
@@ -138,31 +111,30 @@ impl HttpWorker {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        let mut child = crate::server::platform::proc::spawn_grouped(&mut cmd)
-            .context("failed to start the HTTP worker")?;
-        let pid = Arc::new(AtomicU32::new(child.id()));
-        let input = child
-            .stdin
-            .take()
+        let process = crate::server::platform::proc::Process::spawn(
+            crate::server::platform::proc::Origin::Request,
+            &mut cmd,
+        )
+        .context("failed to start the HTTP worker")?;
+        let input = process
+            .take_stdin()
             .context("HTTP worker stdin unavailable")?;
         let output = BufReader::new(
-            child
-                .stdout
-                .take()
+            process
+                .take_stdout()
                 .context("HTTP worker stdout unavailable")?,
         );
         // Handshake: is the child really running a worker? A silent child is not ours to wait for.
         let output = match greet(output, HELLO_LIMIT) {
             Ok(output) => output,
             Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                process.stop();
+                let _ = process.wait_timeout(Duration::from_millis(50));
                 return Err(e);
             }
         };
         Ok(Arc::new(Mutex::new(Self {
-            child,
-            pid,
+            process,
             input,
             output,
             next_id: 1,
@@ -229,9 +201,6 @@ impl HttpWorker {
                 _ => {}
             }
         }
-    }
-    pub fn reap(&mut self) {
-        let _ = self.child.wait();
     }
 }
 

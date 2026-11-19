@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -16,7 +16,7 @@ use crate::server::platform::proc;
 
 pub(crate) struct Server {
     name: String,
-    child: Child,
+    process: proc::Process,
     stdin: Arc<Mutex<ChildStdin>>,
     pending: Arc<Mutex<HashMap<u64, Sender<Result<Value>>>>>,
     stderr: Arc<Mutex<VecDeque<String>>>,
@@ -41,19 +41,16 @@ pub(crate) fn spawn(name: &str, cfg: &ServerConfig) -> Result<Server> {
     if let Some(cwd) = &cfg.cwd {
         command.current_dir(cwd.as_path());
     }
-    let mut child = proc::spawn_grouped(&mut command)
+    let process = proc::Process::spawn(proc::Origin::Mcp, &mut command)
         .with_context(|| format!("failed to start MCP server `{name}`"))?;
-    let stdin = child
-        .stdin
-        .take()
+    let stdin = process
+        .take_stdin()
         .ok_or_else(|| anyhow!("MCP server `{name}` has no stdin"))?;
-    let stdout = child
-        .stdout
-        .take()
+    let stdout = process
+        .take_stdout()
         .ok_or_else(|| anyhow!("MCP server `{name}` has no stdout"))?;
-    let stderr = child
-        .stderr
-        .take()
+    let stderr = process
+        .take_stderr()
         .ok_or_else(|| anyhow!("MCP server `{name}` has no stderr"))?;
     let stdin = Arc::new(Mutex::new(stdin));
     let pending = Arc::new(Mutex::new(HashMap::new()));
@@ -69,7 +66,7 @@ pub(crate) fn spawn(name: &str, cfg: &ServerConfig) -> Result<Server> {
     );
     Ok(Server {
         name: name.to_string(),
-        child,
+        process,
         stdin,
         pending,
         stderr: tail,
@@ -236,9 +233,14 @@ impl Server {
             .with_context(|| format!("MCP server `{}` write failed", self.name))
     }
 
-    /// The server's process group: what stopping it signals.
-    pub(crate) fn group(&self) -> u32 {
-        self.child.id()
+    // The server's tree: what stopping it takes down.
+    pub(crate) fn process(&self) -> proc::Process {
+        self.process.clone()
+    }
+
+    // The closed bell, so a stop can flip it without taking this server's lock.
+    pub(crate) fn closed_flag(&self) -> Arc<AtomicBool> {
+        self.closed.clone()
     }
 
     pub(crate) fn is_closed(&self) -> bool {
@@ -248,8 +250,8 @@ impl Server {
     pub(crate) fn shutdown(&mut self) {
         self.closed.store(true, Ordering::SeqCst);
         fail_all(&self.pending, &self.name, "shut down");
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.process.stop();
+        let _ = self.process.wait_timeout(Duration::from_millis(50));
     }
 
     fn tail(&self) -> String {
@@ -259,11 +261,5 @@ impl Server {
         }
         let lines: Vec<&str> = tail.iter().map(String::as_str).collect();
         format!("\nstderr:\n{}", lines.join("\n"))
-    }
-}
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        self.shutdown();
     }
 }

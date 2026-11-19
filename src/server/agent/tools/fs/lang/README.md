@@ -53,7 +53,7 @@ language with no checker takes no part.
 side asks the checker's own list for their full paths and runs those alone, and a name that list does
 not carry is reported, never counted as a pass.
 
-**The process machine belongs to no language.** Starting a child, its deadline, its process group
+**The process machine belongs to no language.** Starting a child, its deadline, its tree
 and the turn's stop are `gate`'s; a language supplies the command line and reads what came back.
 
 **Structure, not layout.** A sorter says what the pieces are and where they end. It never says how

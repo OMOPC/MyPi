@@ -30,18 +30,24 @@ name.
 ### The process tree
 
 ```text
-spawn_grouped(cmd)         start the command so it leads a group of its own
-guard_orphan(cmd)          Linux only: kill the tree when the forking thread ends
-signal_group(pgid, sig)    Term or Kill, whole group
-terminate_tree(pid)        Term, then Kill once `grace()` has run out
+Process::spawn(origin, cmd)          start a tree that follows the main process
+Process::spawn_detached(origin, cmd) start a tree that outlives the front end (front end only)
+process.take_stdin/stdout/stderr()   take one stream; each stream can be taken once
+process.stop()                       stop the tree; the platform owns the ladder
+process.try_wait/wait/wait_timeout() look at or wait for the leader's exit
 ```
 
-On unix the child becomes its own session (`setsid`) before `exec`, and a group is signalled through
-the `kill` syscall declared in that file; on windows the child gets no console window and the tree is
-taken down with `taskkill /T`. Nothing here spawns `setsid`, `kill` or `timeout` as a program.
-`guard_orphan` sets `PR_SET_PDEATHSIG`, which the kernel delivers when the thread that forked the
-child ends — a caller that wants it to mean "the process died" must fork from a thread that lives
-that long.
+A tree is one kernel container: its leader, every process the leader starts, and the handle that
+ends them together. On unix the leader becomes its own session (`setsid`) before `exec`, and the
+container is the process group, signalled through the `kill` syscall. Creation runs on
+`process-fork`, a thread that never ends, so `PR_SET_PDEATHSIG` binds a following tree to the main
+process rather than to whichever thread asked for it. On windows the container is a job object: a
+following tree carries `KILL_ON_JOB_CLOSE`, a detached one does not, and `TerminateJobObject` is the
+single stop step. A detached tree has no parent-death binding on either family, so the main process
+ending does not take it down; it ends through its own protocol or an explicit stop. Dropping a
+handle never ends a tree; a `process-reap-<pid>` thread holds the child
+until it exits, reclaims leftovers, publishes the status and adds one exit record. Birth adds one
+record too. Nothing here spawns `setsid`, `kill`, `taskkill` or `timeout` as a program.
 
 ### The stamp
 
@@ -59,10 +65,12 @@ not injected at all.
 
 ### The zone
 
-The zone is a transition table, not one offset: a long process across a DST switch still computes the
-right local time, because each moment looks up its own stretch. The table comes from the zoneinfo
-file the configuration names — a bare name is looked up under the system's zoneinfo directory, an
-absolute path is used as it is — and `/etc/localtime` is the fallback. `TZ` is not consulted.
+On unix the zone is a transition table, not one offset: a long process across a DST switch still
+computes the right local time, because each moment looks up its own stretch. The table comes from the
+zoneinfo file the configuration names — a bare name is looked up under the system's zoneinfo
+directory, an absolute path is used as it is — and `/etc/localtime` is the fallback. On windows the
+system reports the offset in effect at startup, and the process keeps that fixed offset for its
+lifetime. `TZ` is not consulted.
 
 ### The directories
 
@@ -88,8 +96,14 @@ run time. The environment is read on demand, through this layer's one mouth.
    lands, by whoever lands it.
 6. **A shell is a value.** No caller asks this layer which system it is on; the resolved `Shell`
    carries every difference a command line has.
-7. **A command is stopped by its group.** One spawn makes one group; stopping signals the group.
-8. **Tests are not a concern of this layer.** Timing, zone tables, the environment and the process
+7. **One stop, one ladder.** Every caller stops through `Process::stop`; the platform picks the unix
+   ladder (TERM, a fixed grace, KILL) or the windows single step.
+8. **A handle is not the tree.** Dropping a `Process` ends nothing; the tree lives until its leader
+   exits, another entry stops it, or the main process ends.
+9. **A stop reaches every tree at once.** One slow tree must not hold the others; the signal fans
+   out instead of running each action in turn. `settle` waits for that fan-out where a caller is
+   about to touch what the actions are taking down.
+10. **Tests are not a concern of this layer.** Timing, zone tables, the environment and the process
    tree are checked by running the program; this folder carries no unit tests.
 
 ### What lives in memory
@@ -107,8 +121,9 @@ offset, and the store treats a stamp as opaque text.
 
 **A bad zone name never fails the run.** The clock keeps ticking and only the label is wrong.
 
-**A transition table, not one offset.** Each moment looks up its own stretch, so a long process
-across a DST switch still computes the right local time.
+**A transition table on unix, one offset on windows.** On unix each moment looks up its own stretch,
+so a long process across a DST switch still computes the right local time. On windows the offset in
+effect at startup is kept: there is no zoneinfo table to read.
 
 **`TZ` is not consulted.** The zone is a configured value and the machine is the fallback.
 
@@ -132,10 +147,10 @@ current directory.
 
 ## 3. Open questions
 
-1. **Windows.** The crate has never been compiled there and no dependency has been checked for it, so
-   the promises above hold on unix only: the zone table's paths, the XDG directories, the transport's
-   process teardown and the browser paths are all unix-shaped (第 16 条). The shell and the process
-   tree carry both families, so the day windows matters the question has one place to ask.
+1. **Windows.** The shell, the process tree, the clock and the directories carry both families. The
+   browser paths are still unix-shaped (第 16 条). The unix parent-death signal reaches the leader
+   only; the rest of a following tree dies with the process group when the leader goes, which covers
+   the usual case but not every stray child.
 2. **Instant messaging has no caller.** The switch, the templates and the rendering exist;
    `stamp::inject` is public with no production call site, and the feature's shape is still open — the
    switch may end up named something other than "instant message".

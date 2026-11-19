@@ -44,7 +44,8 @@ Notice = { level, text }
 
 A stream has no total budget: one lap runs as long as the model keeps talking. The worker child
 holds it to the protocol's silence budget (600 s when the host names none) and reports a timeout when
-it expires. Cancellation is a kill: the session's worker dies and the reader sees its pipe close. A
+it expires. Cancellation is one `stop()`: the session's tree goes down and the reader sees its pipe
+close. A
 closed pipe is the body's end, not a failure; the child sends a marker line before it closes when
 the request itself failed.
 
@@ -106,8 +107,8 @@ it.
 **Retry belongs to one call.** Only "nothing arrived" and 429 are retried; anything already shown to
 a front end is never re-sent, because the front end has already drawn it.
 
-**An interrupt is a kill.** The child that owns the socket belongs to one session, so pressing Esc
-kills that session's connection and nothing else. The kernel closes the socket with the child, so
+**An interrupt is one stop.** The child that owns the socket belongs to one session, so pressing Esc
+stops that session's tree and nothing else. The kernel closes the socket with the child, so
 the reader returns at once instead of waiting for the host to speak; a fresh child takes its place
 before the next request. A cancelled lap is not a failure: it settles as interrupted, with no
 notice, no retry, and no error text.

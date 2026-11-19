@@ -26,22 +26,30 @@ const BOOT: Duration = Duration::from_secs(10);
 /// The database lock, held while this process is the server.
 pub struct Claim(#[allow(dead_code)] File);
 
+// The sidecar carries the single-server lock: Windows range locks are mandatory, so locking the database itself would break SQLite's reads, and the file stays behind or a later server could race an already-opened one.
+fn lock_path(db: &Path) -> PathBuf {
+    let mut name = db.as_os_str().to_owned();
+    name.push(".lock");
+    PathBuf::from(name)
+}
+
 /// Try to become this database's server. `None` = somebody else already is.
 pub fn claim(db: &Path) -> Result<Option<Claim>> {
     if let Some(dir) = db.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
     }
+    let lock = lock_path(db);
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
-        .open(db)
-        .with_context(|| format!("cannot open {}", db.display()))?;
+        .open(&lock)
+        .with_context(|| format!("cannot open {}", lock.display()))?;
     match file.try_lock() {
         Ok(()) => Ok(Some(Claim(file))),
         Err(std::fs::TryLockError::WouldBlock) => Ok(None),
         Err(std::fs::TryLockError::Error(e)) => {
-            Err(e).with_context(|| format!("cannot lock {}", db.display()))
+            Err(e).with_context(|| format!("cannot lock {}", lock.display()))
         }
     }
 }

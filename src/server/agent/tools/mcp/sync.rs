@@ -10,7 +10,6 @@ use serde_json::{Value, json};
 use super::bridge::{McpBridge, McpContent, McpResult, ServerInfo, ToolInfo};
 use super::setup::ServerConfig;
 use super::stdio::{self, Server};
-use crate::server::platform::proc::{self, Signal};
 use crate::server::platform::stop::Stop;
 
 pub struct SyncMcpBridge {
@@ -61,10 +60,15 @@ impl SyncMcpBridge {
             if !closed {
                 return Ok(server);
             }
-            self.servers
+            let stale = self
+                .servers
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(name);
+            if let Some(stale) = stale {
+                let mut stale = stale.lock().unwrap_or_else(|e| e.into_inner());
+                stale.shutdown();
+            }
         }
         let (mut config, cwd) = {
             let standing = self
@@ -81,9 +85,10 @@ impl SyncMcpBridge {
         // Relative paths anchor where the session stands, not where the process launched.
         config.cwd = Some(cwd);
         let mut server = stdio::spawn(name, &config)?;
-        server
-            .initialize()
-            .map_err(|e| anyhow!("MCP server `{name}` handshake failed: {e:#}"))?;
+        if let Err(e) = server.initialize() {
+            server.shutdown();
+            return Err(anyhow!("MCP server `{name}` handshake failed: {e:#}"));
+        }
         let server = Arc::new(Mutex::new(server));
         self.servers
             .lock()
@@ -138,15 +143,18 @@ impl SyncMcpBridge {
         stop: &Arc<Stop>,
     ) -> Result<McpResult> {
         let server = self.server_for(name)?;
-        // The kill goes by process group, never by the server's own lock: the call holds that lock
+        // The kill goes by the tree, never by the server's own lock: the call holds that lock
         // while it waits, and the wait is exactly what the stop has to end.
-        let group = {
+        let (process, closed) = {
             let server = server
                 .lock()
                 .map_err(|_| anyhow!("MCP server `{name}` is poisoned"))?;
-            server.group()
+            (server.process(), server.closed_flag())
         };
-        let _hook = stop.on_stop(move || proc::signal_group(group, Signal::Kill));
+        let _hook = stop.on_stop(move || {
+            process.stop();
+            closed.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
         let value = {
             let mut server = server
                 .lock()

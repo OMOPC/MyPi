@@ -3,10 +3,10 @@
 mod launch;
 
 use std::path::{Path, PathBuf};
-use std::process::Child;
 
 use super::devtools::Client;
 use crate::server::config::BrowserOptions;
+use crate::server::platform::proc::Process;
 
 pub(crate) fn profile_dir(cfg: &BrowserOptions) -> PathBuf {
     cfg.profile_dir.clone().unwrap_or_else(|| {
@@ -24,7 +24,7 @@ pub(crate) fn discover_live_browser(profile: &Path) -> Option<u16> {
 
 /// A browser: one we launched (owned) or one already running (attached).
 pub(crate) struct Browser {
-    child: Option<Child>,
+    process: Option<Process>,
     port: u16,
     attached: bool,
 }
@@ -39,7 +39,7 @@ impl Browser {
             anyhow::bail!("no browser listening on 127.0.0.1:{port}");
         }
         Ok(Browser {
-            child: None,
+            process: None,
             port,
             attached: true,
         })
@@ -58,17 +58,18 @@ impl Browser {
         if self.attached {
             return Client::port_alive(self.port);
         }
-        match self.child.as_mut().map(Child::try_wait) {
+        match self.process.as_ref().map(Process::try_wait) {
             Some(Ok(None)) => Client::port_alive(self.port),
             _ => false,
         }
     }
 
     pub(crate) fn stop(&mut self) {
-        if let Some(child) = self.child.as_mut() {
-            crate::server::platform::proc::terminate_tree(child);
+        if let Some(process) = self.process.as_ref() {
+            process.stop();
+            let _ = process.wait_timeout(std::time::Duration::from_millis(50));
         }
-        self.child = None;
+        self.process = None;
     }
 }
 

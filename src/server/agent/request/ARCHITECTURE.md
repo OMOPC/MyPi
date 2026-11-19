@@ -23,7 +23,7 @@
 | `protocol/openai/completion/` | the standard completion dialect: the request body, the message mapping, the SSE decode |
 | `transport/mod.rs` | `Provider`, and sending one call through the session's worker |
 | `transport/client.rs` | one provider connection: its protocol, retry loop, cancellable wait |
-| `transport/worker.rs` | `SessionWorker` (one child per session, spawned on demand and killed on demand), the child's line protocol, its persistent connection, its greeting deadline, and the stream's silence deadline |
+| `transport/worker.rs` | `SessionWorker` (one child per session, spawned on demand and stopped on demand), the child's line protocol, its persistent connection, its greeting deadline, and the stream's silence deadline |
 
 ## Relations
 
@@ -31,7 +31,7 @@
   `Client::complete`.
 - `Client::complete` asks its `Protocol` for a `WireRequest`, sends it through `transport::send`, and
   decodes the reader through the same `Protocol`. It owns retry and the notices one failure produces;
-  the kill belongs to the session's worker, not to this loop.
+  the stop belongs to the session's worker, not to this loop.
 - A decoder writes pieces and closed blocks into `Output`. `Forward` forwards pieces to the live line
   and lands blocks through `BlockSink`, one behind, so the last one can carry the usage.
 - `ask::Request::results` resolves citations through `History::holder`, writes each artifact, and
@@ -53,5 +53,5 @@
 - The configuration supplies `Options`: the provider table, the retry policy, the output caps, the
   streaming granularity, and the default retention.
 - The loop owns each session's `SessionWorker` on its handle: `LapInput` / `CompactInput` carry it,
-  and `Handle::interrupt` is what kills the child.
+  and `Handle::interrupt` is what stops the child's tree.
 - Storage is reached by the loop, never from here.

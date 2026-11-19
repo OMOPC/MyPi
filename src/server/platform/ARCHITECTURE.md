@@ -16,8 +16,8 @@ keeps — is in `README.md`.
 | `stamp.rs` | the timestamp templates: `parse` and `render` turn two instants into the prefix and suffix of one user message |
 | `log.rs` | the in-process ring of what happened to us: a level, a scope, a message and a millisecond |
 | `shell.rs` | which shell runs a command line: `Kind`, `Shell`, `default`, `resolve`, `names`, the one-shot argument shape, and the quoted path a stored text becomes |
-| `proc.rs` | one command's process tree: `spawn_grouped`, `guard_orphan`, `signal_group`, `terminate_tree`, `grace`; the per-family pieces are compile-time `cfg` modules |
-| `stop.rs` | the stop signal: `Stop` (flag plus a table of actions) and `Hook` (a registration that comes off on drop); `new`, `is_stopped`, `set`, `reset`, `on_stop` |
+| `proc.rs` | one command's process tree: `Process` (`spawn`, `spawn_detached`, `id`, the three `take_*`, `stop`, `try_wait`, `wait`, `wait_timeout`), the single `process-fork` creation thread and the per-tree reaper; containers live in `proc/sys_unix.rs` and `proc/sys_windows.rs` |
+| `stop.rs` | the stop signal: `Stop` (flag plus a table of actions, each run on its own thread) and `Hook` (a registration that comes off on drop); `new`, `is_stopped`, `set`, `reset`, `on_stop` |
 
 ## The public surface
 
@@ -33,7 +33,7 @@ keeps — is in `README.md`.
 | `stamp::{Parts, parse, weekday, render, inject}` | the injection templates: render a template against two instants, or both halves of one message at once |
 | `log::{Level, Record, push, info, warn, error, recent, by_scope, len}` | the ring |
 | `shell::{Kind, Shell, names}` | the session's shell; `resolve` refuses a shell the platform does not run |
-| `proc::{spawn_grouped, guard_orphan, signal_group, terminate_tree, grace, Signal}` | start a command as its own group, guard its lifetime, signal the group, take the tree down |
+| `proc::{Process, Origin}` | start a following or detached tree, take its streams, stop it, wait for it |
 
 Everything else in this folder is private.
 
@@ -75,10 +75,9 @@ Everything else in this folder is private.
 2. **`stamp::inject` has no caller.** The timestamp injection happens when a user message is written,
    and where exactly that is stays undecided until the instant-messaging mode gets its own design
    (`memo.md`); `config.server.platform.stamp.*` has no reader for the same reason.
-3. **Windows.** `env.rs` answers every directory with the current directory on a non-unix family.
-   `shell.rs` and `proc.rs` carry both families, but three places still assume unix: the zoneinfo
-   paths in `time.rs`, the transport worker's `kill -KILL`, and the absent parent-death guard for
-   launcher processes (`src/web/browser/process/launch.rs`). 第 16 条 lists the sites.
+3. **Windows.** `env.rs`, `shell.rs`, `proc.rs` and `time.rs` carry both families. Two places still
+   assume unix: the browser paths, and the parent-death guarantee below the leader (a job object
+   covers the whole tree on windows; unix only covers the leader). 第 16 条 lists the sites.
 4. **The shell backend is not selectable yet.** `Shell::resolve` exists; nothing reads a configured
    name, so every session takes the platform default. `Shell::default` is `bash` on unix and `pwsh`
    on windows, and the `niu` backend is reachable only through `resolve`.

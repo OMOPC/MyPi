@@ -7,7 +7,7 @@ use anyhow::{Context as _, Result};
 
 use crate::server::agent::tools::contract::job::{Exit, OutputSink};
 use crate::server::agent::tools::spec::ToolProgress;
-use crate::server::platform::proc::{self, Signal};
+use crate::server::platform::proc;
 use crate::server::platform::shell::Shell;
 use crate::server::platform::stop::Stop;
 
@@ -44,26 +44,19 @@ pub(crate) fn run_to(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    let mut child = proc::spawn_grouped(&mut command)
+    let process = proc::Process::spawn(proc::Origin::Tool, &mut command)
         .with_context(|| format!("spawning `{}` failed", shell.name()))?;
-    let pgid = child.id();
 
-    // What stopping means here: TERM the group now, KILL it after the grace period if it lives.
+    // What stopping means here: one call to the platform, which owns the ladder.
     let escalate = {
         let flag = flag.clone();
+        let process = process.clone();
         move || {
             if flag.armed.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
             flag.ring();
-            proc::signal_group(pgid, Signal::Term);
-            let flag = flag.clone();
-            named("mypi-bash-grace", move || {
-                std::thread::sleep(proc::grace());
-                if !flag.is_done() {
-                    proc::signal_group(pgid, Signal::Kill);
-                }
-            });
+            process.stop();
         }
     };
     // Registered after the spawn: a stop that landed earlier runs this here and now.
@@ -79,8 +72,8 @@ pub(crate) fn run_to(
     }
     let (tx, rx) = std::sync::mpsc::channel::<Msg>();
 
-    let stdout = child.stdout.take().expect("stdout is piped");
-    let stderr = child.stderr.take().expect("stderr is piped");
+    let stdout = process.take_stdout().expect("stdout is piped");
+    let stderr = process.take_stderr().expect("stderr is piped");
     for (pipe, wrap) in [
         (
             Box::new(stdout) as Box<dyn std::io::Read + Send>,
@@ -130,8 +123,9 @@ pub(crate) fn run_to(
 
     // Waiter thread: the only place blocked on the child's exit.
     let tx_wait = tx.clone();
+    let waiter = process.clone();
     named("mypi-bash-wait", move || {
-        let r = child.wait();
+        let r = waiter.wait();
         let _ = tx_wait.send(Msg::Exited(r));
     });
     drop(tx);

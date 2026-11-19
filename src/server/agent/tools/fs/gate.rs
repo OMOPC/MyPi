@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::server::platform::proc::{self, Signal};
+use crate::server::platform::proc;
 use crate::server::platform::stop::Stop;
 
 /// How often a waiting caller looks at its child.
@@ -43,11 +43,11 @@ pub(crate) fn run(
     })
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
-    let mut child = proc::spawn_grouped(&mut cmd)?;
+    let process = proc::Process::spawn(proc::Origin::Tool, &mut cmd)?;
 
     // The input goes down a thread of its own: a child that reads late must not hold this call.
     if let Some(bytes) = input {
-        let mut stdin = child.stdin.take().expect("stdin is piped");
+        let mut stdin = process.take_stdin().expect("stdin is piped");
         let owned = bytes.to_vec();
         let _ = std::thread::Builder::new()
             .name("mypi-gate-in".into())
@@ -55,33 +55,38 @@ pub(crate) fn run(
                 let _ = stdin.write_all(&owned);
             });
     }
-    let out = drain(child.stdout.take().expect("stdout is piped"));
-    let err = drain(child.stderr.take().expect("stderr is piped"));
+    let out = drain(process.take_stdout().expect("stdout is piped"));
+    let err = drain(process.take_stderr().expect("stderr is piped"));
 
     let deadline = limit.map(|limit| Instant::now() + limit);
     let mut timed_out = false;
     let mut stopped = false;
     let status = loop {
-        match child.try_wait() {
+        if stop.is_stopped() {
+            stopped = true;
+            process.stop();
+            let _ = process.wait_timeout(proc::KILL_LIMIT);
+            break None;
+        }
+        let now = Instant::now();
+        if deadline.is_some_and(|at| now >= at) {
+            timed_out = true;
+            process.stop();
+            let _ = process.wait_timeout(proc::KILL_LIMIT);
+            break None;
+        }
+        let wait = deadline
+            .map(|at| at.saturating_duration_since(now))
+            .unwrap_or(TICK)
+            .min(TICK);
+        match process.wait_timeout(wait) {
             Err(e) => {
-                proc::signal_group(child.id(), Signal::Kill);
-                let _ = child.wait();
+                process.stop();
+                let _ = process.wait();
                 return Err(e);
             }
             Ok(Some(status)) => break Some(status),
-            Ok(None) if stop.is_stopped() => {
-                stopped = true;
-                proc::signal_group(child.id(), Signal::Kill);
-                let _ = child.wait();
-                break None;
-            }
-            Ok(None) if deadline.is_some_and(|at| Instant::now() >= at) => {
-                timed_out = true;
-                proc::signal_group(child.id(), Signal::Kill);
-                let _ = child.wait();
-                break None;
-            }
-            Ok(None) => std::thread::sleep(TICK),
+            Ok(None) => {}
         }
     };
     Ok(Ran {
