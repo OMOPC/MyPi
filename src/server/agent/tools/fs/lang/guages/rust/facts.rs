@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::server::agent::tools::fs::lang::graph::{Decl, Domain, Loader, RawEdge, Shape, Unit};
+use crate::server::agent::tools::fs::lang::graph::{Decl, Domain, Loader, RawEdge, Unit};
 use crate::server::agent::tools::fs::lang::{self, Hub, Table};
 use crate::server::agent::tools::workspace::canonicalize_lenient;
 
@@ -55,14 +55,12 @@ fn unit_of(path: &Path) -> Option<Unit> {
     })
 }
 
-// The search domain: the crate root, walked level by level. Directories answer too.
+// The search domain: the crate root, and the source tree under it. Directories answer too.
 fn domain(path: &Path) -> Option<Domain> {
     let path = canonicalize_lenient(path);
-    let _src = src_of(&path)?;
-    Some(Domain {
-        root: crate_root(&path)?,
-        shape: Shape::Levels,
-    })
+    let root = crate_root(&path)?;
+    let tree = root.join("src");
+    tree.is_dir().then_some(Domain { root, tree })
 }
 
 // Where a unit's children are resolved: its directory, or the dual-track directory beside its file.
@@ -213,20 +211,8 @@ fn parts_of(path: &Path) -> Vec<String> {
 
 fn crate_root(path: &Path) -> Option<PathBuf> {
     path.ancestors()
-        .skip(1)
         .find(|dir| dir.join("Cargo.toml").is_file())
         .map(Path::to_path_buf)
-}
-
-// The crate's `src/` when the path sits inside one.
-fn src_of(path: &Path) -> Option<PathBuf> {
-    for root in path.ancestors() {
-        if root.join("Cargo.toml").is_file() {
-            let src = root.join("src");
-            return path.starts_with(&src).then_some(src);
-        }
-    }
-    None
 }
 
 // A file's module chain from the crate root.

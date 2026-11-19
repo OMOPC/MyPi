@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use super::walk;
-use super::{Around, Boundary, Child, Decl, Edge, Loader, RawEdge, Size, Unit};
+use super::{Around, Boundary, Child, Decl, Edge, Loader, RawEdge, Size, Unit, parts};
 use crate::server::agent::tools::fs::lang::Hub;
 
 // One file's unit when the language does not say better.
@@ -23,14 +23,6 @@ fn resolve_unit(facts: &Hub, file: &Path) -> Unit {
         Some(unit_of) => unit_of(file).unwrap_or_else(|| file_unit(file)),
         None => file_unit(file),
     }
-}
-
-// Whether `place` sits at or under `root`, path-component by path-component.
-fn within(place: &Path, root: &Path) -> bool {
-    place == root
-        || place
-            .strip_prefix(root)
-            .is_ok_and(|rest| !rest.as_os_str().is_empty())
 }
 
 // The files whose text speaks for a unit: its entry, its file, or every file under its directory.
@@ -181,7 +173,7 @@ fn children(facts: &Hub, loader: &Loader, unit: &Unit) -> Vec<Child> {
             .filter(|edge| {
                 edge.to_file
                     .as_ref()
-                    .is_some_and(|file| file != &own && within(file, &unit.place))
+                    .is_some_and(|file| file != &own && parts::within(&unit.place, file))
             })
             .collect();
         out.push(Child {
@@ -215,7 +207,7 @@ fn incoming(facts: &Hub, unit: &Unit, found: Vec<(PathBuf, Vec<RawEdge>)>) -> Ve
             let Some((to, _file)) = land(facts, &raw) else {
                 continue;
             };
-            if !within(&to.place, &unit.place) {
+            if !parts::within(&unit.place, &to.place) {
                 continue;
             }
             if let Some(old) = out.iter_mut().find(|edge| edge.at == at) {

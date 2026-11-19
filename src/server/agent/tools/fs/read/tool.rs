@@ -61,8 +61,8 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "read",
-    about: "Read files or directories; a sorted language answers with key line numbers under \
-            splice, a source file with an 800-line budget and a module view when it has one, \
+    about: "Read files or directories; Rust and Markdown answer with key line numbers under \
+            `splice`, a source file with an 800-line budget and a module view when it has one, \
             anything else 200.",
     fields: "Every answer opens with `==> path` — a directory adds its counts to that line — and \
              anything left out comes last as one line.\n\
@@ -322,11 +322,11 @@ fn sketch(facts: &lang::Hub, loader: &Loader, path: &Path, batch: &BTreeSet<Path
 
 // How a file's lines are prefixed, if at all.
 enum Numbers<'a> {
-    // A session with `edit` and without `splice`: no numbers.
+    // No numbers: a session without `splice`.
     None,
-    // Another language under `splice`: every line carries one.
+    // A file no language sorts, under `splice`: every line carries one.
     All,
-    // A sorted language under `splice`: only the key lines do.
+    // A sorted file under `splice`: only the key lines do.
     Table(&'a Table),
 }
 

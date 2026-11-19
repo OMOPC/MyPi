@@ -15,9 +15,9 @@ brings, the forwarding entries it passed (`via`), and whether it is itself a for
 This layer takes the first candidate that exists, maps it to its unit, drops forwarding edges from
 `incoming`, normalizes incoming targets to the unit itself, and merges per writing file.
 
-`up` is a walk: `Levels` climbs one directory at a time and scans the level's tree, `Tree` scans one
-root. The first level always finishes; later levels share a deadline and a level that overruns is
-dropped whole. Files a language does not claim are never read.
+`up` is a walk: it climbs one directory at a time and scans that level's tree. The first level always
+finishes; later levels share a deadline and a level that overruns is dropped whole. Files a language
+does not claim are never read.
 
 Pairing: a **unit** is a file, a directory, or a named thing with no entry; a **decl** is one unit a
 parent declares, with the line and the parent's tags for it; a **child** adds size, whether it
@@ -26,7 +26,7 @@ is one reference, at a file and line, to a unit or to nothing.
 
 ## 2. Design intent
 
-- One view for every language, so a new language is one file of facts and one line of registration.
+- One view for every language, so a new language is one file of facts and one registration entry.
 - No language knowledge here: no `mod.rs`, no `pub`, no `Cargo.toml`. Only the registry answers
   which suffixes a walk may read.
 - Facts speak files; the machine speaks units. That split keeps unit identity and inward/outward
@@ -36,7 +36,6 @@ is one reference, at a file and line, to a unit or to nothing.
 
 ## 3. Unsolved
 
-- `Shape::Tree` is defined but no language supplies it yet.
 - A walk may ask a language for the same file's edges only once per view; a cross-view cache would
   need a lifetime it does not have.
 

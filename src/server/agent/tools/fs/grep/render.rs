@@ -1,4 +1,4 @@
-// The answer: the type section, the module section, the x-ray, the items, and the stamps.
+// The answer: the relation's own sections, the items, and the stamps.
 
 use std::collections::BTreeSet;
 

@@ -4,10 +4,10 @@
 
 - `tool.rs` — the tool's face: the parameter table (`query`, `regex`, `scope`, `lavish`), `run`
   (one walk, one render), and the one-line history summary.
-- `scan.rs` — the walk: the zone (the nearest `Cargo.toml` above the cwd and its `src/`), the roots
-  `scope` names (one miss line per unusable entry), the matcher (text or pattern), the parallel
-  collection of every file `lang::files` names and `loader::text` reads, and the item grouping
-  that turns a file's hit lines into the pieces the answer draws.
+- `scan.rs` — the walk: the tree a language claims (for Rust, the nearest `Cargo.toml` above the cwd
+  and its `src/`), the roots `scope` names (one miss line per unusable entry), the matcher (text or
+  pattern), the parallel collection of every file `lang::files` names and `loader::text` reads, and
+  the item grouping that turns a file's hit lines into the pieces the answer draws.
 - `render.rs` — the answer: two header lines (counts, mode, tier, then the scope inventory), the
   language's relation block, the tier judgment over the item
   count, the three densities (whole items, outlines, the census in its 500-row room), the footer

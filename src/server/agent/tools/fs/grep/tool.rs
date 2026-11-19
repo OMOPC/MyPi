@@ -17,13 +17,14 @@ const PARAMS: &[Param] = &[
     Param::new(
         "query",
         Kind::Text,
-        "Exact literal string (or regex if `regex: true`). Supports `A::b` to locate `b` inside type/module `A`.",
+        "Exact literal string (or regex if `regex: true`). Beyond a literal, it may name a member \
+         of a type/trait/module, or a name's own declarations (Rust: `A::b`).",
     ),
     Param::df("regex", Kind::Flag, "Parse `query` as regex", "false"),
     Param::new(
         "scope",
         Kind::TextList,
-        "`src/...` files or dirs, whatever suffix a sorter claims (defaults to whole `src/`; invalid \
+        "`src/...` files or dirs — Rust source and Markdown (defaults to the whole `src/`; invalid \
          entries skipped).",
     ),
     Param::df("lavish", Kind::Flag, "Raise the answer one tier", "false"),
@@ -32,10 +33,10 @@ const PARAMS: &[Param] = &[
 pub(crate) const TOOL: Tool = Tool {
     name: "grep",
     about: "Structural search across the crate's `src/`, Rust source and Markdown. Returns \
-            hits with the enclosing piece's hierarchy and line numbers. Supports `A::b` member \
-            lookup.",
+            hits with the enclosing piece's hierarchy and line numbers. Also locates a member \
+            inside a type/trait/module (Rust: `A::b`).",
     fields: "Requires `query`; `regex`, `scope` and `lavish` are optional.\n\
-             - `A::b` syntax: besides literal matches, also locates where type/trait/module `A` declares `b`.\n\
+             - Relations: besides literal matches, the query may name a member of a type/trait/module, or a name's own declarations (Rust: `A::b`).\n\
              - Header: the counts and the tier, then the scope entries and how many of them were\n\
                used.\n\
              - Footer: `DOWNSHIFTED` while the answer is coarser than tier 1 — `lavish` raises it\n\

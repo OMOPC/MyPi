@@ -76,20 +76,11 @@ pub(crate) struct RawEdge {
     pub(crate) re_export: bool,
 }
 
-// How a domain is walked: upward level by level, or the whole tree.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Shape {
-    Levels,
-    // A whole tree is the Markdown and Go shape; no language supplies it yet.
-    #[allow(dead_code)]
-    Tree,
-}
-
-// Where a unit may find who points at it.
+// Where a unit may find who points at it: the tree's root, and the language's own source directory under it.
 #[derive(Clone, Debug)]
 pub(crate) struct Domain {
     pub(crate) root: PathBuf,
-    pub(crate) shape: Shape,
+    pub(crate) tree: PathBuf,
 }
 
 // How big a child is. The machine counts; the language does not say.

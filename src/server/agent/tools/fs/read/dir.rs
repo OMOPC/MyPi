@@ -14,20 +14,26 @@ use crate::server::platform::time;
 // Direct files at or past this count fold into counts.
 const FOLD_AT: usize = 10;
 
-// One directory's listing, as its own counts and its body. The root is special: `src/` becomes a section of its own. `docs` names the documents the user keeps current, which take no part in any level's verdict.
+// One directory's listing, as its own counts and its body. The root is special: the source tree its language claims becomes a section of its own. `docs` names the documents the user keeps current, which take no part in any level's verdict.
 pub(crate) fn listing(path: &Path, cwd: &Path, docs: &[String]) -> Result<(String, String)> {
     let root = canonicalize_lenient(cwd);
     let target = canonicalize_lenient(path);
     let mut list = List::new();
     if target == root {
-        let src = root.join("src");
-        fill(&mut list, &root, 1, false, Some(&src), docs);
-        if lang::tree(&src) {
+        let tree = lang::domain(&root)
+            .map(|held| held.tree)
+            .filter(|tree| tree.starts_with(&root));
+        fill(&mut list, &root, 1, false, tree.as_deref(), docs);
+        if let Some(tree) = tree {
             if !list.out.is_empty() {
                 list.out.push('\n');
             }
-            list.line(format!("src/  {}", counts(&src)));
-            fill(&mut list, &src, 1, true, None, docs);
+            let name = tree
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            list.line(format!("{name}/  {}", counts(&tree)));
+            fill(&mut list, &tree, 1, true, None, docs);
         }
         return Ok((counts(&root), list.finish()));
     }
@@ -196,7 +202,7 @@ fn row(name: String, path: PathBuf, dir: bool, docs: &[String]) -> Entry {
     }
     let (at, size) = facts(&path);
     Entry {
-        kind: classify(&name, docs),
+        kind: classify(&path, docs),
         name,
         path,
         dir,
@@ -206,9 +212,15 @@ fn row(name: String, path: PathBuf, dir: bool, docs: &[String]) -> Entry {
     }
 }
 
-// A name's part in the rule: only `.md` takes part, and only the stem is compared with the configured ones. Upper case means no lower-case letter and at least one upper-case one.
-fn classify(name: &str, docs: &[String]) -> Kind {
-    let Some(stem) = name.strip_suffix(".md") else {
+// What one name is to the freshness rule: a document is a file its language does not call source; only the stem is compared with the configured ones. Upper case means no lower-case letter and at least one upper-case one.
+fn classify(path: &Path, docs: &[String]) -> Kind {
+    let Some(one) = lang::owner(path) else {
+        return Kind::Plain;
+    };
+    if one.source {
+        return Kind::Plain;
+    }
+    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
         return Kind::Plain;
     };
     if docs.iter().any(|doc| doc == stem) {

@@ -1,21 +1,23 @@
 # grep
 
-The `grep` tool: one query over the crate's own `src/`, answered as text.
+The `grep` tool: one query over the tree a language claims, answered as text.
 
 ## Design / Schema
 
-- The crate is the nearest `Cargo.toml` above the session's directory; only files a sorter claims
-  (`.rs`, `.md`) under its `src/` are read. No ignore rules and no external binary, so the answer is
-  the same on every platform, and `target/` is out of reach by construction. Anything outside
-  `src/` — `Cargo.toml`, `build.rs`, the root documents — is one `read` away and never searched.
-  Files are read in parallel; a file over 4 MiB is skipped.
+- The tree is what the session's language answers: for Rust, the nearest `Cargo.toml` above the
+  session's directory and its `src/`; only files a sorter claims (`.rs`, `.md`) under it are read.
+  No ignore rules and no external binary, so the answer is the same on every platform, and
+  `target/` is out of reach by construction. Anything outside `src/` — `Cargo.toml`, `build.rs`, the
+  root documents — is one `read` away and never searched. Files are read in parallel; a file over
+  4 MiB is skipped.
 - Parameters, in index order:
   - `query` — always; the literal text to find, or the pattern when `regex` is on. A pattern that
     does not compile is refused with the regex engine's own position and a reminder that `regex` is
     off by default.
   - `regex` — default false; parse `query` as a pattern instead of text.
-  - `scope` — paths named from the crate root and starting with `src/`: a directory, or a `.rs` or
-    `.md` file; omitted, the whole `src/`. An entry that is missing, names no readable file, or
+  - `scope` — paths named from the tree root and inside its source directory (`src/` for Rust): a
+    directory, or a `.rs` or `.md` file; omitted, the whole `src/`. An entry that is missing, names
+    no readable file, or
     stands outside `src/` is skipped while the rest still run, and the answer ends with one
     `[scope]` line per such entry naming the reason.
   - `lavish` — default false; the whole answer is drawn one tier denser: tier 3 as 2, tier 2 as 1.

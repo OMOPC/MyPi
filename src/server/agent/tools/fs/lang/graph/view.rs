@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use super::parts;
-use super::{Around, Edge, Loader, Size};
+use super::{Around, Edge, Loader};
 use crate::server::agent::tools::fs::lang::Row;
 
 // Fold this many importers by directory; below it, print them one by one.
@@ -111,16 +111,6 @@ fn section(base: &std::path::Path, label: &str, edges: &[Edge], rows: &mut Vec<R
     }
 }
 
-fn part(path: &std::path::Path, _base: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-// A child's size as a word, for a narration that has no better use for it.
-#[allow(dead_code)]
-fn size_word(size: Size) -> String {
-    match size {
-        Size::Files(n) => parts::plural(n, "file"),
-        Size::Lines(n) => format!("{n} lines"),
-        Size::Unknown => "?".to_string(),
-    }
+fn part(path: &std::path::Path, base: &std::path::Path) -> String {
+    parts::rel(base, path)
 }

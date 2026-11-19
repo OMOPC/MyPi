@@ -102,7 +102,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         text.push_str(&format!("[i] not formatted, written as it stands: {why}"));
     }
 
-    // The compiler answers for the file as it now stands, after the batch's last write; the seam stands under this answer at its end. A file that does not parse has the formatter's verdict already. Only a Rust file joins the batch's check.
+    // The compiler answers for the file as it now stands, after the batch's last write; the seam stands under this answer at its end. A file that does not parse has the formatter's verdict already. A file whose language names a checker joins the batch's check.
     if let Some(checker) = lang::checker(&p)
         && let Some(root) = (checker.unit)(&p)
     {

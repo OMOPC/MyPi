@@ -76,10 +76,10 @@ since one line of it could still fill memory.
 ### A directory's entries
 
 A directory answers one level: `name  N lines` for a file, `name/  K files, F dirs` for a directory.
-Inside `src/` each child directory is opened one level too, folding to counts at ten files. The
-session root lists its own entries, then `src/` as a section of its own with `src/`'s children
-beneath it. Build junk — `target`, `node_modules`, dot entries — is named like anything else and
-never opened.
+Inside the source tree each child directory is opened one level too, folding to counts at ten files.
+The session root lists its own entries, then the source tree its language claims (`src/` for Rust) as
+a section of its own with that tree's children beneath it. Build junk — `target`, `node_modules`, dot
+entries — is named like anything else and never opened.
 
 A listing is never cut. Each level folds itself: a directory of ten files or more answers its counts
 and nothing inside, so the answer is bounded by the depth times ten lines however many entries the
@@ -87,7 +87,8 @@ tree holds. The header carries the listed directory's own counts.
 
 #### When a file carries its stamp
 
-A level is one directory's own files, and every level is judged alone. Only `.md` files take a part:
+A level is one directory's own files, and every level is judged alone. Only files its language does
+not call source take a part (`.md` for Markdown):
 
 | kind | what it is |
 |---|---|
@@ -177,7 +178,7 @@ what was left out: the model reads the same three places whatever it asked for, 
 a truncated answer from a whole one by guessing.
 
 **The entry file is the hinge.** `mod.rs`, the dual-track `x.rs`, `lib.rs` are what a crate is read
-through, so the graph is found from `src/` outward and never by asking a compiler.
+through, so the graph is found from the source tree outward and never by asking a compiler.
 
 **A directory answer is two levels deep.** One level says what is here; the second says where a
 module's files are, which is the question the model asks next.

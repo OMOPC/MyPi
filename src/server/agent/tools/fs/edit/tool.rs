@@ -79,7 +79,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         Ok(edited)
     })?;
     env.seen.stamp(p.clone(), &edited.text);
-    let last = edited.at + edited.lines.saturating_sub(1);
+    let last = (edited.at + edited.lines).saturating_sub(1);
     let text = format!("{}: {}", edited.receipt, p.display());
 
     // The compiler answers for the file after the batch's last write; its faults hang under the changed lines.
@@ -94,7 +94,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
             unfold,
             seam: false,
             slots: vec![Slot {
-                landing: Some((edited.at, last.max(edited.at))),
+                landing: Some((edited.at, last)),
                 insert_at: text.lines().count(),
             }],
         });

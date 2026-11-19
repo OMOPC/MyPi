@@ -121,7 +121,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     } else {
         env.seen.revoke(&path);
     }
-    // Every written Rust call hands its shell to the audit: its faults hang under its edits when the batch's check has run, and the crate's report rides on the last written answer.
+    // Every written call hands its shell to the audit: its faults hang under its edits when the batch's check has run, and the crate's report rides on the last written answer.
     let audit = (built.written.is_some() && !matches!(built.word, Word::Plain))
         .then(|| lang::checker(&path))
         .flatten()

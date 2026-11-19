@@ -14,7 +14,7 @@ use crate::server::platform::stop::Stop;
 const LIMIT: Duration = Duration::from_secs(5);
 
 // How many bytes of formatted text this process remembers.
-const CACHE: usize = 32;
+const CACHE: usize = 32 * 1024;
 
 // The edition an older manifest still accepts.
 const DEFAULT_EDITION: &str = "2021";

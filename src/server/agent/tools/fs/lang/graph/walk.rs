@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use super::index::unit_texts;
-use super::{Boundary, Domain, Loader, RawEdge, Shape, Unit};
+use super::{Boundary, Domain, Loader, RawEdge, Unit};
 use crate::server::agent::tools::fs::lang::Hub;
 
 // How long a walk may spend past its first level. The first level always finishes.
@@ -22,10 +22,7 @@ pub(crate) fn scan(
     for (path, _) in unit_texts(unit, loader) {
         seen.insert(path);
     }
-    match domain.shape {
-        Shape::Levels => levels(facts, loader, unit, domain, &mut seen),
-        Shape::Tree => tree(facts, loader, unit, domain, &mut seen),
-    }
+    levels(facts, loader, unit, domain, &mut seen)
 }
 
 // A file the facts' language answers to. Other files are not this walk's business.
@@ -179,37 +176,4 @@ fn walk(
         }
     }
     true
-}
-
-fn tree(
-    facts: &Hub,
-    loader: &Loader,
-    unit: &Unit,
-    domain: &Domain,
-    seen: &mut HashSet<PathBuf>,
-) -> (Vec<(PathBuf, Vec<RawEdge>)>, Boundary) {
-    let deadline = Instant::now() + BUDGET;
-    let mut found = Vec::new();
-    let mut files = 0usize;
-    let complete = walk(
-        facts,
-        loader,
-        unit,
-        &domain.root,
-        seen,
-        &mut found,
-        &mut files,
-        true,
-        deadline,
-    );
-    (
-        found,
-        Boundary {
-            levels: 0,
-            files,
-            stop: None,
-            complete,
-            no_above: false,
-        },
-    )
 }

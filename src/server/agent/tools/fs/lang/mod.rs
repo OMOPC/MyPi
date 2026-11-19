@@ -130,13 +130,18 @@ pub(crate) fn suffixes(hub: &Hub) -> Option<&'static [&'static str]> {
         .map(|one| one.suffixes)
 }
 
-// Whether some language claims this directory as part of a source tree.
-pub(crate) fn tree(dir: &Path) -> bool {
+// The domain one path belongs to, from the first language that knows one.
+pub(crate) fn domain(path: &Path) -> Option<Domain> {
     LANGUAGES
         .iter()
         .filter_map(|one| one.hub)
         .filter_map(|hub| hub.domain)
-        .any(|domain| domain(dir).is_some())
+        .find_map(|domain| domain(path))
+}
+
+// Whether some language claims this directory as part of its source tree.
+pub(crate) fn tree(dir: &Path) -> bool {
+    domain(dir).is_some_and(|held| dir.starts_with(&held.tree))
 }
 
 // Every file under one directory that some sorter claims, recursively; junk skipped.
