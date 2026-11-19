@@ -1,6 +1,4 @@
-//! The process gate: every external tool the file tools run goes through here. A child leads its
-//! own process group, so a stuck child dies with its whole tree instead of holding the call it
-//! belongs to.
+// The process gate: every external tool the file tools run goes through here. A child leads its own process group, so a stuck child dies with its whole tree instead of holding the call it belongs to.
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -10,26 +8,25 @@ use std::time::{Duration, Instant};
 use crate::server::platform::proc;
 use crate::server::platform::stop::Stop;
 
-/// How often a waiting caller looks at its child.
+// How often a waiting caller looks at its child.
 const TICK: Duration = Duration::from_millis(5);
 
-/// How many bytes of one stream a child may hand back.
+// How many bytes of one stream a child may hand back.
 const CAP: usize = 8 << 20;
 
-/// What one child handed back.
+// What one child handed back.
 pub(crate) struct Ran {
-    /// Its exit code; `None` when a signal ended it or it was killed.
+    // Its exit code; `None` when a signal ended it or it was killed.
     pub(crate) code: Option<i32>,
     pub(crate) out: String,
     pub(crate) err: String,
-    /// Whether the deadline killed it.
+    // Whether the deadline killed it.
     pub(crate) timed_out: bool,
-    /// Whether the turn's stop killed it.
+    // Whether the turn's stop killed it.
     pub(crate) stopped: bool,
 }
 
-/// Run one child to its end, or kill its whole group when the deadline passes or the turn is
-/// stopped. Every tick looks at both: a stop must never wait out a deadlock in someone else's tree.
+// Run one child to its end, or kill its whole group when the deadline passes or the turn is stopped. Every tick looks at both: a stop must never wait out a deadlock in someone else's tree.
 pub(crate) fn run(
     mut cmd: Command,
     input: Option<&[u8]>,
@@ -98,8 +95,7 @@ pub(crate) fn run(
     })
 }
 
-/// Read one stream to its end on a thread of its own: a child that talks past the pipe's buffer
-/// must never block on a reader that is not there yet.
+// Read one stream to its end on a thread of its own: a child that talks past the pipe's buffer must never block on a reader that is not there yet.
 fn drain(pipe: impl std::io::Read + Send + 'static) -> std::thread::JoinHandle<String> {
     std::thread::Builder::new()
         .name("mypi-gate-out".into())
@@ -121,7 +117,7 @@ fn drain(pipe: impl std::io::Read + Send + 'static) -> std::thread::JoinHandle<S
         .expect("a reader thread")
 }
 
-/// A program of a toolchain: next to this executable first, then whatever PATH holds.
+// A program of a toolchain: next to this executable first, then whatever PATH holds.
 pub(crate) fn beside(name: &str) -> PathBuf {
     let named = if cfg!(windows) {
         format!("{name}.exe")

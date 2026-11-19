@@ -1,11 +1,10 @@
-//! Local time: the zone table and the stamp helpers.
+// Local time: the zone table and the stamp helpers.
 
-/// The local zone: a table of "from this moment on, the offset is that".
+// The local zone: a table of "from this moment on, the offset is that".
 struct Zone {
-    /// `(transition moment (UTC seconds), offset after it (seconds))`,
-    /// ascending by moment.
+    // `(transition moment (UTC seconds), offset after it (seconds))`, ascending by moment.
     transitions: Vec<(i64, i32)>,
-    /// The offset before the first transition.
+    // The offset before the first transition.
     initial: i32,
 }
 
@@ -17,7 +16,7 @@ impl Zone {
         }
     }
 
-    /// The offset at a moment.
+    // The offset at a moment.
     fn offset_at(&self, unix: i64) -> i32 {
         match self.transitions.partition_point(|(t, _)| *t <= unix) {
             0 => self.initial,
@@ -26,30 +25,28 @@ impl Zone {
     }
 }
 
-/// The process's zone, written exactly once.
+// The process's zone, written exactly once.
 static ZONE: std::sync::OnceLock<Zone> = std::sync::OnceLock::new();
 
-/// Take the zone from configuration. Called once, at startup, before anyone
-/// asks for the time. `None` = whatever this machine says.
+// Take the zone from configuration. Called once, at startup, before anyone asks for the time. `None` = whatever this machine says.
 pub fn init(name: Option<&str>) {
     let zone = load_zone(name).unwrap_or_else(|| Zone::fixed(0));
     let _ = ZONE.set(zone);
 }
 
-/// The process's zone, loading the machine's own when nobody called [`init`].
+// The process's zone, loading the machine's own when nobody called [`init`].
 fn local_zone() -> &'static Zone {
     ZONE.get_or_init(|| load_zone(None).unwrap_or_else(|| Zone::fixed(0)))
 }
 
-/// The named zone, else the machine's, else nothing.
+// The named zone, else the machine's, else nothing.
 fn load_zone(name: Option<&str>) -> Option<Zone> {
     if let Some(name) = name.map(str::trim).filter(|name| !name.is_empty()) {
         // A fixed offset like `UTC+8` needs no file at all.
         if let Some(off) = fixed_offset(name) {
             return Some(Zone::fixed(off));
         }
-        // A bare name is looked up in the system's zoneinfo; an absolute
-        // path is read where it points.
+        // A bare name is looked up in the system's zoneinfo; an absolute path is read where it points.
         let path = if name.starts_with('/') {
             std::path::PathBuf::from(name)
         } else {
@@ -76,16 +73,14 @@ fn system_zone() -> Option<Zone> {
     Some(Zone::fixed(win::current_offset()))
 }
 
-/// `UTC+8` / `GMT-5` / `UTC+8:30` → the seconds to add to UTC for local
-/// time.
+// `UTC+8` / `GMT-5` / `UTC+8:30` → the seconds to add to UTC for local time.
 fn fixed_offset(name: &str) -> Option<i32> {
     let rest = name
         .strip_prefix("UTC")
         .or_else(|| name.strip_prefix("GMT"))
         .unwrap_or(name);
     let (sign, digits) = rest.split_at_checked(1)?;
-    // POSIX sign: `UTC+8` means "eight hours ahead of UTC", i.e. local =
-    // UTC - 8h.
+    // POSIX sign: `UTC+8` means "eight hours ahead of UTC", i.e. local = UTC - 8h.
     let mult = match sign {
         "+" => -1,
         "-" => 1,
@@ -99,8 +94,7 @@ fn fixed_offset(name: &str) -> Option<i32> {
     (h <= 24 && m < 60).then(|| mult * (h * 3600 + m * 60))
 }
 
-/// Parse one TZif (zoneinfo) file into a transition table: the 64-bit block when the version has
-/// one, both DST entries, and no POSIX footer (that describes "after the last transition").
+// Parse one TZif (zoneinfo) file into a transition table: the 64-bit block when the version has one, both DST entries, and no POSIX footer (that describes "after the last transition").
 fn parse_tzif(data: &[u8]) -> Option<Zone> {
     if data.len() < 44 || &data[0..4] != b"TZif" {
         return None;
@@ -148,8 +142,7 @@ fn parse_tzif(data: &[u8]) -> Option<Zone> {
         let at = tt_at.checked_add(i * 6)?;
         let b = data.get(at..at + 4)?;
         let off = i32::from_be_bytes([b[0], b[1], b[2], b[3]]);
-        // ttinfo = 4-byte offset + 1-byte DST flag + 1-byte abbreviation
-        // index.
+        // ttinfo = 4-byte offset + 1-byte DST flag + 1-byte abbreviation index.
         let isdst = *data.get(at + 4)? != 0;
         if !isdst && standard.is_none() {
             standard = Some(off);
@@ -203,13 +196,13 @@ pub(crate) fn local_parts(unix: i64) -> (i64, u32, u32, u32, u32, u32) {
     )
 }
 
-/// Now (local zone) as `YYYY-MM-DD HH:MM:SS`.
+// Now (local zone) as `YYYY-MM-DD HH:MM:SS`.
 pub fn now_stamp() -> String {
     let now = unix_now();
     stamp_from_unix(now + local_zone().offset_at(now) as i64)
 }
 
-/// `YYYY-MM-DD HH:MM:SS` for one moment, in the process's zone.
+// `YYYY-MM-DD HH:MM:SS` for one moment, in the process's zone.
 pub fn stamp_at(at: std::time::SystemTime) -> String {
     let unix = at
         .duration_since(std::time::UNIX_EPOCH)
@@ -217,8 +210,7 @@ pub fn stamp_at(at: std::time::SystemTime) -> String {
         .unwrap_or(0);
     stamp_from_unix(unix + local_zone().offset_at(unix) as i64)
 }
-/// `YYYY-MM-DD HH:MM:SS` for a Unix timestamp **already shifted into local time**: the civil-date
-/// arithmetic never touches the clock.
+// `YYYY-MM-DD HH:MM:SS` for a Unix timestamp **already shifted into local time**: the civil-date arithmetic never touches the clock.
 fn stamp_from_unix(local: i64) -> String {
     let days = local.div_euclid(86_400);
     let secs = local.rem_euclid(86_400);
@@ -231,8 +223,8 @@ fn stamp_from_unix(local: i64) -> String {
     )
 }
 
-/// Howard Hinnant's `civil_from_days`: days since 1970-01-01 → (y, m, d).
-/// Floored arithmetic, so it is correct for negative (pre-1970) inputs too.
+// Howard Hinnant's `civil_from_days`: days since 1970-01-01 → (y, m, d).
+// Floored arithmetic, so it is correct for negative (pre-1970) inputs too.
 pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = z.div_euclid(146_097);
@@ -246,8 +238,7 @@ pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-/// Local `YYYY-MM-DD HH:MM:SS` → seconds (treated as UTC; the inverse of
-/// [`stamp_from_unix`]). `None` when unreadable.
+// Local `YYYY-MM-DD HH:MM:SS` → seconds (treated as UTC; the inverse of [`stamp_from_unix`]). `None` when unreadable.
 fn parse_stamp(stamp: &str) -> Option<i64> {
     let b = stamp.as_bytes();
     if b.len() < 19 {
@@ -271,7 +262,7 @@ fn parse_stamp(stamp: &str) -> Option<i64> {
     Some(days * 86_400 + h * 3600 + mi * 60 + s)
 }
 
-/// Inverse of [`civil_from_days`]: (y, m, d) → days since 1970-01-01.
+// Inverse of [`civil_from_days`]: (y, m, d) → days since 1970-01-01.
 pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
@@ -282,12 +273,12 @@ pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// A local stamp → days since 1970-01-01 (weekday math runs on days).
+// A local stamp → days since 1970-01-01 (weekday math runs on days).
 pub fn days_from_stamp(stamp: &str) -> Option<i64> {
     parse_stamp(stamp).map(|s| s.div_euclid(86_400))
 }
 
-/// A local stamp's age in seconds. `None`: the stamp is unreadable; a future stamp saturates to 0.
+// A local stamp's age in seconds. `None`: the stamp is unreadable; a future stamp saturates to 0.
 pub fn age_seconds(stamp: &str) -> Option<u64> {
     let local = parse_stamp(stamp)?;
     let now = unix_now();

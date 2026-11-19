@@ -21,7 +21,7 @@ pub enum Request {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Response {
-    /// Startup handshake: the worker is ready. `Command::spawn` succeeding does not mean it works.
+    // Startup handshake: the worker is ready. `Command::spawn` succeeding does not mean it works.
     Ready,
     Chunk {
         id: u64,
@@ -30,7 +30,7 @@ pub enum Response {
     Done {
         id: u64,
     },
-    /// One failure. `status`/`body` are set only for HTTP status errors, for `HttpFailure`.
+    // One failure. `status`/`body` are set only for HTTP status errors, for `HttpFailure`.
     Error {
         id: u64,
         message: String,
@@ -50,7 +50,7 @@ pub struct HttpWorker {
 }
 pub type SharedWorker = Arc<Mutex<HttpWorker>>;
 
-/// The environment variable that turns this executable into a worker.
+// The environment variable that turns this executable into a worker.
 pub const WORKER_ENV: &str = "MYPI_HTTP_WORKER";
 
 // One session's worker: the child that owns its sockets, made on demand and stopped on demand.
@@ -66,7 +66,7 @@ impl SessionWorker {
         })
     }
 
-    /// The child for one request, spawned on first use.
+    // The child for one request, spawned on first use.
     pub fn request(&self) -> Option<SharedWorker> {
         let mut slot = self.slot.lock().ok()?;
         if slot.is_none() {
@@ -266,10 +266,10 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-/// The greeting deadline: a worker that never speaks is taken down.
+// The greeting deadline: a worker that never speaks is taken down.
 const HELLO_LIMIT: Duration = Duration::from_secs(10);
 
-/// Read the worker's greeting line, giving up after `limit`.
+// Read the worker's greeting line, giving up after `limit`.
 fn greet(mut output: BufReader<ChildStdout>, limit: Duration) -> Result<BufReader<ChildStdout>> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -299,7 +299,7 @@ fn agent_for(timeout_ms: u64) -> ureq::Agent {
         .into()
 }
 
-/// One response body, line by line, with the silence deadline the decoder no longer owns.
+// One response body, line by line, with the silence deadline the decoder no longer owns.
 fn stream_body(
     body: impl std::io::Read + Send + 'static,
     id: u64,
@@ -394,7 +394,7 @@ fn write_status(out: &mut impl Write, id: u64, status: u16, body: String) -> Res
     Ok(())
 }
 
-/// The child's stdout, one whole line at a time.
+// The child's stdout, one whole line at a time.
 pub(crate) struct ChannelReader {
     pub(crate) rx: std::sync::mpsc::Receiver<String>,
     pub(crate) pending: Vec<u8>,

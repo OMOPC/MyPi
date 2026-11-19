@@ -1,4 +1,4 @@
-//! The job service one session holds, and the factory that builds them.
+// The job service one session holds, and the factory that builds them.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -13,7 +13,7 @@ use super::wake::WakeSink;
 use crate::server::agent::tools::contract::job as port;
 use crate::server::platform::time;
 
-/// The scheduler's own numbers, read from config by whoever builds the factory.
+// The scheduler's own numbers, read from config by whoever builds the factory.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Values {
     pub(crate) max_concurrent: usize,
@@ -22,7 +22,7 @@ pub(crate) struct Values {
     pub(crate) max_retained: usize,
 }
 
-/// Builds one service per session and owns the shared wake handle.
+// Builds one service per session and owns the shared wake handle.
 pub(crate) struct Factory {
     values: Values,
     wake: Arc<dyn WakeSink>,
@@ -57,7 +57,7 @@ impl Factory {
     }
 }
 
-/// The handle one session's tools hold.
+// The handle one session's tools hold.
 pub(crate) struct JobService {
     inner: Arc<Inner>,
 }
@@ -73,7 +73,7 @@ struct Inner {
 }
 
 impl Inner {
-    /// Start the thread the first time something needs a clock; it ends itself once nothing does.
+    // Start the thread the first time something needs a clock; it ends itself once nothing does.
     fn ensure(&self) -> Result<()> {
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if st.alive {
@@ -367,7 +367,7 @@ impl JobService {
     }
 }
 
-/// One id as the model wrote it.
+// One id as the model wrote it.
 fn parse_id(text: &str) -> Result<Id> {
     Id::parse(text).ok_or_else(|| anyhow::anyhow!("`id` must look like `k1`, `s1`, or `s1.1`"))
 }

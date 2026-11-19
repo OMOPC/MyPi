@@ -1,4 +1,4 @@
-//! Windows named pipes: one instance per accepted front end.
+// Windows named pipes: one instance per accepted front end.
 
 use std::ffi::{OsStr, c_void};
 use std::io;
@@ -135,8 +135,7 @@ impl Stream {
     }
 }
 
-// One pipe, one handle: a clone is another owner of the same end, so a shutdown reaches every
-// thread reading or writing through any clone.
+// One pipe, one handle: a clone is another owner of the same end, so a shutdown reaches every thread reading or writing through any clone.
 impl Clone for Stream {
     fn clone(&self) -> Stream {
         Stream {
@@ -241,9 +240,7 @@ pub fn connect(name: &str) -> io::Result<Stream> {
 }
 
 impl Stream {
-    // Close both directions: a blocking read on any clone returns end of file. The flag is what
-    // makes this stick: a read that starts after the cancellation still sees it, and a cancelled
-    // read answers end of file instead of an error.
+    // Close both directions: a blocking read on any clone returns end of file. The flag is what makes this stick: a read that starts after the cancellation still sees it, and a cancelled read answers end of file instead of an error.
     pub fn shutdown(&self) {
         self.closed.store(true, Ordering::SeqCst);
         unsafe {

@@ -1,17 +1,12 @@
-//! Process stop signals: the one fact the loop cannot read from the terminal.
-//!
-//! `SIGINT`, `SIGTERM`, `SIGQUIT` and `SIGHUP` end the front end. The loop restores the screen
-//! and leaves; nothing tries to survive them.
-//!
-//! Windows has neither `SIGHUP` nor `SIGQUIT`, and no signal iterator: the console's `Ctrl-C`
-//! and `Ctrl-Break` are the stop signals there, read out of a flag.
+// Process stop signals: the one fact the loop cannot read from the terminal.
+// SIGINT/TERM/QUIT/HUP end the front end after the screen is restored; on windows Ctrl-C/Ctrl-Break do.
 
 #[cfg(unix)]
 use signal_hook::consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 #[cfg(unix)]
 use signal_hook::iterator::Signals;
 
-/// The stop signals, registered once at startup.
+// The stop signals, registered once at startup.
 #[cfg(unix)]
 pub struct Stop {
     signals: Signals,
@@ -25,7 +20,7 @@ impl Stop {
         })
     }
 
-    /// The first stop signal seen since the last call.
+    // The first stop signal seen since the last call.
     pub fn poll(&mut self) -> Option<i32> {
         self.signals.pending().next()
     }

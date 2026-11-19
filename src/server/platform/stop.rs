@@ -1,4 +1,4 @@
-//! One stop signal: a flag, and the actions that abort the work waiting under it.
+// One stop signal: a flag, and the actions that abort the work waiting under it.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -17,7 +17,7 @@ pub struct Stop {
     running: Mutex<Vec<std::thread::JoinHandle<()>>>,
 }
 
-/// One registration; dropping it takes the action off the signal.
+// One registration; dropping it takes the action off the signal.
 pub struct Hook {
     stop: Weak<Stop>,
     id: u64,
@@ -59,8 +59,7 @@ impl Stop {
         }
     }
 
-    // Wait for the actions the last `set` dispatched. A stop returns at once; this is for a caller
-    // that is about to touch what those actions are taking down.
+    // Wait for the actions the last `set` dispatched. A stop returns at once; this is for a caller that is about to touch what those actions are taking down.
     pub fn settle(&self) {
         let handles = std::mem::take(&mut *self.running());
         for handle in handles {
@@ -68,12 +67,12 @@ impl Stop {
         }
     }
 
-    /// Clear the flag; the table must already be empty.
+    // Clear the flag; the table must already be empty.
     pub fn reset(&self) {
         self.stopped.store(false, Ordering::Release);
     }
 
-    /// Register an action; a signal that already fired runs it here and now.
+    // Register an action; a signal that already fired runs it here and now.
     pub fn on_stop(self: &Arc<Self>, action: impl Fn() + Send + Sync + 'static) -> Hook {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let action: Action = Arc::new(action);

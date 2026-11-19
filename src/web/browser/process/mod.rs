@@ -1,4 +1,4 @@
-//! One browser process or an attachment: the handle and its group.
+// One browser process or an attachment: the handle and its group.
 
 mod launch;
 
@@ -22,7 +22,7 @@ pub(crate) fn discover_live_browser(profile: &Path) -> Option<u16> {
     Client::port_alive(port).then_some(port)
 }
 
-/// A browser: one we launched (owned) or one already running (attached).
+// A browser: one we launched (owned) or one already running (attached).
 pub(crate) struct Browser {
     process: Option<Process>,
     port: u16,
@@ -53,7 +53,7 @@ impl Browser {
         self.attached
     }
 
-    /// True while the port answers and an owned process has not exited.
+    // True while the port answers and an owned process has not exited.
     pub(crate) fn alive(&mut self) -> bool {
         if self.attached {
             return Client::port_alive(self.port);

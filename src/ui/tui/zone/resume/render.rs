@@ -1,7 +1,5 @@
-//! Rendering for `/resume`.
-//!
-//! One block per session: title, first-message preview and meta lines, with a
-//! blank line between blocks. Selected rows are blue + bold, other text dim.
+// Rendering for `/resume`.
+// One block per session: title, first-message preview and meta lines, with a blank line between blocks. Selected rows are blue + bold, other text dim.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,12 +12,12 @@ use crate::ui::tui::text::bytes as byte_size;
 use crate::ui::tui::text::card::{card_edge, card_edge_labeled, card_row};
 use crate::ui::tui::theme::fixed;
 
-/// A span in one fixed color.
+// A span in one fixed color.
 fn fg(text: impl Into<String>, color: ratatui::style::Color) -> Span<'static> {
     Span::styled(text.into(), Style::new().fg(color))
 }
 
-/// A bold span in one fixed color.
+// A bold span in one fixed color.
 fn bold(text: impl Into<String>, color: ratatui::style::Color) -> Span<'static> {
     Span::styled(
         text.into(),
@@ -27,9 +25,8 @@ fn bold(text: impl Into<String>, color: ratatui::style::Color) -> Span<'static> 
     )
 }
 
-/// Screen rows one session block takes: title + preview + meta + blank line.
-///
-/// The last block draws no blank line; the window math accounts for that.
+// Screen rows one session block takes: title + preview + meta + blank line.
+// The last block draws no blank line; the window math accounts for that.
 fn block_height(has_preview: bool) -> usize {
     if has_preview { 4 } else { 3 }
 }
@@ -39,8 +36,7 @@ pub(super) fn lines(z: &mut ResumeZone) -> Vec<Line<'static>> {
         return Vec::new();
     };
     let width = size.cols as usize;
-    // Frame: title + search + divider + list + divider + hint + bottom = 6 rows, plus whatever
-    // the opening word and a refusal take from the list.
+    // Frame: title + search + divider + list + divider + hint + bottom = 6 rows, plus whatever the opening word and a refusal take from the list.
     let extra = usize::from(z.failed())
         + usize::from(z.opening().is_some())
         + usize::from(z.error().is_some());
@@ -74,8 +70,7 @@ pub(super) fn lines(z: &mut ResumeZone) -> Vec<Line<'static>> {
     };
     out.push(card_row(search, edge, bg, width));
     out.push(card_edge(edge, bg, width));
-    // Server-side refusals (delete rejected etc.) are drawn above the list, since
-    // the main area is hidden while this selector is open.
+    // Server-side refusals (delete rejected etc.) are drawn above the list, since the main area is hidden while this selector is open.
     if z.failed() {
         out.push(card_row(
             Line::from(fg("删除被拒", fixed::ERR)),
@@ -142,7 +137,7 @@ pub(super) fn lines(z: &mut ResumeZone) -> Vec<Line<'static>> {
     out
 }
 
-/// The three lines of one session block.
+// The three lines of one session block.
 fn row_lines(
     row: &Row,
     selected: bool,
@@ -155,8 +150,7 @@ fn row_lines(
     let mut out = Vec::new();
 
     // Line 1: cursor + title; selected rows are blue + bold.
-    // The cursor is the only position indicator, and its blank placeholder keeps
-    // every title starting at the same column.
+    // The cursor is the only position indicator, and its blank placeholder keeps every title starting at the same column.
     let cursor = if selected { "> " } else { "  " };
     let cursor_color = if selected {
         fixed::MD_HEADING
@@ -215,7 +209,7 @@ fn row_lines(
     out
 }
 
-/// Footer key hints, drawn on the bottom row.
+// Footer key hints, drawn on the bottom row.
 fn footer() -> Line<'static> {
     Line::from(vec![
         fg("Enter", fixed::SYSTEM),
@@ -231,10 +225,8 @@ fn footer() -> Line<'static> {
     ])
 }
 
-/// List window: the start index `top` and how many blocks fit.
-///
-/// The budget is in physical rows (a block is 3 or 4 rows), so a short last block
-/// is never pushed off screen.
+// List window: the start index `top` and how many blocks fit.
+// The budget is in physical rows (a block is 3 or 4 rows), so a short last block is never pushed off screen.
 fn window(z: &ResumeZone, budget: usize) -> (usize, usize) {
     let count = z.visible_len();
     if count == 0 || budget == 0 {
@@ -282,8 +274,7 @@ fn age_text(stamp: &str) -> String {
     human_age(now.saturating_sub(then).max(0) as u64)
 }
 
-/// `started_at` is local wall time (`YYYY-MM-DD HH:MM:SS`); subtract the local offset to
-/// compare it with the epoch clock.
+// `started_at` is local wall time (`YYYY-MM-DD HH:MM:SS`); subtract the local offset to compare it with the epoch clock.
 fn stamp_epoch(stamp: &str) -> Option<i64> {
     let (date, time) = stamp.split_once(' ')?;
     let mut date = date.split('-');
@@ -297,7 +288,7 @@ fn stamp_epoch(stamp: &str) -> Option<i64> {
     Some(days_from_civil(y, m, d) * 86_400 + hh * 3600 + mm * 60 + ss - local_offset())
 }
 
-/// Howard Hinnant's civil-date algorithm: days since 1970-01-01.
+// Howard Hinnant's civil-date algorithm: days since 1970-01-01.
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;
@@ -313,7 +304,7 @@ fn local_offset() -> i64 {
     *OFFSET.get_or_init(|| platform_time::offset_at(platform_time::unix_now()) as i64)
 }
 
-/// Relative age in Chinese: just now / N minutes / N hours / N days.
+// Relative age in Chinese: just now / N minutes / N hours / N days.
 fn human_age(secs: u64) -> String {
     match secs {
         0..=59 => "刚刚".to_string(),
@@ -324,8 +315,7 @@ fn human_age(secs: u64) -> String {
     }
 }
 
-/// Path shortening: at most the last two segments, no leading slash,
-/// prefixed with an ellipsis marker when segments were dropped.
+// Path shortening: at most the last two segments, no leading slash, prefixed with an ellipsis marker when segments were dropped.
 fn shorten(path: &str) -> String {
     let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
     if parts.len() <= 2 {

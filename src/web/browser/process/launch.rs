@@ -1,4 +1,4 @@
-//! Launch argv and the wait for a DevTools port.
+// Launch argv and the wait for a DevTools port.
 
 use anyhow::{Context as _, anyhow};
 use std::path::{Path, PathBuf};
@@ -60,8 +60,7 @@ fn command(exe: &Path, profile: &Path, cfg: &BrowserOptions) -> Command {
     cmd
 }
 
-/// DevToolsActivePort appears once the WS endpoint is listening; an early exit
-/// means a bad binary or a profile another process holds.
+// DevToolsActivePort appears once the WS endpoint is listening; an early exit means a bad binary or a profile another process holds.
 fn wait_for_devtools(profile: &Path, process: &Process) -> anyhow::Result<u16> {
     let port_file = profile.join("DevToolsActivePort");
     let deadline = Instant::now() + Duration::from_secs(15);

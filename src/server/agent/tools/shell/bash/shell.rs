@@ -1,5 +1,4 @@
-//! How one admitted command line runs, stops and reports. The group it leads is the unit of stopping:
-//! the backend supplies the program, `platform::proc` starts and signals the tree.
+// How one admitted command line runs, stops and reports. The group it leads is the unit of stopping: the backend supplies the program, `platform::proc` starts and signals the tree.
 
 use std::sync::Arc;
 
@@ -11,8 +10,7 @@ use crate::server::platform::proc;
 use crate::server::platform::shell::Shell;
 use crate::server::platform::stop::Stop;
 
-/// One command line through the backend, collecting its output. The exit code and how it ended
-/// live in the `Exit`; the text carries `[exit N]` and nothing about stopping.
+// One command line through the backend, collecting its output. The exit code and how it ended live in the `Exit`; the text carries `[exit N]` and nothing about stopping.
 pub(crate) fn run(
     shell: &Shell,
     cwd: &std::path::Path,
@@ -26,7 +24,7 @@ pub(crate) fn run(
     Ok((sink.text, exit))
 }
 
-/// Run one command line, feeding its two streams to `sink` as they arrive.
+// Run one command line, feeding its two streams to `sink` as they arrive.
 pub(crate) fn run_to(
     shell: &Shell,
     cwd: &std::path::Path,
@@ -91,14 +89,13 @@ pub(crate) fn run_to(
             let mut raw = [0u8; 8192];
             let mut pending = String::new();
             let mut batch = String::new();
-            /// How much one message carries: a chatty command must not cost one wake per line.
+            // How much one message carries: a chatty command must not cost one wake per line.
             const CHUNK: usize = 8 * 1024;
             loop {
                 match rdr.read(&mut raw) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        // Lossy per read, keeping the trailing partial line back: a multi-byte character
-                        // or escape split across reads must not be emitted half-formed.
+                        // Lossy per read, keeping the trailing partial line back: a multi-byte character or escape split across reads must not be emitted half-formed.
                         pending.push_str(&String::from_utf8_lossy(&raw[..n]));
                         while let Some(i) = pending.find('\n') {
                             batch.extend(pending.drain(..=i));
@@ -140,10 +137,8 @@ pub(crate) fn run_to(
         }
     });
 
-    // Tool thread: one blocking receive. Output goes to the front end as it arrives, so a command
-    // that prints for a minute looks alive; nothing wakes this thread on a timer.
-    /// How often the live view refreshes: fast enough to look live, slow enough that a chatty
-    /// command cannot drown the front end.
+    // Tool thread: one blocking receive. Output goes to the front end as it arrives, so a command that prints for a minute looks alive; nothing wakes this thread on a timer.
+    // How often the live view refreshes: fast enough to look live, slow enough that a chatty command cannot drown the front end.
     const REPORT_EVERY: std::time::Duration = std::time::Duration::from_millis(120);
 
     let mut status: Option<std::io::Result<std::process::ExitStatus>> = None;
@@ -185,8 +180,7 @@ pub(crate) fn run_to(
     if !unflushed.is_empty() {
         progress(ToolProgress::Output(crate::ansi::strip_ansi(&unflushed)));
     }
-    // The command is over: take the action off the signal before the status, so an early return
-    // below cannot signal a group that is already gone.
+    // The command is over: take the action off the signal before the status, so an early return below cannot signal a group that is already gone.
     drop(hook);
     flag.finish();
     let killed = flag.is_armed();
@@ -207,13 +201,12 @@ pub(crate) fn run_to(
     Ok(exit)
 }
 
-/// Spawn with a name: these threads live as long as one bash command, and an unnamed pool is
-/// unreadable in `top -H`. A name that fails is not worth failing the command over.
+// Spawn with a name: these threads live as long as one bash command, and an unnamed pool is unreadable in `top -H`. A name that fails is not worth failing the command over.
 fn named(name: &str, f: impl FnOnce() + Send + 'static) {
     let _ = std::thread::Builder::new().name(name.into()).spawn(f);
 }
 
-/// The bash tool's original string result, byte for byte.
+// The bash tool's original string result, byte for byte.
 #[derive(Default)]
 struct StringSink {
     stdout: String,
@@ -250,13 +243,12 @@ impl OutputSink for StringSink {
     }
 }
 
-/// Why a bash command died without a clean exit. One flag, one bell: arming is one-way, and `done`
-/// says the command is over so the deadline thread stops waiting.
+// Why a bash command died without a clean exit. One flag, one bell: arming is one-way, and `done` says the command is over so the deadline thread stops waiting.
 #[derive(Default)]
 struct StopFlag {
     armed: std::sync::atomic::AtomicBool,
     done: std::sync::atomic::AtomicBool,
-    /// Wakes the deadline thread the instant either flag flips.
+    // Wakes the deadline thread the instant either flag flips.
     bell: std::sync::Condvar,
     lock: std::sync::Mutex<()>,
 }
@@ -265,7 +257,7 @@ impl StopFlag {
     fn is_armed(&self) -> bool {
         self.armed.load(std::sync::atomic::Ordering::Relaxed)
     }
-    /// Command finished (however it finished): stop every thread waiting on this flag. Idempotent.
+    // Command finished (however it finished): stop every thread waiting on this flag. Idempotent.
     fn finish(&self) {
         self.done.store(true, std::sync::atomic::Ordering::Relaxed);
         self.ring();
@@ -273,13 +265,12 @@ impl StopFlag {
     fn is_done(&self) -> bool {
         self.done.load(std::sync::atomic::Ordering::Relaxed)
     }
-    /// Wake the waiter (arming and finishing both end the wait). The lock alone is not a signal:
-    /// the waiter is parked on the condvar and needs `notify_all` to be scheduled.
+    // Wake the waiter (arming and finishing both end the wait). The lock alone is not a signal: the waiter is parked on the condvar and needs `notify_all` to be scheduled.
     fn ring(&self) {
         drop(self.lock.lock().unwrap_or_else(|e| e.into_inner()));
         self.bell.notify_all();
     }
-    /// Block until the flag is armed, finished, or `timeout` elapses. The deadline thread's only wait.
+    // Block until the flag is armed, finished, or `timeout` elapses. The deadline thread's only wait.
     fn wait_for(&self, timeout: std::time::Duration) {
         let guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let _ = self

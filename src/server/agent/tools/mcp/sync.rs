@@ -1,5 +1,4 @@
-//! The default MCP backend: one lazy stdio server per configured name, keyed to where the
-//! session stands.
+// The default MCP backend: one lazy stdio server per configured name, keyed to where the session stands.
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -18,7 +17,7 @@ pub struct SyncMcpBridge {
     servers: Mutex<HashMap<String, Arc<Mutex<Server>>>>,
 }
 
-/// Where the session stands and the table read for that place; the two change together.
+// Where the session stands and the table read for that place; the two change together.
 struct Standing {
     cwd: std::path::PathBuf,
     config: BTreeMap<String, ServerConfig>,
@@ -37,7 +36,7 @@ impl SyncMcpBridge {
         }
     }
 
-    /// One session's bridge, its table read where the session stands. Servers start on first use.
+    // One session's bridge, its table read where the session stands. Servers start on first use.
     pub fn open(cwd: &Path, global: &Path) -> Result<Self> {
         let config = super::setup::table(cwd, global)?;
         Ok(Self::new(cwd.to_path_buf(), global.to_path_buf(), config))
@@ -143,8 +142,7 @@ impl SyncMcpBridge {
         stop: &Arc<Stop>,
     ) -> Result<McpResult> {
         let server = self.server_for(name)?;
-        // The kill goes by the tree, never by the server's own lock: the call holds that lock
-        // while it waits, and the wait is exactly what the stop has to end.
+        // The kill goes by the tree, never by the server's own lock: the call holds that lock while it waits, and the wait is exactly what the stop has to end.
         let (process, closed) = {
             let server = server
                 .lock()

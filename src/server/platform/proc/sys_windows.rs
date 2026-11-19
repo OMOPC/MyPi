@@ -98,8 +98,7 @@ struct ThreadEntry32 {
 
 pub const CONTAINER: &str = "job";
 
-// No console window for a child started from a process that has none. The leader is born
-// suspended: it is put in its job before its first instruction, so nothing it starts can escape.
+// No console window for a child started from a process that has none. The leader is born suspended: it is put in its job before its first instruction, so nothing it starts can escape.
 pub fn prepare(cmd: &mut Command, _follow: Follow) {
     use std::os::windows::process::CommandExt as _;
     cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);

@@ -1,4 +1,4 @@
-//! Where every binary mode fans out: the two processes, and the one-shot queries.
+// Where every binary mode fans out: the two processes, and the one-shot queries.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -41,8 +41,7 @@ fn main() -> anyhow::Result<()> {
     run(session, &cli)
 }
 
-/// The server is a background child: it takes no terminal, prints nothing, and leaves with the
-/// last front end. This process waits for its socket, then owns the screen.
+// The server is a background child: it takes no terminal, prints nothing, and leaves with the last front end. This process waits for its socket, then owns the screen.
 fn spawn_server(file: &Path) -> anyhow::Result<mypi::ui::session::Session> {
     let mut cmd = std::process::Command::new(std::env::current_exe()?);
     cmd.arg("--server")
@@ -65,7 +64,7 @@ fn spawn_server(file: &Path) -> anyhow::Result<mypi::ui::session::Session> {
     }
 }
 
-/// A server has no terminal to complain on: its last words land beside the launch directory.
+// A server has no terminal to complain on: its last words land beside the launch directory.
 fn log_panics(dir: PathBuf) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -83,7 +82,7 @@ fn log_panics(dir: PathBuf) {
     }));
 }
 
-/// `mypi --server`: the server alone.
+// `mypi --server`: the server alone.
 fn run_server(db: &Path) -> anyhow::Result<()> {
     if let Ok(cwd) = std::env::current_dir() {
         log_panics(cwd);
@@ -99,7 +98,7 @@ fn run_server(db: &Path) -> anyhow::Result<()> {
     served
 }
 
-/// The endpoint kind this process asks for.
+// The endpoint kind this process asks for.
 fn ipc_kind(cfg: &Config) -> Kind {
     match cfg
         .get(KEY_CONFIG_SERVER_PLATFORM_IPC, None)
@@ -113,7 +112,7 @@ fn ipc_kind(cfg: &Config) -> Kind {
     }
 }
 
-/// The time zone by name; an unset key leaves the system's.
+// The time zone by name; an unset key leaves the system's.
 fn init_time(cfg: &Config) {
     let zone = cfg
         .get(KEY_CONFIG_SERVER_PLATFORM_TIMEZONE, None)
@@ -122,7 +121,7 @@ fn init_time(cfg: &Config) {
     time::init(zone.as_deref());
 }
 
-/// The front end on an open connection: read the launch directory, pick the first zone, go.
+// The front end on an open connection: read the launch directory, pick the first zone, go.
 fn run(session: mypi::ui::session::Session, cli: &Cli) -> anyhow::Result<()> {
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
     let model = cli.model.as_deref().and_then(model_id);

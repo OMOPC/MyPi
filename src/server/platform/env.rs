@@ -1,10 +1,10 @@
-//! Directories, and the environment variables behind them.
+// Directories, and the environment variables behind them.
 
 use std::path::PathBuf;
 
 use super::os::{self, Family};
 
-/// The user's home directory. `None` = the variable is unset.
+// The user's home directory. `None` = the variable is unset.
 pub fn home() -> Option<PathBuf> {
     match os::current().family {
         Family::Unix => var_os("HOME").map(PathBuf::from),
@@ -30,7 +30,7 @@ pub fn config_dir() -> PathBuf {
     }
 }
 
-/// The user's download folder: the desktop's own answer, else `~/Downloads`.
+// The user's download folder: the desktop's own answer, else `~/Downloads`.
 pub fn downloads_dir() -> Option<PathBuf> {
     match os::current().family {
         Family::Unix => xdg_download(),
@@ -38,7 +38,7 @@ pub fn downloads_dir() -> Option<PathBuf> {
     }
 }
 
-/// `XDG_DOWNLOAD_DIR` from the user-dirs file; `~/Downloads` when it names nothing.
+// `XDG_DOWNLOAD_DIR` from the user-dirs file; `~/Downloads` when it names nothing.
 fn xdg_download() -> Option<PathBuf> {
     let home = home()?;
     let dirs = var_os("XDG_CONFIG_HOME")
@@ -63,24 +63,22 @@ fn xdg_download() -> Option<PathBuf> {
     Some(home.join("Downloads"))
 }
 
-/// Scratch space: the system's per-user temporary directory.
+// Scratch space: the system's per-user temporary directory.
 pub fn temp_dir() -> PathBuf {
     std::env::temp_dir()
 }
 
-/// One environment variable, as UTF-8. `None` = unset or not text.
+// One environment variable, as UTF-8. `None` = unset or not text.
 pub fn var(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
-/// One environment variable, uninterpreted. Paths come through here: a
-/// directory name need not be valid UTF-8. Empty counts as unset.
+// One environment variable, uninterpreted. Paths come through here: a directory name need not be valid UTF-8. Empty counts as unset.
 pub fn var_os(name: &str) -> Option<std::ffi::OsString> {
     std::env::var_os(name).filter(|v| !v.is_empty())
 }
 
-/// An XDG base directory: the variable if it is set, else the specification's
-/// default under the home directory.
+// An XDG base directory: the variable if it is set, else the specification's default under the home directory.
 fn base(variable: &str, fallback: &str) -> PathBuf {
     if let Some(dir) = var_os(variable) {
         return PathBuf::from(dir);

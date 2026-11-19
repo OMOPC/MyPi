@@ -1,5 +1,4 @@
-// The server's half of the wire: the database lock, the listener, one reader and one writer per
-// connection. Every frame, including hello and bye, goes to `crate::server::api::Api`.
+// The server's half of the wire: the database lock, the listener, one reader and one writer per connection. Every frame, including hello and bye, goes to `crate::server::api::Api`.
 
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -17,13 +16,13 @@ use crate::ipc::stream;
 use crate::ipc::transport::{self, Listener, Stream};
 use crate::server::api::{Api, Conn};
 
-/// A connection is watched for silence this long before the server may stop.
+// A connection is watched for silence this long before the server may stop.
 const GRACE: Duration = Duration::from_millis(300);
 
-/// How long a server with no front end yet waits for one before it stops on its own.
+// How long a server with no front end yet waits for one before it stops on its own.
 const BOOT: Duration = Duration::from_secs(10);
 
-/// The database lock, held while this process is the server.
+// The database lock, held while this process is the server.
 pub struct Claim(#[allow(dead_code)] File);
 
 // The sidecar carries the single-server lock: Windows range locks are mandatory, so locking the database itself would break SQLite's reads, and the file stays behind or a later server could race an already-opened one.
@@ -33,7 +32,7 @@ fn lock_path(db: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Try to become this database's server. `None` = somebody else already is.
+// Try to become this database's server. `None` = somebody else already is.
 pub fn claim(db: &Path) -> Result<Option<Claim>> {
     if let Some(dir) = db.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
@@ -54,7 +53,7 @@ pub fn claim(db: &Path) -> Result<Option<Claim>> {
     }
 }
 
-/// A listener that is ready to take front ends.
+// A listener that is ready to take front ends.
 pub struct Bound {
     listener: Listener,
     endpoint: Endpoint,
@@ -63,7 +62,7 @@ pub struct Bound {
     claim: Claim,
 }
 
-/// Create the endpoint; the caller already holds the lock.
+// Create the endpoint; the caller already holds the lock.
 pub fn bind(api: Arc<Api>, db: &Path, endpoint: Endpoint, claim: Claim) -> Result<Bound> {
     // A killed server leaves its socket behind; nobody listening on it means the name is free.
     let listener = match transport::bind(&endpoint) {
@@ -88,7 +87,7 @@ pub fn bind(api: Arc<Api>, db: &Path, endpoint: Endpoint, claim: Claim) -> Resul
     })
 }
 
-/// Serve until the api says every front end is gone.
+// Serve until the api says every front end is gone.
 pub fn serve(bound: Bound) -> Result<()> {
     let Bound {
         listener,
@@ -108,8 +107,7 @@ pub fn serve(bound: Bound) -> Result<()> {
             .context("cannot start the accept loop")?;
     }
 
-    // A front end starts a server and then reaches for its socket: the idle clock may not start
-    // before it arrives, or the server would take the socket away from under it.
+    // A front end starts a server and then reaches for its socket: the idle clock may not start before it arrives, or the server would take the socket away from under it.
     let started = Instant::now();
     while api.live() == 0 && started.elapsed() < BOOT {
         std::thread::sleep(Duration::from_millis(50));
@@ -124,7 +122,7 @@ pub fn serve(bound: Bound) -> Result<()> {
     Ok(())
 }
 
-/// `--server` in one step: claim, bind, serve.
+// `--server` in one step: claim, bind, serve.
 pub fn run(api: Api, db: &Path, endpoint: Endpoint, claim: Claim) -> Result<()> {
     serve(bind(Arc::new(api), db, endpoint, claim)?)
 }
@@ -191,7 +189,7 @@ fn handle(stream: Stream, api: Arc<Api>, id: u64) {
     }
 }
 
-/// One connection's claim on the api's table, released however the thread ends.
+// One connection's claim on the api's table, released however the thread ends.
 struct Attached<'a> {
     api: &'a Api,
     conn: Conn,

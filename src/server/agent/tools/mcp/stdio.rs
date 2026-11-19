@@ -1,4 +1,4 @@
-//! One stdio MCP server: process, JSON-RPC, pending calls, stderr tail.
+// One stdio MCP server: process, JSON-RPC, pending calls, stderr tail.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
