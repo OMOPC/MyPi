@@ -1,4 +1,4 @@
-//! The `alias` tool: name shell commands for later calls.
+// The `alias` tool: name shell commands for later calls.
 
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
@@ -208,8 +208,7 @@ fn list(env: &Env, args: &Args) -> Result<ToolOutput> {
     Ok(ToolOutput::with_memo(text, memo))
 }
 
-/// The classifier's verdict on a command that will later be run as written: a blocked command is
-/// never stored, a warning is.
+// The classifier's verdict on a command that will later be run as written: a blocked command is never stored, a warning is.
 fn vet(env: &Env, command: &str) -> Result<Option<String>> {
     if !env.shell.backend.guarded() {
         return Ok(None);
@@ -236,7 +235,7 @@ fn alias_name(raw: &str) -> Result<String> {
     Ok(name)
 }
 
-/// One line for a history listing: the op, plus the names it carries.
+// One line for a history listing: the op, plus the names it carries.
 fn summary(call: &CallRecord) -> String {
     let op = summary::field(call, "type").unwrap_or_default();
     match op.as_str() {

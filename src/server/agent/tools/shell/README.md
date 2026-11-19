@@ -31,12 +31,21 @@ the guard, a backslash before a newline is a continuation, and `expand_alias` re
 of every segment once.
 
 The command itself runs in the session's shell (`Env.shell.backend`): `bash` or `zsh` on unix,
+<<<<<<< HEAD
 `pwsh` or `niu` (niubash) on windows. `platform::shell` picks the backend, builds the command line,
 sets the encoding the backend must emit, and writes the quoted path a `#<ref>` becomes;
 `platform::proc` starts it as a tree of its own and stops it as a whole; the platform picks the
 ladder. A stop arrives through the `Stop` the runner registered after the spawn; the tool thread
 itself only receives, so nothing wakes it on a timer. Stdin is the null device: a command that
 prompts reads EOF, never the terminal the front end owns.
+=======
+`pwsh` or `niu` on windows. `platform::shell` picks the backend, builds the command line, sets how
+each backend emits UTF-8, and writes the quoted path a `#<ref>` becomes; `platform::proc`
+starts it as a tree of its own and stops it as a whole; the platform picks the ladder. A stop
+arrives through the `Stop` the runner registered after the spawn; the tool thread itself only
+receives, so nothing wakes it on a timer. Stdin is the null device: a command that prompts reads
+EOF, never the terminal the front end owns.
+>>>>>>> 474ce9b (docs: 按 AI.md 规范统一本 PR 的注释与文档口径)
 
 ### shell
 
@@ -71,8 +80,9 @@ and refuses an array. `list` answers JSON, and the same value rides along as the
   machine-destroying shapes and warns on the rest, and it always judges the expanded command.
 - **One backend, one shape.** `platform::shell` owns the program, the argument shape and the
   encoding; the tool owns the text it says.
-- **UTF-8, always.** The backend is told to emit UTF-8; a failed setting never refuses the command,
-  and a native program that writes GBK (an old console tool on a Chinese Windows) reads as garbled.
+- **UTF-8 everywhere.** All three backends emit UTF-8: `niu` natively, the unix shells via
+  `LC_CTYPE`, `pwsh` via `[Console]::OutputEncoding`; a failed setting never refuses the command,
+  and a native program that writes GBK (an old console tool on Chinese Windows) reads as garbled.
 - **One cwd.** `cd` writes the handle every tool reads; see `cd/README.md`.
 
 ## 3. Unresolved

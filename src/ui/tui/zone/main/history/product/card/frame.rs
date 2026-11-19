@@ -1,4 +1,4 @@
-//! The card itself: name dispatch, the frame primitives, and the shared text helpers.
+// The card itself: name dispatch, the frame primitives, and the shared text helpers.
 
 use ratatui::style::Modifier;
 use serde_json::Value;
@@ -16,7 +16,7 @@ use super::{alias, draft, file, kairos, mcp, partial, task, todo, web};
 use crate::ui::tui::text::{bytes, display_width, glyphs as g, take_width};
 use crate::ui::tui::theme::fixed;
 
-/// One tool exchange as rows: prose, then the card or the one-line form.
+// One tool exchange as rows: prose, then the card or the one-line form.
 pub fn node(block: &Block, paired: Option<&Block>, opts: &Opts, width: usize) -> Vec<Row> {
     let name = block.name.as_deref().unwrap_or_default();
     let args = block.args.as_deref().unwrap_or_default();
@@ -84,7 +84,7 @@ pub fn node(block: &Block, paired: Option<&Block>, opts: &Opts, width: usize) ->
     done(out, block)
 }
 
-/// The truncation line: after the family's own rows, outside every fold.
+// The truncation line: after the family's own rows, outside every fold.
 fn done(mut rows: Vec<Row>, block: &Block) -> Vec<Row> {
     if let Some(t) = block.truncated {
         let text = format!(
@@ -97,13 +97,10 @@ fn done(mut rows: Vec<Row>, block: &Block) -> Vec<Row> {
     rows
 }
 
-/// Columns a line number takes, the way the card gutter always sized itself.
+// Columns a line number takes, the way the card gutter always sized itself.
 pub(super) const GUTTER_MIN: usize = 3;
 
-/// A block of markdown as the conversation lays it: prose wrapped at this width, a fenced block
-/// colored, a table laid out. Every source line carries its number; a table's layout has no
-/// source line per row, so only its first row is numbered. The card draws its own left edge, so
-/// every row loses its lead.
+// A block of markdown as the conversation lays it: prose wrapped at this width, a fenced block colored, a table laid out. Every source line carries its number; a table's layout has no source line per row, so only its first row is numbered. The card draws its own left edge, so every row loses its lead.
 pub(super) fn markdown_numbered(text: &str, width: usize) -> Vec<Row> {
     let gutter = gutter_of(text);
     let avail = width.saturating_sub(gutter + 1).max(1);
@@ -129,12 +126,12 @@ pub(super) fn markdown_numbered(text: &str, width: usize) -> Vec<Row> {
     out
 }
 
-/// Columns the numbers of this text take.
+// Columns the numbers of this text take.
 pub(super) fn gutter_of(text: &str) -> usize {
     text.lines().count().to_string().len().max(GUTTER_MIN)
 }
 
-/// The 1-based source line a byte offset sits on.
+// The 1-based source line a byte offset sits on.
 fn line_of(text: &str, at: usize) -> usize {
     let at = at.min(text.len());
     text.as_bytes()[..at]
@@ -144,8 +141,7 @@ fn line_of(text: &str, at: usize) -> usize {
         + 1
 }
 
-/// Break every row at the columns the card leaves; a continued row starts at the card's own
-/// left edge, with no marker and no extra indent.
+// Break every row at the columns the card leaves; a continued row starts at the card's own left edge, with no marker and no extra indent.
 pub(super) fn wrap_rows(rows: Vec<Row>, width: usize) -> Vec<Row> {
     let width = width.max(1);
     let mut out: Vec<Row> = Vec::new();
@@ -161,7 +157,7 @@ pub(super) fn wrap_rows(rows: Vec<Row>, width: usize) -> Vec<Row> {
     out
 }
 
-/// Header, labeled sections, closing edge.
+// Header, labeled sections, closing edge.
 fn card(block: ToolBlock<'_>, tail: bool, budget: usize, width: usize) -> Vec<Row> {
     let edge = block.edge();
     let bg = block.bg();
@@ -191,7 +187,7 @@ fn card(block: ToolBlock<'_>, tail: bool, budget: usize, width: usize) -> Vec<Ro
     out
 }
 
-/// The body of a result that has one, or the placeholder.
+// The body of a result that has one, or the placeholder.
 pub(crate) fn output_lines(text: &str) -> Vec<Row> {
     if text.trim().is_empty() {
         return vec![Row::of(
@@ -204,7 +200,7 @@ pub(crate) fn output_lines(text: &str) -> Vec<Row> {
         .collect()
 }
 
-/// The last rows a running result shows: the fold keeps the tail, so only it is built.
+// The last rows a running result shows: the fold keeps the tail, so only it is built.
 pub(crate) fn output_tail(text: &str, budget: usize) -> Vec<Row> {
     if text.trim().is_empty() {
         return vec![Row::of(
@@ -223,7 +219,7 @@ pub(crate) fn output_tail(text: &str, budget: usize) -> Vec<Row> {
         .collect()
 }
 
-/// The text inside a card when the call failed: every non-empty line, in the error ink.
+// The text inside a card when the call failed: every non-empty line, in the error ink.
 pub(crate) fn error_body(text: &str) -> Vec<Row> {
     if text.trim().is_empty() {
         return output_lines(text);
@@ -234,7 +230,7 @@ pub(crate) fn error_body(text: &str) -> Vec<Row> {
         .collect()
 }
 
-/// The call as JSON, its intent left to the header, or as written when it does not parse.
+// The call as JSON, its intent left to the header, or as written when it does not parse.
 pub(crate) fn default_call(args: &str) -> Vec<Row> {
     let value = call_args(args).filter(|v| match v {
         Value::Object(object) => object.keys().any(|key| key != "intent"),
@@ -255,22 +251,22 @@ pub(crate) fn default_call(args: &str) -> Vec<Row> {
     }
 }
 
-/// The path a file tool names, on one line.
+// The path a file tool names, on one line.
 pub(crate) fn path_of(b: &ToolBlock<'_>) -> Option<String> {
     partial::text(b.args, "path")
         .filter(|path| !path.trim().is_empty())
         .map(|path| one_line(&path))
 }
 
-/// A tab takes three columns; the terminal's own stops would break every gutter.
+// A tab takes three columns; the terminal's own stops would break every gutter.
 pub(crate) fn expand_tabs(text: &str) -> String {
     text.replace('\t', "   ")
 }
 
-/// The tab's glyph, padded to the columns `expand_tabs` gives it.
+// The tab's glyph, padded to the columns `expand_tabs` gives it.
 const TAB_MARK: &str = " → ";
 
-/// Split off the indentation, drawn as one `·` per space and a three-column arrow per tab.
+// Split off the indentation, drawn as one `·` per space and a three-column arrow per tab.
 pub(crate) fn indentation(text: &str) -> (String, String) {
     let lead = text.len() - text.trim_start_matches([' ', '\t']).len();
     let (head, rest) = text.split_at(lead);
@@ -284,7 +280,7 @@ pub(crate) fn indentation(text: &str) -> (String, String) {
     (glyphs, expand_tabs(rest))
 }
 
-/// The sign and the line number, right-aligned together, then the bar.
+// The sign and the line number, right-aligned together, then the bar.
 pub(crate) fn gutter(sign: char, at: Option<usize>, width: usize) -> String {
     if width == 0 {
         return format!("{sign} ");
@@ -350,7 +346,7 @@ pub(crate) fn relativize(base: &str, path: &str) -> String {
     path.to_string()
 }
 
-/// A call's arguments as an object.
+// A call's arguments as an object.
 pub(crate) fn call_args(args: &str) -> Option<Value> {
     serde_json::from_str(args).ok()
 }
@@ -359,7 +355,7 @@ pub(crate) fn arg_bool(args: &str, key: &str) -> Option<bool> {
     call_args(args)?.get(key)?.as_bool()
 }
 
-/// A value that may have arrived as a string holding JSON; the server reads that shape too.
+// A value that may have arrived as a string holding JSON; the server reads that shape too.
 pub(crate) fn loose(value: &Value) -> Value {
     match value {
         Value::String(text) => serde_json::from_str(text).unwrap_or_else(|_| value.clone()),
@@ -371,7 +367,7 @@ pub(crate) fn arg_str(args: &str, key: &str) -> Option<String> {
     Some(call_args(args)?.get(key)?.as_str()?.to_string())
 }
 
-/// One argument as text: strings bare, numbers and flags spelled out.
+// One argument as text: strings bare, numbers and flags spelled out.
 pub(crate) fn arg_scalar(args: &str, key: &str) -> Option<String> {
     let value = call_args(args)?.get(key)?.clone();
     Some(match value {
@@ -381,7 +377,7 @@ pub(crate) fn arg_scalar(args: &str, key: &str) -> Option<String> {
     })
 }
 
-/// The memo a tool result carries, decoded.
+// The memo a tool result carries, decoded.
 pub(crate) fn details_of(result: &Block) -> Option<Value> {
     result
         .memo
@@ -411,7 +407,7 @@ fn runs_width(runs: &[Run]) -> usize {
     runs.iter().map(Run::width).sum()
 }
 
-/// Every run on this card's fill.
+// Every run on this card's fill.
 fn on_bg(row: Row, bg: Ink) -> Row {
     Row {
         lead: row.lead,
@@ -419,7 +415,7 @@ fn on_bg(row: Row, bg: Ink) -> Row {
     }
 }
 
-/// Longer rows lose their tail.
+// Longer rows lose their tail.
 fn clip_runs(runs: Vec<Run>, max: usize) -> Vec<Run> {
     let mut out = Vec::new();
     let mut used = 0usize;
@@ -445,7 +441,7 @@ fn clip_runs(runs: Vec<Run>, max: usize) -> Vec<Run> {
     out
 }
 
-/// Spaces up to `width`, on the card's fill.
+// Spaces up to `width`, on the card's fill.
 fn pad_to(mut row: Row, width: usize, fill: Ink) -> Row {
     let used = row.width();
     if used < width {

@@ -1,4 +1,4 @@
-//! context: the call history as one table per operation.
+// context: the call history as one table per operation.
 
 use serde_json::Value;
 
@@ -92,7 +92,7 @@ fn table_of(b: &ToolBlock<'_>, details: &Value, raw: &str) -> Vec<Row> {
     )
 }
 
-/// One argument as it reads in a title: strings bare, arrays joined.
+// One argument as it reads in a title: strings bare, arrays joined.
 fn listing(args: &str, key: &str) -> String {
     match call_args(args) {
         Some(value) => listing_of(value.get(key)),
@@ -100,7 +100,7 @@ fn listing(args: &str, key: &str) -> String {
     }
 }
 
-/// One argument, or the value the tool uses when it is absent.
+// One argument, or the value the tool uses when it is absent.
 fn defaulted(args: &str, key: &str, fallback: &str) -> String {
     arg_scalar(args, key).unwrap_or_else(|| fallback.to_string())
 }
@@ -118,7 +118,7 @@ fn listing_of(value: Option<&Value>) -> String {
     }
 }
 
-/// One JSON cell as one line.
+// One JSON cell as one line.
 fn render(value: Option<&Value>) -> String {
     match value {
         Some(Value::Null) | None => "(none)".to_string(),

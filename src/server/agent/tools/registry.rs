@@ -1,5 +1,4 @@
-//! The table: seventeen tools, one line each. The roster and the front door both derive from it, so
-//! the two readers cannot disagree.
+// The table: seventeen tools, one line each. The roster and the front door both derive from it, so the two readers cannot disagree.
 
 use std::collections::BTreeSet;
 
@@ -16,7 +15,7 @@ use crate::server::agent::request::message::ToolDef;
 
 use super::web;
 
-/// Every built-in tool, in the order the model reads them.
+// Every built-in tool, in the order the model reads them.
 pub const TOOLS: &[Tool] = &[
     read::TOOL,
     grep::TOOL,
@@ -37,12 +36,12 @@ pub const TOOLS: &[Tool] = &[
     context::TOOL,
 ];
 
-/// Look one up by name.
+// Look one up by name.
 pub(crate) fn spec(name: &str) -> Option<&'static Tool> {
     TOOLS.iter().find(|t| t.name == name)
 }
 
-/// The session's list → the model's manuals, in table order. The list is the only gate.
+// The session's list → the model's manuals, in table order. The list is the only gate.
 pub fn roster(names: &[String]) -> Vec<ToolDef> {
     let wanted: BTreeSet<&str> = names.iter().map(String::as_str).collect();
     TOOLS
@@ -52,8 +51,7 @@ pub fn roster(names: &[String]) -> Vec<ToolDef> {
         .collect()
 }
 
-/// What a profile that names no list gets: everything but `edit` and `final`. `splice` is the
-/// writer a session starts with, and `final` is a child's alone.
+// What a profile that names no list gets: everything but `edit` and `final`. `splice` is the writer a session starts with, and `final` is a child's alone.
 pub fn defaults() -> Vec<String> {
     TOOLS
         .iter()

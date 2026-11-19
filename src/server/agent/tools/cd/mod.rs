@@ -1,4 +1,4 @@
-//! cd: give the session a new footing.
+// cd: give the session a new footing.
 
 mod tool;
 

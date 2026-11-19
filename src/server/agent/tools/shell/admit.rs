@@ -1,4 +1,4 @@
-//! The one way raw command text becomes a spawnable line: aliases, stored texts, then the guard.
+// The one way raw command text becomes a spawnable line: aliases, stored texts, then the guard.
 
 use anyhow::{Result, bail};
 
@@ -8,13 +8,13 @@ use crate::server::agent::tools::contract::view::Export;
 use crate::server::platform::log;
 use crate::server::platform::shell::Shell;
 
-/// A command that passed the gate, plus the rule ids the guard warned about.
+// A command that passed the gate, plus the rule ids the guard warned about.
 pub(crate) struct Admitted {
     pub cmd: String,
     pub warn: Option<String>,
 }
 
-/// Alias expansion, `#<ref>` rewriting, then the guard on the final text.
+// Alias expansion, `#<ref>` rewriting, then the guard on the final text.
 pub(crate) fn admit(env: &Env, raw: &str) -> Result<Admitted> {
     let shell = &env.shell.backend;
     let cmd = expand_alias(raw, &env.aliases);
@@ -40,7 +40,7 @@ pub(crate) fn admit(env: &Env, raw: &str) -> Result<Admitted> {
     }
 }
 
-/// Replace the head word of every command segment; one layer, quoted words kept.
+// Replace the head word of every command segment; one layer, quoted words kept.
 fn expand_alias(cmd: &str, aliases: &Aliases) -> String {
     let mut out = String::with_capacity(cmd.len());
     let mut copied = 0;
@@ -56,7 +56,7 @@ fn expand_alias(cmd: &str, aliases: &Aliases) -> String {
     out
 }
 
-/// Turn every standalone `#<ref>` token in `cmd` into the quoted path of that stored text.
+// Turn every standalone `#<ref>` token in `cmd` into the quoted path of that stored text.
 fn rewrite_refs(cmd: &str, export: &dyn Export, shell: &Shell) -> Result<String> {
     if !cmd.contains('#') {
         return Ok(cmd.to_string());
@@ -105,7 +105,7 @@ fn rewrite_refs(cmd: &str, export: &dyn Export, shell: &Shell) -> Result<String>
     Ok(rewritten)
 }
 
-/// One ref → the path of its stored text. `None` = the ref names nothing (leave the token as is).
+// One ref → the path of its stored text. `None` = the ref names nothing (leave the token as is).
 fn resolve(word: &str, export: &dyn Export) -> Option<std::path::PathBuf> {
     match export.path(word) {
         Ok(path) => Some(path),

@@ -1,4 +1,4 @@
-//! The `shell` tool: raw text through the gate, then one shell line.
+// The `shell` tool: raw text through the gate, then one shell line.
 
 use anyhow::Result;
 
@@ -57,7 +57,7 @@ fn run(env: &mut Env, args: &Args, progress: &mut dyn FnMut(ToolProgress)) -> Re
     })
 }
 
-/// One line for a history listing: the command, flattened, and whether it failed.
+// One line for a history listing: the command, flattened, and whether it failed.
 fn summary(call: &CallRecord) -> String {
     let command = summary::field(call, "command").unwrap_or_else(|| call.args.clone());
     summary::flat(&command)

@@ -1,4 +1,4 @@
-//! The renderer contract: one exchange as the renderers see it, and the family table.
+// The renderer contract: one exchange as the renderers see it, and the family table.
 
 use ratatui::style::Modifier;
 use serde_json::Value;
@@ -12,13 +12,13 @@ use crate::ui::tui::text::duration;
 use crate::ui::tui::text::glyphs as g;
 use crate::ui::tui::theme::fixed;
 
-/// What a paired result says about the call.
+// What a paired result says about the call.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ToolOutcome<'a> {
     pub text: &'a str,
-    /// One entry per item the call's arguments named.
+    // One entry per item the call's arguments named.
     pub items: &'a [ItemOk],
-    /// `None` while the call is still running.
+    // `None` while the call is still running.
     pub ok: Option<bool>,
     pub details: Option<&'a Value>,
     pub duration_ms: u64,
@@ -29,7 +29,7 @@ impl ToolOutcome<'_> {
         (self.duration_ms >= 1_000).then(|| duration(self.duration_ms))
     }
 
-    /// The failure text of every item that failed, in the call's order.
+    // The failure text of every item that failed, in the call's order.
     pub(crate) fn failure_text(&self) -> String {
         self.items
             .iter()
@@ -39,7 +39,7 @@ impl ToolOutcome<'_> {
     }
 }
 
-/// One tool exchange as the renderers see it.
+// One tool exchange as the renderers see it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ToolBlock<'a> {
     pub name: &'a str,
@@ -47,13 +47,13 @@ pub(crate) struct ToolBlock<'a> {
     pub intent: Option<&'a str>,
     pub result: Option<ToolOutcome<'a>>,
     pub expanded: bool,
-    /// Rows a head or a tail may take before it folds.
+    // Rows a head or a tail may take before it folds.
     pub budget: usize,
     pub width: usize,
 }
 
 impl ToolBlock<'_> {
-    /// The columns a row may take inside the frame.
+    // The columns a row may take inside the frame.
     pub(crate) fn inner_width(&self) -> usize {
         self.width.saturating_sub(4)
     }
@@ -140,20 +140,20 @@ impl ToolBlock<'_> {
     }
 }
 
-/// One run of what a card shows, under a label it may carry.
+// One run of what a card shows, under a label it may carry.
 pub(crate) struct Section {
     pub label: Option<&'static str>,
     pub lines: Vec<Row>,
 }
 
-/// What one tool family draws for the call and for the result.
+// What one tool family draws for the call and for the result.
 pub(crate) trait ToolRenderer {
-    /// The name shown in the header, when it is not the tool's own.
+    // The name shown in the header, when it is not the tool's own.
     fn label(&self, _b: &ToolBlock<'_>) -> Option<String> {
         None
     }
 
-    /// The text after the header's colon, when the card names it itself.
+    // The text after the header's colon, when the card names it itself.
     fn title(&self, _b: &ToolBlock<'_>) -> Option<String> {
         None
     }
@@ -162,7 +162,7 @@ pub(crate) trait ToolRenderer {
         Vec::new()
     }
 
-    /// The file this call names, shown in the path color.
+    // The file this call names, shown in the path color.
     fn path(&self, _b: &ToolBlock<'_>) -> Option<String> {
         None
     }
@@ -204,7 +204,7 @@ fn renderer_for(name: &str) -> &'static dyn ToolRenderer {
     }
 }
 
-/// The status glyph and a bold title, for the one-line forms.
+// The status glyph and a bold title, for the one-line forms.
 pub(crate) fn head(state: State, label: &str) -> Vec<Run> {
     vec![
         Run::with(state.glyph(), Some(state.glyph_ink()), Modifier::empty()),
@@ -212,7 +212,7 @@ pub(crate) fn head(state: State, label: &str) -> Vec<Run> {
     ]
 }
 
-/// The failure text under a one-line form: the card body, shifted under the title.
+// The failure text under a one-line form: the card body, shifted under the title.
 pub(crate) fn error_under(result: Option<ToolOutcome<'_>>) -> Vec<Row> {
     let Some(o) = result.filter(|o| o.ok == Some(false)) else {
         return Vec::new();
@@ -220,7 +220,7 @@ pub(crate) fn error_under(result: Option<ToolOutcome<'_>>) -> Vec<Row> {
     shifted(error_body(&o.failure_text()))
 }
 
-/// One item's failure text under its own row; nothing when that item answered.
+// One item's failure text under its own row; nothing when that item answered.
 pub(crate) fn item_error(result: Option<ToolOutcome<'_>>, index: usize) -> Vec<Row> {
     let error = result
         .and_then(|o| o.items.get(index))
@@ -231,7 +231,7 @@ pub(crate) fn item_error(result: Option<ToolOutcome<'_>>, index: usize) -> Vec<R
     }
 }
 
-/// Rows moved under a title: the one-line form's own left margin.
+// Rows moved under a title: the one-line form's own left margin.
 fn shifted(rows: Vec<Row>) -> Vec<Row> {
     rows.into_iter()
         .map(|mut row| {
@@ -243,22 +243,21 @@ fn shifted(rows: Vec<Row>) -> Vec<Row> {
         .collect()
 }
 
-/// One diff line: the line it sat on, and its text.
+// One diff line: the line it sat on, and its text.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Numbered {
     pub at: Option<usize>,
     pub text: String,
 }
 
-/// The item a change sits in, as the tool found it: its first old-file line and its text.
+// The item a change sits in, as the tool found it: its first old-file line and its text.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Excerpt {
     pub from: usize,
     pub lines: Vec<String>,
 }
 
-/// What a change leaves for the card to line up: the line it sits on, the text that went when the
-/// request cannot name it, the item around it, and the blocks above that item.
+// What a change leaves for the card to line up: the line it sits on, the text that went when the request cannot name it, the item around it, and the blocks above that item.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ToolView {
     Plain {

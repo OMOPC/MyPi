@@ -1,12 +1,11 @@
-//! Zones and paths: what the file tools, `shell` and `cd` may touch. One criterion: the session
-//! workspace plus the system temp dir (rationale in `src/server/agent/README.md`).
+// Zones and paths: what the file tools, `shell` and `cd` may touch. One criterion: the session workspace plus the system temp dir (rationale in `src/server/agent/README.md`).
 
 use anyhow::{Context as _, Result, anyhow};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
-/// Where the session stands. The handle is the one source: every read takes it, `chdir` writes it.
+// Where the session stands. The handle is the one source: every read takes it, `chdir` writes it.
 pub struct Workspace {
     shared: super::contract::call::Cwd,
 }
@@ -16,7 +15,7 @@ impl Workspace {
         Self { shared }
     }
 
-    /// The directory as it stands right now.
+    // The directory as it stands right now.
     pub fn cwd(&self) -> std::path::PathBuf {
         self.shared
             .read()
@@ -24,25 +23,24 @@ impl Workspace {
             .clone()
     }
 
-    /// Resolve a model-given path: relative to `cwd`, `..` and symlinks normalized first, and the
-    /// result MUST land inside a licensed zone.
+    // Resolve a model-given path: relative to `cwd`, `..` and symlinks normalized first, and the result MUST land inside a licensed zone.
     pub fn resolve(&self, raw: &str, must_exist: bool) -> Result<std::path::PathBuf> {
         let cwd = self.cwd();
         resolve_path(&cwd, &licensed_zones(&cwd), raw, must_exist, false)
     }
 
-    /// Resolve a path that may be a directory; `read` lists them.
+    // Resolve a path that may be a directory; `read` lists them.
     pub fn resolve_any(&self, raw: &str, must_exist: bool) -> Result<std::path::PathBuf> {
         let cwd = self.cwd();
         resolve_path(&cwd, &licensed_zones(&cwd), raw, must_exist, true)
     }
 
-    /// Land on a new working directory. The caller checks where it may land (see `cd`).
+    // Land on a new working directory. The caller checks where it may land (see `cd`).
     pub fn chdir(&self, real: std::path::PathBuf) {
         *self.shared.write().unwrap_or_else(|e| e.into_inner()) = real;
     }
 
-    /// Run a read-modify-write under the path's exclusive lock.
+    // Run a read-modify-write under the path's exclusive lock.
     pub fn with_write<T>(
         &self,
         path: &std::path::Path,
@@ -66,7 +64,7 @@ fn path_lock(path: &std::path::Path) -> Arc<RwLock<()>> {
 
 static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
 
-/// Write through a sibling temp file, then rename over the target.
+// Write through a sibling temp file, then rename over the target.
 pub fn write_atomic(path: &std::path::Path, content: &str) -> Result<()> {
     let parent = path
         .parent()
@@ -84,8 +82,7 @@ pub fn write_atomic(path: &std::path::Path, content: &str) -> Result<()> {
     result.map_err(|e| anyhow!("failed to write {}: {e}", path.display()))
 }
 
-/// Canonicalize as far as it goes, then re-attach the tail. The `write` target may not exist yet,
-/// and the zone check MUST run on the **real** path.
+// Canonicalize as far as it goes, then re-attach the tail. The `write` target may not exist yet, and the zone check MUST run on the **real** path.
 pub(crate) fn canonicalize_lenient(p: &std::path::Path) -> std::path::PathBuf {
     let mut tail: Vec<std::ffi::OsString> = Vec::new();
     let mut cur = p.to_path_buf();
@@ -107,15 +104,14 @@ pub(crate) fn canonicalize_lenient(p: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
-/// A directory the session may stand in: it exists, it is a directory, and
-/// [`may_stand_in`] allows it.
+// A directory the session may stand in: it exists, it is a directory, and [`may_stand_in`] allows it.
 pub fn resolve_cwd(cwd: &std::path::Path, raw: &str) -> Result<std::path::PathBuf> {
     let real = resolve_dir(cwd, raw)?;
     may_stand_in(&real)?;
     Ok(real)
 }
 
-/// A directory that exists and is a directory; where it may stand is another question.
+// A directory that exists and is a directory; where it may stand is another question.
 pub fn resolve_dir(cwd: &std::path::Path, raw: &str) -> Result<std::path::PathBuf> {
     anyhow::ensure!(!raw.trim().is_empty(), "empty path");
     let raw = raw.trim();
@@ -137,8 +133,7 @@ pub fn resolve_dir(cwd: &std::path::Path, raw: &str) -> Result<std::path::PathBu
     Ok(real)
 }
 
-/// The directory `init` was handed, landed: `~` expanded, relative read from the process.
-/// Anything that is not an existing directory a session may stand in becomes the temp dir.
+// The directory `init` was handed, landed: `~` expanded, relative read from the process. Anything that is not an existing directory a session may stand in becomes the temp dir.
 pub fn launch_dir(raw: &str) -> std::path::PathBuf {
     let raw = raw.trim();
     let given = match raw.strip_prefix('~') {
@@ -156,8 +151,7 @@ pub fn launch_dir(raw: &str) -> std::path::PathBuf {
     standing_dir(&given)
 }
 
-/// A directory a session can enter: the path when it exists and `may_stand_in` allows it.
-/// Otherwise the temp dir — a session never holds a directory `shell` cannot chdir into.
+// A directory a session can enter: the path when it exists and `may_stand_in` allows it. Otherwise the temp dir — a session never holds a directory `shell` cannot chdir into.
 pub fn standing_dir(dir: &std::path::Path) -> std::path::PathBuf {
     let real = canonicalize_lenient(dir);
     if real.is_dir() && may_stand_in(&real).is_ok() {
@@ -166,8 +160,7 @@ pub fn standing_dir(dir: &std::path::Path) -> std::path::PathBuf {
     canonicalize_lenient(&crate::server::platform::env::temp_dir())
 }
 
-/// Where a session may stand: not the filesystem root, not a top-level directory (the temp dir
-/// and everything under it excepted), and not a home directory itself.
+// Where a session may stand: not the filesystem root, not a top-level directory (the temp dir and everything under it excepted), and not a home directory itself.
 pub fn may_stand_in(real: &std::path::Path) -> Result<()> {
     let temp = canonicalize_lenient(&crate::server::platform::env::temp_dir());
     if !temp.as_os_str().is_empty() && real.starts_with(&temp) {
@@ -193,8 +186,7 @@ pub fn may_stand_in(real: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-/// The zones **file tools** may touch: the session workspace plus the system temp dir. `shell`'s
-/// delete rule reads the same two, so "inside" has one definition.
+// The zones **file tools** may touch: the session workspace plus the system temp dir. `shell`'s delete rule reads the same two, so "inside" has one definition.
 fn licensed_zones(root: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut zones = vec![canonicalize_lenient(root)];
     let tmp = crate::server::platform::env::temp_dir();
@@ -203,7 +195,7 @@ fn licensed_zones(root: &std::path::Path) -> Vec<std::path::PathBuf> {
     zones
 }
 
-/// Resolve a model-given path; refuse when it lands outside every licensed zone.
+// Resolve a model-given path; refuse when it lands outside every licensed zone.
 fn resolve_path(
     cwd: &std::path::Path,
     zones: &[std::path::PathBuf],

@@ -1,11 +1,11 @@
-//! Command segments: where one command ends and the next begins, quotes and escapes respected.
+// Command segments: where one command ends and the next begins, quotes and escapes respected.
 
-/// Shell separators; a word after one starts a new command segment. A bare newline counts.
+// Shell separators; a word after one starts a new command segment. A bare newline counts.
 pub(crate) fn is_sep(c: char) -> bool {
     c == ';' || c == '&' || c == '|' || c == '(' || c == ')' || c == '`' || c == '\n' || c == '\r'
 }
 
-/// Byte ranges of the words that start a command segment, in order.
+// Byte ranges of the words that start a command segment, in order.
 pub(crate) fn heads(cmd: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let mut chars = cmd.char_indices().peekable();

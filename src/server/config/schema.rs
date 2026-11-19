@@ -1,4 +1,4 @@
-//! The whole schema: one declaration per key, expanded into the table and constants.
+// The whole schema: one declaration per key, expanded into the table and constants.
 
 use super::registry::{DefaultValue, Key, Kind, keys};
 

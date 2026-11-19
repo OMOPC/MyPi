@@ -1,4 +1,4 @@
-//! The `kairos` tool face: map one operation to a batch of command or text jobs.
+// The `kairos` tool face: map one operation to a batch of command or text jobs.
 
 use std::sync::Arc;
 
@@ -41,7 +41,7 @@ pub(crate) fn run(env: &mut Env, args: &Args) -> Result<ToolOutput> {
     }
 }
 
-/// Start every task in the array, in order; one failure leaves the rest to start.
+// Start every task in the array, in order; one failure leaves the rest to start.
 fn start(env: &Env, jobs: &dyn JobHost, args: &Args, op: &str) -> Result<ToolOutput> {
     let items = args.objects(TASKS)?;
     anyhow::ensure!(!items.is_empty(), "`tasks` must name at least one task");

@@ -14,8 +14,8 @@
 
 ## Relations
 
-- Depends on `platform::shell` for the session's backend, the one-shot argument shape and the
-  encoding it sets, on `platform::proc` for the process group, and on `platform::stop` for the
+- Depends on `platform::shell` for the session's backend, the one-shot argument shape and how each
+  backend emits UTF-8, on `platform::proc` for the process group, and on `platform::stop` for the
   stop action.
 - Depends on `contract::env` for `ShellEnv` (timeout, backend) and `Aliases`.
 - `admit` and `guard` are shared with `kairos`: every job command goes through the same admission

@@ -1,4 +1,4 @@
-//! Tools. The root declares modules; everything is reached by its own path.
+// Tools. The root declares modules; everything is reached by its own path.
 
 mod cd;
 pub mod contract;

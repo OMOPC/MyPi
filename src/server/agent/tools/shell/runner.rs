@@ -60,8 +60,7 @@ pub(crate) fn run_to(
     // Registered after the spawn: a stop that landed earlier runs this here and now.
     let hook = stop.on_stop(escalate.clone());
 
-    // Everything about this command travels on one channel: both output streams and the exit status.
-    // Line-oriented on purpose — the readers reassemble whole lines before saying anything.
+    // Everything about this command travels on one channel: both output streams and the exit status. Line-oriented on purpose — the readers reassemble whole lines before saying anything.
     enum Msg {
         Out(String),
         Err(String),

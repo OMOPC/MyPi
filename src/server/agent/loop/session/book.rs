@@ -1,4 +1,4 @@
-//! The registry: one slot per session, and the only way a turn starts.
+// The registry: one slot per session, and the only way a turn starts.
 
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -22,30 +22,29 @@ use crate::server::agent::tools::contract::env::{Aliases, Defaults};
 use crate::server::agent::tools::contract::view::Source;
 use crate::server::storage::Writer;
 
-/// What a caller needs to open one session. The caller resolves the profile
-/// or the session's meta row; the loop never reads either.
+// What a caller needs to open one session. The caller resolves the profile or the session's meta row; the loop never reads either.
 #[derive(Debug, Clone)]
 pub struct Birth {
     pub session: i64,
     pub provider: String,
     pub model: String,
     pub system: String,
-    /// The session's tool names; manuals are built once, from `registry::roster`.
+    // The session's tool names; manuals are built once, from `registry::roster`.
     pub tools: Vec<String>,
-    /// The request prefix's tool section: built when the session is booked, never rebuilt.
+    // The request prefix's tool section: built when the session is booked, never rebuilt.
     pub manuals: Arc<Vec<crate::server::agent::request::message::ToolDef>>,
-    /// The compaction instruction template; `{{focus}}` marks where the focus goes.
+    // The compaction instruction template; `{{focus}}` marks where the focus goes.
     pub compact: String,
-    /// How hard this session's laps ask the model to think; a child inherits it.
+    // How hard this session's laps ask the model to think; a child inherits it.
     pub effort: crate::server::agent::request::Effort,
-    /// Whether this session's model takes image parts on the wire.
+    // Whether this session's model takes image parts on the wire.
     pub vision: bool,
     pub meta: Option<i64>,
-    /// The launch directory the front end handed `init`; a change door never writes it.
+    // The launch directory the front end handed `init`; a change door never writes it.
     pub cwd: PathBuf,
 }
 
-/// A message for one session.
+// A message for one session.
 #[derive(Debug, Clone)]
 pub enum Message {
     Submit {
@@ -61,7 +60,7 @@ pub enum Message {
 
 pub use crate::server::agent::request::contract::Retention;
 
-/// The loop object. One per process; every session hangs off it.
+// The loop object. One per process; every session hangs off it.
 #[derive(Clone)]
 pub struct Loop {
     inner: Arc<Inner>,
@@ -75,11 +74,11 @@ pub(crate) struct Inner {
     pub(crate) batch: Arc<dyn Batch>,
     pub(crate) source: Arc<super::source::Db>,
     pub(crate) slots: Arc<super::jobs::Slots>,
-    /// What every session's tool side starts from.
+    // What every session's tool side starts from.
     pub(crate) defaults: Defaults,
-    /// Whether each model takes image parts on the wire: address → vision, read once.
+    // Whether each model takes image parts on the wire: address → vision, read once.
     pub(crate) visions: std::collections::BTreeMap<String, bool>,
-    /// One sub-session's deadline; `task` never borrows kairos' numbers.
+    // One sub-session's deadline; `task` never borrows kairos' numbers.
     pub(crate) task_timeout: std::time::Duration,
 }
 
@@ -163,8 +162,7 @@ impl Loop {
         })
     }
 
-    /// The list a session's `todo` calls add up to: the switch, then a replay. The api door hands
-    /// this over as a front end's starting point.
+    // The list a session's `todo` calls add up to: the switch, then a replay. The api door hands this over as a front end's starting point.
     pub fn todo(
         &self,
         session: i64,
@@ -175,14 +173,14 @@ impl Loop {
         )
     }
 
-    /// Open a session. It stays lazy until the first message arrives.
+    // Open a session. It stays lazy until the first message arrives.
     pub fn book(&self, birth: Birth) -> Result<i64> {
         let id = birth.session;
         bind(&self.inner, birth)?;
         Ok(id)
     }
 
-    /// Deliver one message: a turn opens now, or the call fails. Nothing is queued here.
+    // Deliver one message: a turn opens now, or the call fails. Nothing is queued here.
     pub fn deliver(&self, session: i64, msg: Message) -> Result<i64> {
         if Source::child(self.inner.source.as_ref(), session).is_some() {
             bail!("session {session} is a sub-session; it takes no messages");
@@ -194,7 +192,7 @@ impl Loop {
         start_turn(&self.inner, &handle, start_of(&handle, msg), false)
     }
 
-    /// The front end's slot: written whole, taken by the loop, cleared by the front end.
+    // The front end's slot: written whole, taken by the loop, cleared by the front end.
     pub fn write_mail(&self, session: i64, letter: Letter) -> Result<()> {
         self.handle(session)?.mailbox.write(letter);
         Ok(())
@@ -215,7 +213,7 @@ impl Loop {
         unbook(&self.inner, id);
     }
 
-    /// A rewind rewrote this session's list: drop the cache and read it again.
+    // A rewind rewrote this session's list: drop the cache and read it again.
     pub fn forget(&self, session: i64) {
         let Ok(handle) = self.handle(session) else {
             return;
@@ -238,7 +236,7 @@ impl Loop {
         }
     }
 
-    /// Apply one change; a `Cwd` change answers the directory it landed on.
+    // Apply one change; a `Cwd` change answers the directory it landed on.
     pub fn change(&self, session: i64, change: Change) -> Result<Option<std::path::PathBuf>> {
         let handle = self.handle(session)?;
         change::apply(
@@ -250,7 +248,7 @@ impl Loop {
         )
     }
 
-    /// How hard this session currently asks the model to think.
+    // How hard this session currently asks the model to think.
     pub fn effort(&self, session: i64) -> Option<crate::server::agent::request::Effort> {
         self.inner
             .slots
@@ -258,17 +256,17 @@ impl Loop {
             .map(|handle| handle.config().effort)
     }
 
-    /// The model this session asks: the provider and the id.
+    // The model this session asks: the provider and the id.
     pub fn model(&self, session: i64) -> Result<(String, String)> {
         Ok(self.handle(session)?.model())
     }
 
-    /// Is this session on the table?
+    // Is this session on the table?
     pub fn booked(&self, session: i64) -> bool {
         self.inner.slots.get(session).is_some()
     }
 
-    /// The directory a booked session stands in.
+    // The directory a booked session stands in.
     pub fn cwd(&self, session: i64) -> Option<std::path::PathBuf> {
         self.inner.slots.get(session).map(|handle| handle.cwd())
     }
@@ -281,14 +279,13 @@ impl Loop {
     }
 }
 
-/// One session on the table: its two sides built from the birth, then its scheduler.
+// One session on the table: its two sides built from the birth, then its scheduler.
 pub(crate) fn bind(inner: &Arc<Inner>, birth: Birth) -> Result<Arc<Handle>> {
     let transcript = Arc::new(super::history::Transcript::open(
         &inner.writer.path(),
         birth.session,
     )?);
-    // The handle's directory is one every tool can enter: a row whose directory has since gone
-    // lands in the temp dir instead of failing every `shell` call.
+    // The handle's directory is one every tool can enter: a row whose directory has since gone lands in the temp dir instead of failing every `shell` call.
     let cwd: Cwd = Arc::new(std::sync::RwLock::new(
         crate::server::agent::tools::workspace::standing_dir(&birth.cwd),
     ));
@@ -327,7 +324,7 @@ pub(crate) fn book_child(inner: &Arc<Inner>, birth: Birth, start: String) -> Res
     Ok(handle)
 }
 
-/// Take a session off the table: its job service, its child state, its handle.
+// Take a session off the table: its job service, its child state, its handle.
 pub(crate) fn unbook(inner: &Arc<Inner>, id: i64) {
     inner.source.detach_jobs(id);
     inner.source.detach_child(id);
@@ -338,8 +335,7 @@ pub(crate) fn unbook(inner: &Arc<Inner>, id: i64) {
         // `interrupt` is a no-op on an idle session; the scheduler is parked either way.
         handle.mailbox.notify();
     }
-    // A finished session keeps no browser tabs: the work and search tabs belong to the session's
-    // life, not to the browser's.
+    // A finished session keeps no browser tabs: the work and search tabs belong to the session's life, not to the browser's.
     crate::web::close_session(id);
 }
 
@@ -510,7 +506,7 @@ fn start_turn(
     Ok(turn)
 }
 
-/// A turn thread's share of the handle: the one exit that turns it back to idle.
+// A turn thread's share of the handle: the one exit that turns it back to idle.
 struct TurnGuard {
     handle: Arc<Handle>,
 }
@@ -543,8 +539,7 @@ fn mode_of(start: &pen::turn::Start) -> Mode {
     }
 }
 
-/// One message as the turn it opens. A compaction's opening block is the instruction itself:
-/// one rendering, stored as the record and sent as the request's last message.
+// One message as the turn it opens. A compaction's opening block is the instruction itself: one rendering, stored as the record and sent as the request's last message.
 fn start_of(handle: &Handle, msg: Message) -> pen::turn::Start {
     match msg {
         Message::Submit {
@@ -570,7 +565,7 @@ fn start_of(handle: &Handle, msg: Message) -> pen::turn::Start {
     }
 }
 
-/// Tell the api that the slot turned into this turn, so its door is named after the slot.
+// Tell the api that the slot turned into this turn, so its door is named after the slot.
 fn announce(inner: &Arc<Inner>, session: i64, turn: i64, text: Option<String>) {
     let _ = inner.out.send(Event {
         session,
@@ -578,14 +573,14 @@ fn announce(inner: &Arc<Inner>, session: i64, turn: i64, text: Option<String>) {
     });
 }
 
-/// What the scheduler takes next: a wake text, or the front end's one letter.
+// What the scheduler takes next: a wake text, or the front end's one letter.
 enum Next {
     Wake(String),
     Send(Letter),
 }
 
 impl Next {
-    /// `true` = this came from the front end's slot.
+    // `true` = this came from the front end's slot.
     fn queued(&self) -> bool {
         matches!(self, Next::Send(_))
     }

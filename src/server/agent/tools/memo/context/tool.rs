@@ -1,4 +1,4 @@
-//! The `context` tool: query the calls this session recorded, or show a call's request and result by block number.
+// The `context` tool: query the calls this session recorded, or show a call's request and result by block number.
 
 use anyhow::{Context as _, Result, anyhow};
 use serde_json::{Value, json};
@@ -17,9 +17,9 @@ const LIMIT: usize = 3;
 const TOOL_PARAM: usize = 4;
 const IDS: usize = 5;
 
-/// A listing longer than this goes to a file instead of the conversation.
+// A listing longer than this goes to a file instead of the conversation.
 const INLINE_LINES: usize = 10;
-/// `show` writes its rows out past this many block numbers.
+// `show` writes its rows out past this many block numbers.
 const INLINE_BLOCKS: usize = 3;
 
 const PARAMS: &[Param] = &[
@@ -153,7 +153,7 @@ fn show(env: &Env, args: &Args) -> Result<ToolOutput> {
     ))
 }
 
-/// One listing row: block number, tool, verdict, summary.
+// One listing row: block number, tool, verdict, summary.
 fn listing_row(record: &CallRecord) -> Value {
     json!({
         "id": record.block,
@@ -163,7 +163,7 @@ fn listing_row(record: &CallRecord) -> Value {
     })
 }
 
-/// A stored text field as JSON when it parses, else as the text itself.
+// A stored text field as JSON when it parses, else as the text itself.
 fn parsed(text: Option<&Value>) -> Value {
     match text.and_then(Value::as_str) {
         Some(text) => serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.into())),
@@ -171,7 +171,7 @@ fn parsed(text: Option<&Value>) -> Value {
     }
 }
 
-/// The tool's own summary; a name the table no longer holds shows its arguments.
+// The tool's own summary; a name the table no longer holds shows its arguments.
 fn summary_of(record: &CallRecord) -> String {
     match registry::spec(&record.tool) {
         Some(tool) => (tool.summary)(record),
@@ -193,7 +193,7 @@ fn direction_name(direction: Direction) -> &'static str {
     }
 }
 
-/// Block numbers as given: integers, or their decimal spelling.
+// Block numbers as given: integers, or their decimal spelling.
 fn block_ids(args: &Args) -> Result<Vec<i64>> {
     let Some(value) = args.opt_any(IDS) else {
         return Ok(Vec::new());
@@ -214,7 +214,7 @@ fn block_ids(args: &Args) -> Result<Vec<i64>> {
     Ok(ids)
 }
 
-/// A deterministic file name: same arguments, same file, overwritten each time.
+// A deterministic file name: same arguments, same file, overwritten each time.
 fn name(parts: &[&str]) -> String {
     let slug: Vec<String> = parts
         .iter()
@@ -241,7 +241,7 @@ fn spill(env: &Env, file: &str, text: &str) -> Result<std::path::PathBuf> {
     Ok(path)
 }
 
-/// One line for a history listing: the operation.
+// One line for a history listing: the operation.
 fn summary(call: &CallRecord) -> String {
     summary::field(call, "type").unwrap_or_default()
 }

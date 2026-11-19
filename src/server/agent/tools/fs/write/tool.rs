@@ -1,5 +1,4 @@
-// The `write` tool: overwrite a whole file. The batch's audit type-checks it after the batch's
-// last write; this call only formats, writes, and hands the file's shell to the audit.
+// The `write` tool: overwrite a whole file. The batch's audit type-checks it after the batch's last write; this call only formats, writes, and hands the file's shell to the audit.
 use anyhow::Result;
 
 use crate::server::agent::tools::contract::env::{Env, License, Shell, Slot};
@@ -44,8 +43,7 @@ pub(crate) const TOOL: Tool = Tool {
     summary,
 };
 
-// Write the whole file, **overwriting** an existing one. The counterpart of `edit`: `edit` refuses
-// ambiguous matches, `write` refuses nothing. The caller brings the full content.
+// Write the whole file, **overwriting** an existing one. The counterpart of `edit`: `edit` refuses ambiguous matches, `write` refuses nothing. The caller brings the full content.
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
     let path = args.str(PATH)?;
     let content = args.str(CONTENT)?;
@@ -55,7 +53,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     if let Some(parent) = p.parent() {
         anyhow::ensure!(
             parent.is_dir(),
-            "parent directory does not exist: {} (create it with shell mkdir -p first)",
+            "parent directory does not exist: {} (create the directory first)",
             parent.display()
         );
     }
@@ -74,8 +72,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
                 unparsed = Some(why);
                 content.clone()
             }
-            // The formatter decided nothing about the text: it is written as it stands, and the
-            // batch's check is left to say what it makes of it.
+            // The formatter decided nothing about the text: it is written as it stands, and the batch's check is left to say what it makes of it.
             Outcome::Undecided(why) => {
                 undecided = Some(why);
                 content.clone()
@@ -105,9 +102,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         text.push_str(&format!("[i] not formatted, written as it stands: {why}"));
     }
 
-    // The compiler answers for the file as it now stands, after the batch's last write; the seam
-    // stands under this answer at its end. A file that does not parse has the formatter's verdict
-    // already. Only a Rust file joins the batch's check.
+    // The compiler answers for the file as it now stands, after the batch's last write; the seam stands under this answer at its end. A file that does not parse has the formatter's verdict already. Only a Rust file joins the batch's check.
     if let Some(checker) = lang::checker(&p)
         && let Some(root) = (checker.unit)(&p)
     {

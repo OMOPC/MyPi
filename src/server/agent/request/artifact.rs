@@ -1,13 +1,13 @@
-//! Oversized tool output: its citation, and the line the model reads.
+// Oversized tool output: its citation, and the line the model reads.
 
 use anyhow::Result;
 
 use super::contract::{History, Reference};
 
-/// The prefix lengths a citation may take, shortest first.
+// The prefix lengths a citation may take, shortest first.
 const LENGTHS: [usize; 7] = [4, 6, 8, 10, 12, 14, 16];
 
-/// FNV-1a 64 as lowercase hex: sixteen digits, always.
+// FNV-1a 64 as lowercase hex: sixteen digits, always.
 pub fn hash(content: &str) -> String {
     let mut value: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in content.as_bytes() {
@@ -17,7 +17,7 @@ pub fn hash(content: &str) -> String {
     format!("{value:016x}")
 }
 
-/// The citation for one content: the same text always gets the same one, a taken citation lengthens.
+// The citation for one content: the same text always gets the same one, a taken citation lengthens.
 pub fn resolve(
     content: &str,
     known: &mut Vec<Reference>,
@@ -44,7 +44,7 @@ pub fn resolve(
     Ok((hash.clone(), hash))
 }
 
-/// The line appended to the visible part, so the model can fetch the rest.
+// The line appended to the visible part, so the model can fetch the rest.
 pub fn citation(reference: &str, content: &str) -> String {
     format!(
         "\n\n[truncated: {} lines, {} bytes; full text is #{reference} — name #{reference} in a shell command to read it]",

@@ -1,4 +1,4 @@
-//! The `cd` tool: give the session a new footing.
+// The `cd` tool: give the session a new footing.
 
 use anyhow::Result;
 
@@ -23,7 +23,7 @@ pub(crate) const TOOL: Tool = Tool {
     summary,
 };
 
-/// Change footing. The target must exist, be a directory, and pass `workspace::may_stand_in`.
+// Change footing. The target must exist, be a directory, and pass `workspace::may_stand_in`.
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
     let path = args.str(PATH)?;
     let from = env.workspace.cwd();
@@ -39,7 +39,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     ))
 }
 
-/// One line for a history listing: where the session moved to.
+// One line for a history listing: where the session moved to.
 fn summary(call: &CallRecord) -> String {
     summary::flat(&summary::field(call, "path").unwrap_or_default())
 }

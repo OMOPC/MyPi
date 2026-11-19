@@ -1,4 +1,4 @@
-//! A command admitted at tool-call time; the runner only spawns the frozen line.
+// A command admitted at tool-call time; the runner only spawns the frozen line.
 
 use std::path::PathBuf;
 use std::sync::Arc;

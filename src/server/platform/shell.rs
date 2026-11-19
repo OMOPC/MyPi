@@ -105,7 +105,7 @@ impl Shell {
         matches!(self.kind, Kind::Bash | Kind::Zsh)
     }
 
-    // One command line, ready to spawn: the program, its own one-shot argument shape, and the encoding it must emit.
+    // One command line, ready to spawn: the program, its one-shot shape, and how the backend emits UTF-8.
     pub fn command(&self, line: &str) -> Command {
         let mut cmd = Command::new(&self.program);
         match self.kind {

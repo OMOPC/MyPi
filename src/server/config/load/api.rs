@@ -1,3 +1,5 @@
+// The config's read side: effective values, resolved paths, and the accessors the server asks for.
+
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -42,7 +44,7 @@ impl Config {
         &self.inner.paths
     }
 
-    /// The inline budget one tool result gets: lines, bytes.
+    // The inline budget one tool result gets: lines, bytes.
     pub fn limits(&self) -> (usize, usize) {
         let effective = self.effective(None);
         let int = |key: &'static str| {
@@ -59,7 +61,7 @@ impl Config {
         )
     }
 
-    /// Lines an edited item may take and still be handed over whole.
+    // Lines an edited item may take and still be handed over whole.
     pub fn full_item_budget(&self) -> usize {
         self.effective(None)
             .values
@@ -69,7 +71,7 @@ impl Config {
             .max(1) as usize
     }
 
-    /// What `grep` expands and what it folds. Every count is a threshold, never a target.
+    // What `grep` expands and what it folds. Every count is a threshold, never a target.
     pub fn grep_limits(&self) -> crate::server::config::GrepLimits {
         let effective = self.effective(None);
         let count = |key: &'static str, fallback: usize| {
@@ -110,7 +112,7 @@ impl Config {
         std::time::Duration::from_secs(seconds as u64)
     }
 
-    /// The user's aliases from config, fixed for every session.
+    // The user's aliases from config, fixed for every session.
     pub fn aliases(&self) -> BTreeMap<String, String> {
         self.effective(None)
             .values
@@ -122,7 +124,7 @@ impl Config {
             .collect()
     }
 
-    /// Documents the user keeps current: `.md` stems, upper-cased, blanks dropped.
+    // Documents the user keeps current: `.md` stems, upper-cased, blanks dropped.
     pub fn persistent_docs(&self) -> Vec<String> {
         self.effective(None)
             .values
@@ -134,7 +136,7 @@ impl Config {
             .filter(|doc| !doc.is_empty())
             .collect()
     }
-    /// What the web tool launches with.
+    // What the web tool launches with.
     pub fn browser(&self) -> crate::server::config::BrowserOptions {
         let effective = self.effective(None);
         let value = |key: &'static str| effective.values.get(key);
@@ -161,7 +163,7 @@ impl Config {
         }
     }
 
-    /// Whether a verification challenge should raise the browser window.
+    // Whether a verification challenge should raise the browser window.
     pub fn bring_to_front(&self) -> bool {
         self.effective(None)
             .values
@@ -170,7 +172,7 @@ impl Config {
             .unwrap_or(true)
     }
 
-    /// The tool-call budget a sub-session gets when its call names none.
+    // The tool-call budget a sub-session gets when its call names none.
     pub fn subagent_budget(&self) -> u32 {
         self.effective(None)
             .values
@@ -181,7 +183,7 @@ impl Config {
             .min(u32::MAX as i64) as u32
     }
 
-    /// How long one sub-session may run before the loop stops it.
+    // How long one sub-session may run before the loop stops it.
     pub fn task_timeout(&self) -> std::time::Duration {
         let seconds = self
             .effective(None)
@@ -193,7 +195,7 @@ impl Config {
         std::time::Duration::from_secs(seconds as u64)
     }
 
-    /// Where exported spill texts and artifact files land: `<temp>/mypi`.
+    // Where exported spill texts and artifact files land: `<temp>/mypi`.
     pub fn export_dir(&self) -> PathBuf {
         crate::server::platform::env::temp_dir().join("mypi")
     }
@@ -219,7 +221,7 @@ impl Config {
         self.inner.models.default_model(configured)
     }
 
-    /// The site rules the web tool narrows a page with: one read, at load.
+    // The site rules the web tool narrows a page with: one read, at load.
     pub fn web_rules(&self) -> Arc<Rules> {
         Arc::clone(&self.inner.web_rules)
     }
@@ -241,8 +243,7 @@ impl Config {
         out
     }
 
-    /// One profile, as the project at `cwd` has it: the folder is looked for in that project's
-    /// `.mypi`, then in the global root.
+    // One profile, as the project at `cwd` has it: the folder is looked for in that project's `.mypi`, then in the global root.
     pub fn resolve_profile(
         &self,
         name: Option<&str>,
@@ -279,7 +280,7 @@ impl Config {
         }
         Ok(target)
     }
-    /// Every provider the request half can reach, credentials expanded.
+    // Every provider the request half can reach, credentials expanded.
     pub fn providers(&self) -> Vec<crate::server::agent::request::Provider> {
         self.inner
             .models
@@ -299,7 +300,7 @@ impl Config {
             .collect()
     }
 
-    /// The declared output cap of every configured model, keyed `provider:model`.
+    // The declared output cap of every configured model, keyed `provider:model`.
     pub fn output_caps(&self) -> std::collections::BTreeMap<String, u32> {
         let mut caps = std::collections::BTreeMap::new();
         for (provider, entry) in self.models() {
@@ -315,7 +316,7 @@ impl Config {
         caps
     }
 
-    /// Where memo exports land; empty = the platform's download folder.
+    // Where memo exports land; empty = the platform's download folder.
     pub fn memo_folder(&self) -> Option<PathBuf> {
         let effective = self.effective(None);
         let named = effective
@@ -331,7 +332,7 @@ impl Config {
         Some(named)
     }
 
-    /// Tool-round fence; `None` turns it off.
+    // Tool-round fence; `None` turns it off.
     pub fn tool_rounds(&self) -> Option<usize> {
         match self
             .effective(None)
@@ -346,7 +347,7 @@ impl Config {
         }
     }
 
-    /// Forbid a model change mid-session.
+    // Forbid a model change mid-session.
     pub fn scrooge(&self) -> bool {
         self.effective(None)
             .values
@@ -355,7 +356,7 @@ impl Config {
             .unwrap_or(false)
     }
 
-    /// Retries after the first attempt.
+    // Retries after the first attempt.
     pub fn retry_attempts(&self) -> u32 {
         self.effective(None)
             .values
@@ -365,7 +366,7 @@ impl Config {
             .max(0) as u32
     }
 
-    /// How long to wait between attempts.
+    // How long to wait between attempts.
     pub fn retry_interval(&self) -> std::time::Duration {
         let seconds = self
             .effective(None)
@@ -377,7 +378,7 @@ impl Config {
         std::time::Duration::from_secs(seconds)
     }
 
-    /// How long one attempt waits for the response head.
+    // How long one attempt waits for the response head.
     pub fn retry_timeout(&self) -> std::time::Duration {
         let seconds = self
             .effective(None)
@@ -389,7 +390,7 @@ impl Config {
         std::time::Duration::from_secs(seconds)
     }
 
-    /// One piece per chunk rather than per block.
+    // One piece per chunk rather than per block.
     pub fn streaming_immediate(&self) -> bool {
         self.effective(None)
             .values
@@ -399,7 +400,7 @@ impl Config {
             .unwrap_or(true)
     }
 
-    /// Characters a compaction keeps when the caller names no budget.
+    // Characters a compaction keeps when the caller names no budget.
     pub fn retain_tail(&self) -> usize {
         self.effective(None)
             .values
@@ -409,8 +410,7 @@ impl Config {
             .max(0) as usize
     }
 
-    /// Every profile name a session may name.
-    /// The profile names the project at `cwd` may open with.
+    // The profile names the project at `cwd` may open with.
     pub fn profiles(&self, cwd: &Path) -> Vec<String> {
         let scope = self.scope(cwd);
         profile::list(&scope.paths, &mut Vec::new())
