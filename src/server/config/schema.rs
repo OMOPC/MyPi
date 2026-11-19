@@ -5,7 +5,6 @@ use super::registry::{DefaultValue, Key, Kind, keys};
 const NO_ARGS: &[&str] = &[];
 
 pub(crate) const STREAMING: &[&str] = &["immediate", "buffered"];
-pub(crate) const IPC_KINDS: &[&str] = &["os", "unix", "pipe"];
 
 keys! {
     KEY_CONFIG_SERVER_API_DEFAULT_MODEL = "config", "server.api", "defaultModel", Text, DefaultValue::Null, "Model requests use unless the session says otherwise.", true;

@@ -165,7 +165,7 @@ Read through `Config`; this layer opens no file.
 | `config.server.platform.timezone` | the fixed offset this process runs in (`UTC+8`); unset or a geographic name = the machine's offset, read once at startup |
 | `config.server.platform.stamp.enabled` | whether a user message gets a timestamp prefix and suffix at all (off by default) |
 | `config.server.platform.stamp.prefix` / `.suffix` | the two templates, rendered when the message is written |
-| `config.server.platform.ipc` | which cross-process endpoint kind to use (`os` / `unix` / `pipe`); read by the entry point, not by this layer |
+| `config.server.platform.ipc` | which cross-process endpoint kind to use: `os`, `unix` on unix, or `pipe` on windows; read by the entry point, not by this layer |
 
 ## See also
 
