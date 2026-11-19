@@ -1,6 +1,7 @@
 # ipc
 
-The wire between the two mypi processes: one byte stream, one JSON frame per line.
+The wire between the two mypi processes: one byte stream, one JSON frame per line. Unix domain
+sockets on Linux and macOS, a local-only named pipe on Windows.
 
 ## Schema
 
@@ -36,6 +37,7 @@ The name table and the error codes belong to api; this module knows neither.
   mistaken for one.
 - ipc does not know names or payloads: the transport stays stable while the operation table
   evolves in api.
+- The Windows pipe refuses remote clients, so it stays on the local machine.
 
 ## Unresolved
 

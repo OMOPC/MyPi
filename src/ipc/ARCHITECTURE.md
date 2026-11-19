@@ -8,11 +8,11 @@
 | `line.rs` | Line codec: `encode`, `decode`, `Lines`, `MAX_LINE_BYTES`. Knows no frame contents. |
 | `contract/message.rs` | `Frame { kind: String, name: String, payload: Value }`, reply and error constructors. |
 | `contract/error.rs` | `ErrorCode`, the error payload shape. |
-| `client.rs` | `Client`: connect + hello, `ask`, `send`, `drain`; a read thread feeds one channel. |
+| `client.rs` | `Client`: connect + hello, `send`, `drain`; a read thread feeds one channel. |
 | `server.rs` | `claim`, `bind`, `serve`, `run`; one accept loop; `handle` per connection. |
 | `stream.rs` | `write`: one connection's outbound queue until it closes, then the socket is shut. |
-| `endpoint.rs` | Socket path discovery. |
-| `transport/` | Unix socket, Windows pipe. |
+| `endpoint.rs` | Endpoint discovery: socket path or pipe name. |
+| `transport/` | Unix socket, Windows local-only pipe. |
 
 ## Relations
 
@@ -26,9 +26,8 @@
 - `serve` stops when `Api::idle_for` reports no connection for a whole grace period. A server
   that has not seen its first front end yet waits `BOOT` for it, because the front end starts
   the server and reaches for its socket a moment later.
-- `client.rs` is used by `ui::session`, which sends frames and drains the connection. `ask`
-  remains for a caller that waits on one answer; stream frames carry another kind and never
-  match it.
+- `client.rs` is used by `ui::session`, which sends frames and drains the connection; replies
+  and pushes both arrive through `drain`.
 - `contract` imports no server, ui, or transport code.
 - `line.rs` knows bytes, not frames; `Frame` knows fields, not meanings.
 
