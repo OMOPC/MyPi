@@ -32,9 +32,9 @@ The `grep` tool: one query over the tree a language claims, answered as text.
   smallest piece holding its run of nested hits, and pieces that merely stand side by side never
   merge. A hit no piece holds is its own one-line item. Every hit belongs to exactly one item.
 - The answer opens with two header lines: the counts, mode and tier, then what it searched —
-  `==> src/` by default, or `==> N paths, M used: …` listing the scope as the call wrote it with
-  repeats dropped, so the footer's skips have a denominator. The sections the language's own
-  relation index fills follow, in that language's own words, then the items.
+  `==> src/` by default (the named tree), or `==> N paths, M used: …` listing the scope as the call
+  wrote it with repeats dropped, so the footer's skips have a denominator. The sections the
+  language's own relation index fills follow, in that language's own words, then the items.
 - Tiers are judged by the answer's item count, against `deepMax` and `foldMax`:
   - Tier 1 — up to `deepMax` items: every line of every item, whole, whatever their length. Only
     key lines and hit lines carry a number; each block opens with `path:line` and an `in:`

@@ -18,13 +18,13 @@ What is here, what each file holds, who talks to whom. Current state only.
   stamp of every file read), `tools` (whether `splice` is allowed), `vision`, `persistent_docs`.
 - **`contract::view`**: `CallRecord`, for the one-line history summary.
 - **`workspace::canonicalize_lenient`**: the one path form every comparison uses.
-- **`lang`**: the line table, which says what a `pub` line opens and whether it is an item; the
+- **`lang`**: the line table, which says what a piece opens and whether it is an item; the
   graph facts a language supplies; and `lang::tree`, which says whether a directory belongs to a
   source tree.
 - **`lang::graph`**: `unit`, `build` and `render` — one file's neighbourhood, printed by its
   language or by the machine's default.
 - **`platform::time`**: the local stamp a listing prints.
-- **`splice::TOOL`**: the gate that decides whether a Rust body carries line numbers.
+- **`splice::TOOL`**: the gate that decides whether a body carries line numbers.
 - **Who calls it**: `registry` holds `TOOL`; the front door runs it like any other tool.
 
 ## Inside
@@ -35,8 +35,8 @@ read::TOOL
                           level's verdict, then the children
   → items::answer         a named header: every piece under the path whose header equals it
   → block                 one file: an image part with no text, or a body
-      → Numbers           the sorter's key lines under splice, every line under a file it does not
-                          take, none under edit
+      → Numbers           the sorter's key lines under splice, every line under a file no language
+                          takes, none when splice is off
       → assemble          the window and its gutter; the status line is the footer
       → lang::hub         the graph facts this file's language supplies
           → graph::unit   the unit the file sits in

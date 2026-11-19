@@ -41,7 +41,7 @@ const FILE_FIELDS: &[Param] = &[
     Param::new(
         "limit",
         Kind::Number,
-        "Max lines this file may take; a source file answers 800 when this is left out, anything else \
+        "Max lines this file may take; Rust source answers 800 when this is left out, anything else \
          200, and neither cap moves.",
     ),
     Param::new(
@@ -61,13 +61,13 @@ const PARAMS: &[Param] = &[Param::new(
 
 pub(crate) const TOOL: Tool = Tool {
     name: "read",
-    about: "Read files or directories; Rust and Markdown answer with key line numbers under \
-            `splice`, a source file with an 800-line budget and a module view when it has one, \
-            anything else 200.",
+    about: "Read files or directories; Rust answers with key line numbers under `splice`, an \
+            800-line budget and a module view when it has one; Markdown with key line numbers \
+            under `splice`; anything else 200.",
     fields: "Every answer opens with `==> path` — a directory adds its counts to that line — and \
              anything left out comes last as one line.\n\
              `files` takes one item per path, with `offset` (1-based, default 1), `limit` (default: \
-             800 for a source file, 200 otherwise, never above that file's own cap) and `item`. \
+             800 for Rust source, 200 otherwise, never above that file's own cap) and `item`. \
              Without `item`, a file answers its lines and a directory its entries. A directory \
              answers its immediate children, files with their line counts and directories by name, \
              then opens each child one level further, folding a directory of ten files or more into \
@@ -176,6 +176,7 @@ pub(super) fn header(raw: &str) -> String {
 pub(super) fn titled(raw: &str, text: String) -> String {
     format!("{}{text}", header(raw))
 }
+
 // An image's answer, when the file is one and this session's model can see: the bytes as a part, and no text at all. A non-image, or a model without vision, answers `None`.
 fn image(env: &Env, path: &Path) -> Result<Option<ImagePart>> {
     let Some(format) = sniff::detect(path)? else {
@@ -423,6 +424,7 @@ struct Streamed {
 }
 
 // A file of any other kind, streamed line by line so a huge one never lands in memory whole.
+// Blocking: the whole file is read here, capped at MAX_STREAM_BYTES.
 fn streamed(path: &Path, offset: usize, limit: usize, max_bytes: usize) -> Result<Streamed> {
     use std::io::BufRead as _;
 

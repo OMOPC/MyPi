@@ -47,7 +47,7 @@ pub(crate) fn answer(
         parts::plural(touched, "file"),
     );
     if scope.is_empty() {
-        out.push_str("==> src/\n");
+        out.push_str(&format!("==> {}/\n", parts::rel(&zone.root, &zone.tree)));
     } else {
         out.push_str(&format!(
             "==> {}, {} used: {}\n",

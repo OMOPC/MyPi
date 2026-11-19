@@ -28,7 +28,7 @@ What is here, what each file holds, who talks to whom. Current state only.
   formatter is killed with.
 - **`spec`**: `Param`, `Kind::Axis`, `Args`, `Item`.
 - **`summary`**: `flat`, the whitespace folding an anchor and a line are both compared by.
-- **Who calls it**: `registry` holds `TOOL`; `fs/read` asks `TOOL.name` whether a Rust body carries
+- **Who calls it**: `registry` holds `TOOL`; `fs/read` asks `TOOL.name` whether a body carries
   line numbers at all; `subagent/final` reuses the whole-line write for a child's draft.
 
 ## Inside
@@ -66,5 +66,5 @@ splice::TOOL
    the answer's verdict must agree on what that means.
 7. `mass_text` / `parse_range` and `subagent/final`: they are the only other consumer of the
    whole-line write, and they carry no anchor words at all.
-8. `TOOL.name` and `fs/read`'s `Numbers`: a Rust body carries line numbers only while `splice` is
+8. `TOOL.name` and `fs/read`'s `Numbers`: a body carries line numbers only while `splice` is
    in the session's list.

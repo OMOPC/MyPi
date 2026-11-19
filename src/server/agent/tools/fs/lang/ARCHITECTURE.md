@@ -44,12 +44,11 @@ lang::table(path, text)
                              then how far every heading's section reaches
   → Table::plain             a suffix no language names: every line its own piece
 
-lang::format(path)
-  |lang::relations(path)
-  |  → owner(path)?.relations   a language that indexes none takes no part
-  |  → rust::relations::scan    read the query: `A::b` a member, a lone name its declarations
+lang::relations(path)
+  → owner(path)?.relations   a language that indexes none takes no part
+  → rust::relations::scan    read the query: `A::b` a member, a lone name its declarations
 
-  |lang::format(path)
+lang::checker(path)
   → owner(path)?.check       a language with no checker takes no part
   → fault::gather            one run per unit, with the files this batch wrote into it
   → rust::check::run         cargo check → its JSON → verdict::Check

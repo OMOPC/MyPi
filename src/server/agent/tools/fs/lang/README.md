@@ -38,8 +38,7 @@ piece, and no declaration is there to read.
 
 **One answer, many readers.** `read` numbers lines by it, `splice` anchors its receipt on it,
 `edit` and `change` find the piece around a change, `fault` draws its seam, `grep` builds its
-outline and its three sections. Each used to carry its own copy of the same parsing; a bug fixed in
-one copy left the others wrong.
+outline and its three sections.
 
 **One language, one file.** Every fact about a language — its structure, its formatter, its checker
 — lives in that language's own file. A tool asks the declarations; it never names a language, a

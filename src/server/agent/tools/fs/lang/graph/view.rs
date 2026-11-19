@@ -19,7 +19,7 @@ pub(crate) fn default_view(
     let mut rows: Vec<Row> = Vec::new();
     rows.push(Row {
         heading: Some(around.unit.name.clone()),
-        text: format!("  {}", part(around.unit.place.as_path(), base)),
+        text: format!("  {}", parts::rel(base, around.unit.place.as_path())),
     });
     if !around.interface.is_empty() {
         rows.push(Row {
@@ -109,8 +109,4 @@ fn section(base: &std::path::Path, label: &str, edges: &[Edge], rows: &mut Vec<R
             text: parts::edge_line(base, edge),
         });
     }
-}
-
-fn part(path: &std::path::Path, base: &std::path::Path) -> String {
-    parts::rel(base, path)
 }

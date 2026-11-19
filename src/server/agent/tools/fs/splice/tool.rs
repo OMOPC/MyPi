@@ -390,6 +390,7 @@ enum Run {
 
 // The whole group: the snapshot, one write, and one answer per call. `Stopped` = the turn was stopped before the write, so the file is exactly as it was and no call has an answer.
 fn compute(path: &Path, license: Option<License>, plans: &[Plan], stop: &Stop) -> Result<Run> {
+    // Blocking: the snapshot is read, edited and written inside the per-path lock, so every other writer waits.
     let text = std::fs::read_to_string(path).context("failed to read file")?;
     let base: Vec<&str> = text.lines().collect();
     let Some(license) = license else {

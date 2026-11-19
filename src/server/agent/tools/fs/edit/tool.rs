@@ -55,7 +55,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     let p = env.workspace.resolve(&path, true)?;
     let old = args.str(OLD)?;
     let new = args.str(NEW)?;
-    let unfold = args.flag(UNFOLD).unwrap_or(false);
+    let unfold = args.flag(UNFOLD)?;
 
     // A write needs a read: the conversation holds the licence, and a refused one is taken away.
     let licensed = env
@@ -72,6 +72,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     }
 
     let edited = env.workspace.with_write(&p, || {
+        // Blocking: the whole file is read and written inside the per-path lock, so every other writer waits.
         let text = std::fs::read_to_string(&p).context("failed to read file")?;
         let table = lang::table(&p, &text);
         let edited = exact_text(&text, &table, &old, &new, env.full_item_budget)?;

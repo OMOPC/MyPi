@@ -26,6 +26,7 @@ pub(crate) struct Ran {
     pub(crate) stopped: bool,
 }
 
+// Every external call blocks its caller's thread until the child ends, its deadline passes, or the turn stops; nothing here runs in the background.
 // Run one child to its end, or kill its whole group when the deadline passes or the turn is stopped. Every tick looks at both: a stop must never wait out a deadlock in someone else's tree.
 pub(crate) fn run(
     mut cmd: Command,

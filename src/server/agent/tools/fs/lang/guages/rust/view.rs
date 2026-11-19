@@ -38,7 +38,7 @@ pub(crate) fn view(around: &Around, loader: &Loader, batch: &BTreeSet<PathBuf>) 
     } else {
         rows.push(row(parts::heading("down", around.children.len())));
         for child in &around.children {
-            rows.push(raw_row(child_line(base, around, child, batch)));
+            rows.push(raw_row(child_line(around, child, batch)));
         }
     }
 
@@ -99,7 +99,7 @@ fn row(text: String) -> Row {
     }
 }
 
-fn child_line(base: &Path, around: &Around, child: &Child, batch: &BTreeSet<PathBuf>) -> String {
+fn child_line(around: &Around, child: &Child, batch: &BTreeSet<PathBuf>) -> String {
     let label = match child.unit.place.strip_prefix(&around.unit.place) {
         Ok(rest) => {
             let first = rest
@@ -135,7 +135,7 @@ fn child_line(base: &Path, around: &Around, child: &Child, batch: &BTreeSet<Path
     if batch.contains(entry) {
         line.push_str(" [body in this batch]");
     }
-    let deps = deps_of(base, around, child);
+    let deps = deps_of(around, child);
     if !deps.is_empty() {
         line.push_str(&format!(" deps: {}", deps.join(", ")));
     }
@@ -143,7 +143,7 @@ fn child_line(base: &Path, around: &Around, child: &Child, batch: &BTreeSet<Path
 }
 
 // Which siblings this child reaches into, as the line prints them.
-fn deps_of(base: &Path, around: &Around, child: &Child) -> Vec<String> {
+fn deps_of(around: &Around, child: &Child) -> Vec<String> {
     // Deps are named from the child's own directory, not the one being viewed.
     let home = if child.unit.place.is_dir() {
         child.unit.place.clone()
@@ -177,7 +177,6 @@ fn deps_of(base: &Path, around: &Around, child: &Child) -> Vec<String> {
             }
         }
     }
-    let _ = base;
     map.into_iter()
         .map(|(name, symbols)| {
             if symbols.len() == 1 && symbols[0] == name {

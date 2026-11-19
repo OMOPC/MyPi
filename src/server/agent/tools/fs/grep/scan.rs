@@ -1,4 +1,4 @@
-// The walk: the crate's own `src/`, the directories a call narrows it to, and the lines that match.
+// The walk: the source tree a language claims, the directories a call narrows it to, and the lines that match.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -19,8 +19,8 @@ const THREADS: usize = 8;
 
 // Where the tree stands: its root, and the source directory a language claims under it.
 pub(crate) struct Zone {
-    pub root: PathBuf,
-    pub tree: PathBuf,
+    pub(crate) root: PathBuf,
+    pub(crate) tree: PathBuf,
 }
 
 // The tree the session stands in, as its language names it.
@@ -98,12 +98,12 @@ pub(crate) enum Matcher {
 }
 
 impl Matcher {
-    pub fn text(query: &str) -> Self {
+    pub(crate) fn text(query: &str) -> Self {
         Self::Text(query.to_string())
     }
 
     // A pattern as written; its own syntax errors are the model's to fix.
-    pub fn pattern(query: &str) -> Result<Self> {
+    pub(crate) fn pattern(query: &str) -> Result<Self> {
         regex::Regex::new(query).map(Self::Pattern).map_err(|e| {
             anyhow!("`query` is not a valid pattern: {e}; leave `regex` off to search it as text")
         })
@@ -117,20 +117,20 @@ impl Matcher {
     }
 }
 
-// One source file, the items its hits make, and its pieces.
+// One file the walk reads, the items its hits make, and its pieces.
 pub(crate) struct File {
-    pub path: PathBuf,
-    pub text: String,
-    pub items: Vec<Item>,
-    pub table: Table,
+    pub(crate) path: PathBuf,
+    pub(crate) text: String,
+    pub(crate) items: Vec<Item>,
+    pub(crate) table: Table,
 }
 
 // One drawn unit: the smallest piece holding a run of nested hits, and those hits.
 pub(crate) struct Item {
-    pub open: usize,
-    pub close: usize,
+    pub(crate) open: usize,
+    pub(crate) close: usize,
     // Hit lines, 0-based, ascending.
-    pub hits: Vec<usize>,
+    pub(crate) hits: Vec<usize>,
 }
 
 // The items a file's hits make: each hit takes its nearest enclosing piece, a span that lands inside an item joins it, and a later span that swallows items absorbs them into one.

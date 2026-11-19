@@ -233,6 +233,7 @@ fn classify(path: &Path, docs: &[String]) -> Kind {
 }
 
 // A file's stamp and size from one look at its metadata.
+// Blocking: one file at a time, up to MAX_BYTES read per file, so a wide directory stalls the listing.
 fn facts(path: &Path) -> (Option<SystemTime>, String) {
     use std::io::Read as _;
 

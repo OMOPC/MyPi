@@ -18,7 +18,7 @@ pub(crate) fn answer(env: &mut Env, path: &Path, wanted: &str) -> Result<String>
     let cwd = canonicalize_lenient(&env.workspace.cwd());
     let (text, seen) = render(path, &cwd, wanted)?;
     for (file, body) in &seen {
-        stamp(env, file, body);
+        env.seen.stamp(file.clone(), body);
     }
     Ok(text)
 }
@@ -124,9 +124,4 @@ fn empty(path: &Path, needle: &str, cwd: &Path) -> String {
              line from an earlier answer, it is not cut short\n"
         ),
     }
-}
-
-// The file is one the model has now seen, under `splice`'s own definition.
-fn stamp(env: &mut Env, path: &Path, text: &str) {
-    env.seen.stamp(path.to_path_buf(), text);
 }

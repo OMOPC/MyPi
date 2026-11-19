@@ -1,4 +1,4 @@
-// The `grep` tool: hits inside the crate's own source, each with the piece around it.
+// The `grep` tool: hits inside the source tree a language claims, each with the piece around it.
 
 use super::{render, scan};
 use crate::server::agent::tools::contract::env::Env;
@@ -24,7 +24,7 @@ const PARAMS: &[Param] = &[
     Param::new(
         "scope",
         Kind::TextList,
-        "`src/...` files or dirs — Rust source and Markdown (defaults to the whole `src/`; invalid \
+        "Rust source and Markdown files or dirs under `src/` (defaults to the whole tree; invalid \
          entries skipped).",
     ),
     Param::df("lavish", Kind::Flag, "Raise the answer one tier", "false"),
@@ -32,7 +32,7 @@ const PARAMS: &[Param] = &[
 
 pub(crate) const TOOL: Tool = Tool {
     name: "grep",
-    about: "Structural search across the crate's `src/`, Rust source and Markdown. Returns \
+    about: "Structural search across the source tree (Rust: `src/`), Rust source and Markdown. Returns \
             hits with the enclosing piece's hierarchy and line numbers. Also locates a member \
             inside a type/trait/module (Rust: `A::b`).",
     fields: "Requires `query`; `regex`, `scope` and `lavish` are optional.\n\
