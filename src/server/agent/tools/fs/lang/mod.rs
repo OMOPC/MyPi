@@ -31,81 +31,81 @@ pub(crate) struct Hub {
     pub(crate) view: Option<fn(&Around, &Loader, &BTreeSet<PathBuf>) -> Vec<Row>>,
 }
 
-/// One text's turn through the formatter a language names.
+// One text's turn through the formatter a language names.
 pub(crate) type Format = fn(&str, &Path, &Stop) -> Outcome;
 
-/// What every language owes the tools: the suffixes it answers to, its table, the answers about a
-/// piece, and the two external tools it knows how to drive.
+// What every language owes the tools: the suffixes it answers to, its table, the answers about a
+// piece, and the two external tools it knows how to drive.
 pub(crate) struct Language {
     pub(crate) suffixes: &'static [&'static str],
     pub(crate) table: fn(&str) -> Table,
     pub(crate) shape: fn(&Line) -> Option<&str>,
-    /// The relations it can index: `A::b` members and a name's own declarations; `None` when it
-    /// names nothing.
+    // The relations it can index: `A::b` members and a name's own declarations; `None` when it
+    // names nothing.
     pub(crate) relations: Option<&'static Relations>,
     // What it knows about units, edges and neighbourhoods; `None` when it has no module view.
     pub(crate) hub: Option<&'static Hub>,
-    /// Whether its files are source: they take the source budget and are read whole.
+    // Whether its files are source: they take the source budget and are read whole.
     pub(crate) source: bool,
     pub(crate) format: Option<Format>,
     pub(crate) check: Option<Checker>,
     pub(crate) test: Option<Tests>,
 }
 
-/// How one language indexes relations: given the whole crate's sources, it reads a query and
-/// answers the rows that declare what it names. A language's own affair, never the tool's.
+// How one language indexes relations: given the whole crate's sources, it reads a query and
+// answers the rows that declare what it names. A language's own affair, never the tool's.
 pub(crate) struct Relations {
-    /// The rows a query answers, and the source indices they drew from.
+    // The rows a query answers, and the source indices they drew from.
     pub(crate) scan: fn(&[Source], &Path, &str, usize, usize) -> Relation,
 }
 
-/// One source a relation reads: its path, text and line table.
+// One source a relation reads: its path, text and line table.
 pub(crate) struct Source<'a> {
     pub(crate) path: &'a Path,
     pub(crate) text: &'a str,
     pub(crate) table: &'a Table,
 }
 
-/// What a relation answered: the rows it read, and the source indices they drew from.
+// What a relation answered: the rows it read, and the source indices they drew from.
 pub(crate) struct Relation {
     pub(crate) rows: Vec<Row>,
     pub(crate) used: Vec<usize>,
 }
 
-/// One line of a relation's answer. A heading stands alone; every other row is a text line.
+// One line of a relation's answer. A heading stands alone; every other row is a text line.
 pub(crate) struct Row {
     pub(crate) heading: Option<String>,
     pub(crate) text: String,
 }
 
-/// How one language's checker finds a build unit and asks it for its diagnostics.
+// How one language's checker finds a build unit and asks it for its diagnostics.
 pub(crate) struct Checker {
-    /// The unit a file belongs to; `None` when no unit holds it.
+    // The unit a file belongs to; `None` when no unit holds it.
     pub(crate) unit: fn(&Path) -> Option<PathBuf>,
-    /// What a report calls that unit.
+    // What a report calls that unit.
     pub(crate) title: fn(&Path) -> String,
-    /// How that unit names one of its files, so a diagnostic can be matched to a write.
+    // How that unit names one of its files, so a diagnostic can be matched to a write.
     pub(crate) shown: fn(&Path, &Path) -> String,
-    /// Check one unit, given the files this batch wrote into it.
+    // Check one unit, given the files this batch wrote into it.
     pub(crate) run: fn(&Path, &[PathBuf], &Stop) -> Check,
 }
 
-/// How one language finds the tests a batch just wrote and runs those alone.
+// How one language finds the tests a batch just wrote and runs those alone.
 pub(crate) struct Tests {
-    /// The unit a file belongs to; `None` when no unit holds it.
+    // The unit a file belongs to; `None` when no unit holds it.
     pub(crate) unit: fn(&Path) -> Option<PathBuf>,
-    /// What a report calls that unit.
+    // What a report calls that unit.
     pub(crate) title: fn(&Path) -> String,
-    /// The tests this text declares inside these 1-based line ranges, by name.
+    // The tests this text declares inside these 1-based line ranges, by name.
     pub(crate) find: fn(&str, &Table, &[(usize, usize)]) -> Vec<String>,
-    /// Run exactly these tests in that unit, given the files this batch wrote into it.
+    // Run exactly these tests in that unit, given the files this batch wrote into it.
     pub(crate) run: fn(&Path, &[PathBuf], &[String], &Stop) -> Verdict,
 }
 
-/// Every sorted language, in the order a suffix meets them.
+// Every sorted language, in the order a suffix meets them.
 static LANGUAGES: &[&Language] = &[&guages::rust::LANGUAGE, &guages::markdown::LANGUAGE];
 
-/// The language that claims this path, by its suffix.
+// The language that claims this path, by its suffix.
 pub(crate) fn owner(path: &Path) -> Option<&'static Language> {
     let suffix = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     LANGUAGES
@@ -137,7 +137,24 @@ pub(crate) fn tree(dir: &Path) -> bool {
         .any(|domain| domain(dir).is_some())
 }
 
-/// One file's line table: the sorter its suffix names, or every line as its own piece.
+// Every file under one directory that some sorter claims, recursively; junk skipped.
+pub(crate) fn files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    sweep(dir, &mut out);
+    out.sort();
+    out
+}
+
+fn sweep(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in graph::loader::entries(dir) {
+        if entry.dir {
+            sweep(&entry.path, out);
+        } else if owner(&entry.path).is_some() {
+            out.push(entry.path);
+        }
+    }
+}
+// One file's line table: the sorter its suffix names, or every line as its own piece.
 pub(crate) fn table(path: &Path, text: &str) -> Table {
     match owner(path) {
         Some(one) => (one.table)(text),
@@ -145,32 +162,27 @@ pub(crate) fn table(path: &Path, text: &str) -> Table {
     }
 }
 
-/// Whether this path is source, which decides how much of it a read may show.
-pub(crate) fn source(path: &Path) -> bool {
-    owner(path).is_some_and(|one| one.source)
-}
-
-/// The formatter this path's language names, if it names one.
+// The formatter this path's language names, if it names one.
 pub(crate) fn format(path: &Path) -> Option<Format> {
     owner(path)?.format
 }
 
-/// The checker this path's language names, if it names one.
+// The checker this path's language names, if it names one.
 pub(crate) fn checker(path: &Path) -> Option<&'static Checker> {
     owner(path)?.check.as_ref()
 }
 
-/// The test support this path's language names, if it names one.
+// The test support this path's language names, if it names one.
 pub(crate) fn tests(path: &Path) -> Option<&'static Tests> {
     owner(path)?.test.as_ref()
 }
 
-/// The kind of piece this line opens, in its own language's word: `fn`, `impl`, `heading`, `fence`.
+// The kind of piece this line opens, in its own language's word: `fn`, `impl`, `heading`, `fence`.
 pub(crate) fn shape<'a>(table: &Table, line: &'a Line) -> Option<&'a str> {
     (table.language()?.shape)(line)
 }
 
-/// The relations this table's language indexes, if it names any.
+// The relations this table's language indexes, if it names any.
 pub(crate) fn relations(table: &Table) -> Option<&'static Relations> {
     table.language()?.relations
 }

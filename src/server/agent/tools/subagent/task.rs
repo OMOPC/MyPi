@@ -245,5 +245,5 @@ fn summary(call: &CallRecord) -> String {
             format!("{template} -> {name}")
         })
         .unwrap_or_default();
-    summary::clip(&summary::counted(&first, items.len()), 96)
+    summary::counted(&first, items.len())
 }

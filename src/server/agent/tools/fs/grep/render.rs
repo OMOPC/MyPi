@@ -1,20 +1,18 @@
-//! The answer: the type section, the module section, the x-ray, the items, and the stamps.
+// The answer: the type section, the module section, the x-ray, the items, and the stamps.
 
 use std::collections::BTreeSet;
-use std::path::Path;
 
 use crate::server::agent::tools::contract::env::{GrepLimits, License, Seen};
+use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::{self, Relation, Source};
+use crate::server::agent::tools::fs::skeleton;
 
 use super::scan;
 
-// The answer's own room at tier 3, its header included.
+// The census's own room: its rows alone, the header and the relation block never charge it.
 const LEDGER_MAX: usize = 500;
 
-// Columns a line number takes beside its neighbour.
-const MIN_WIDTH: usize = 3;
-
-/// One answered call's text, and the files whose lines it showed.
+// One answered call's text, and the files whose lines it showed.
 pub(crate) fn answer(
     query: &str,
     mode: &str,
@@ -23,6 +21,7 @@ pub(crate) fn answer(
     caps: GrepLimits,
     lavish: bool,
     misses: &[String],
+    scope: &[String],
 ) -> (String, BTreeSet<usize>) {
     let hits: usize = files
         .iter()
@@ -38,28 +37,27 @@ pub(crate) fn answer(
     } else {
         3
     };
-    // Lavish lifts the whole answer one tier: no front, no mixture of two densities.
-    let tier = if lavish {
-        counted.saturating_sub(1).max(1)
-    } else {
-        counted
-    };
+    // Lavish raises the whole answer one tier: no front, no mixture of two densities.
+    let tier = if lavish { counted.max(2) - 1 } else { counted };
     let mut out = format!(
         "grep \"{query}\": {}, {}, {}, {mode}, tier {tier}\n",
-        plural(hits, "hit"),
-        plural(items, "item"),
-        plural(touched, "file"),
+        parts::plural(hits, "hit"),
+        parts::plural(items, "item"),
+        parts::plural(touched, "file"),
     );
-    if tier > 1 {
-        let hint = if lavish {
-            "narrow the scope"
-        } else {
-            "go lavish, or narrow the scope"
-        };
-        out.push_str(&format!("[folded: {hint}]\n"));
+    if scope.is_empty() {
+        out.push_str("==> src/\n");
+    } else {
+        out.push_str(&format!(
+            "==> {}, {} used: {}\n",
+            parts::plural(scope.len(), "path"),
+            scope.len() - misses.len(),
+            scope.join(" ")
+        ));
     }
 
     let mut shown: BTreeSet<usize> = BTreeSet::new();
+
     // The three sections ask a language's own relation index; a language that names none skips them.
     let relations = files.iter().find_map(|file| lang::relations(&file.table));
     if let Some(relations) = relations {
@@ -82,17 +80,44 @@ pub(crate) fn answer(
         }
     }
     out.push('\n');
-    draw(files, zone, tier, &mut out, &mut shown);
-    for miss in misses {
-        out.push_str(miss);
+    let omitted = if tier == 3 {
+        let (rows, more) = census(files, zone, &mut shown, LEDGER_MAX);
+        out.push_str(&rows);
+        more
+    } else {
+        draw(files, zone, tier, &mut out, &mut shown);
+        0
+    };
+    let tail = footer(tier, lavish, omitted, misses);
+    if !tail.is_empty() {
         out.push('\n');
+        out.push_str(&tail);
     }
     (out, shown)
 }
 
-// ---- the relation block ----
+// What the answer did not give, then the one move that would give more of it.
+fn footer(tier: usize, lavish: bool, omitted: usize, misses: &[String]) -> String {
+    let mut out = String::new();
+    if tier > 1 {
+        let hint = if lavish {
+            "DOWNSHIFTED: narrow down the `scope`.\n"
+        } else {
+            "DOWNSHIFTED: set `lavish` true to raise the answer tier, or narrow down the `scope`.\n"
+        };
+        out.push_str(hint);
+    }
+    if omitted > 0 {
+        out.push_str(&format!("[+{omitted} more files]\n"));
+    }
+    for miss in misses {
+        out.push_str(miss);
+        out.push('\n');
+    }
+    out
+}
 
-/// A relation's rows as one block: each heading, then its lines, in the language's own order.
+// A relation's rows as one block: each heading, then its lines, in the language's own order.
 fn paint(relation: &Relation) -> String {
     let mut out = String::new();
     for row in &relation.rows {
@@ -105,9 +130,7 @@ fn paint(relation: &Relation) -> String {
     out
 }
 
-// ---- the items ----
-
-/// The hits at the tier's density: whole items, then skeletons, then the census alone.
+// The hits at tier 1 or 2: whole items, then outlines.
 fn draw(
     files: &[scan::File],
     zone: &scan::Zone,
@@ -115,35 +138,29 @@ fn draw(
     out: &mut String,
     shown: &mut BTreeSet<usize>,
 ) {
-    if tier == 3 {
-        out.push_str("[hits] too wide to list; per file\n");
-        let room = LEDGER_MAX.saturating_sub(out.lines().count());
-        out.push_str(&census(files, zone, shown, room));
-        return;
-    }
     for (at, file) in files.iter().enumerate() {
         if file.items.is_empty() {
             continue;
         }
         let raw: Vec<&str> = file.text.lines().collect();
-        let width = raw.len().to_string().len().max(MIN_WIDTH);
-        let label = rel(zone, &file.path);
+        let width = skeleton::width(raw.len());
+        let label = parts::rel(&zone.root, &file.path);
         let block = if tier == 1 {
             whole(file, &raw, width, &label)
         } else {
-            skeleton(file, &raw, width, &label)
+            outline(file, &raw, width, &label)
         };
         out.push_str(&block);
         shown.insert(at);
     }
 }
 
-/// Tier 1: every line of every item; only key lines and hit lines carry a number.
+// Tier 1: every line of every item; only key lines and hit lines carry a number.
 fn whole(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
     let mut out = String::new();
     for item in &file.items {
         out.push_str(&format!("{label}:{}\n", item.open + 1));
-        let parts: Vec<String> = file
+        let above: Vec<String> = file
             .table
             .around(item.open)
             .iter()
@@ -154,110 +171,70 @@ fn whole(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
                 Some(format!("{exact} ({}..{close})", at + 1))
             })
             .collect();
-        if !parts.is_empty() {
-            out.push_str(&format!("  in: {}\n", parts.join(" > ")));
+        if !above.is_empty() {
+            out.push_str(&format!("  in: {}\n", above.join(" > ")));
         }
         for index in item.open..=item.close {
-            let number = if item.hits.contains(&index) || file.table.key(index) {
-                format!("{:>width$}|", index + 1)
-            } else {
-                format!("{:>width$}|", "")
-            };
-            out.push_str(&number);
-            out.push_str(&clip(raw[index]));
+            let text = raw[index];
+            let mark = (item.hits.contains(&index) || file.table.key(index)).then_some(index + 1);
+            out.push_str(&skeleton::numbered(width, mark, &text));
             out.push('\n');
         }
     }
     out
 }
 
-/// Tier 2: the skeleton of every item — its ancestors' head lines once per file, then its key
-/// lines and hit lines, the item's own head row carrying where the piece closes.
-fn skeleton(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
+// Tier 2: the outline of every item — its ancestors' head lines once per file, then its key lines
+// and hit lines, the item's own head row carrying where the piece closes.
+fn outline(file: &scan::File, raw: &[&str], width: usize, label: &str) -> String {
     let mut out = format!("{label}\n");
     let mut heads: BTreeSet<usize> = BTreeSet::new();
     for item in &file.items {
         for (at, _) in file.table.around(item.open) {
             if at != item.open && heads.insert(at) {
-                out.push_str(&format!("{:>width$}|{}\n", at + 1, clip(raw[at])));
+                out.push_str(&skeleton::numbered(width, Some(at + 1), raw[at]));
+                out.push('\n');
             }
         }
         for index in item.open..=item.close {
             if !file.table.key(index) && !item.hits.contains(&index) {
                 continue;
             }
-            let mut text = clip(raw[index]);
-            if index == item.open && item.close > item.open {
-                text.push_str(&format!(" ..{}", item.close + 1));
-            }
-            out.push_str(&format!("{:>width$}|{}\n", index + 1, text));
+            out.push_str(&skeleton::numbered(width, Some(index + 1), raw[index]));
+            out.push('\n');
         }
     }
     out
 }
 
-// The census's rows: one per file that holds an item, widest first, within the room left.
+// The census's rows: one per file that holds an item, widest first, within the room, and how many
+// files the room could not hold.
 fn census(
     files: &[scan::File],
     zone: &scan::Zone,
     shown: &mut BTreeSet<usize>,
     room: usize,
-) -> String {
-    if room == 0 {
-        return String::new();
-    }
+) -> (String, usize) {
     let mut rows: Vec<(usize, String, usize)> = files
         .iter()
         .enumerate()
         .filter(|(_, file)| !file.items.is_empty())
-        .map(|(at, file)| (at, rel(zone, &file.path), file.items.len()))
+        .map(|(at, file)| (at, parts::rel(&zone.root, &file.path), file.items.len()))
         .collect();
     rows.sort_by(|a, b| b.2.cmp(&a.2));
-    let more = rows.len() > room;
-    let keep = if more { room.saturating_sub(1) } else { room };
     let mut out = String::new();
-    for (at, path, count) in rows.iter().take(keep) {
-        out.push_str(&format!("  {path}  {}\n", plural(*count, "item")));
+    for (at, path, count) in rows.iter().take(room) {
+        out.push_str(&format!("  {path}  {}\n", parts::plural(*count, "item")));
         shown.insert(*at);
     }
-    if more {
-        out.push_str(&format!("  [+{} more files]\n", rows.len() - keep));
-    }
-    out
+    (out, rows.len().saturating_sub(room))
 }
 
-/// One drawn line: long lines are cut, so one line never drowns the item around it.
-fn clip(text: &str) -> String {
-    const CAP: usize = 240;
-    match text.char_indices().nth(CAP) {
-        Some((cut, _)) => format!("{}…", &text[..cut]),
-        None => text.to_string(),
-    }
-}
-
-// ---- the stamps ----
-
-/// One answered call's stamp: the files whose lines an answer showed, into `seen`.
+// One answered call's stamp: the files whose lines an answer showed, into `seen`.
 pub(crate) fn stamp(seen: &mut Seen, files: &[scan::File], shown: &BTreeSet<usize>) {
     for at in shown {
         let file = &files[*at];
         seen.files
             .insert(file.path.clone(), License::of(&file.text));
-    }
-}
-
-// ---- shapes and paths ----
-
-/// A path as the crate reads it: `src/server/...`.
-fn rel(zone: &scan::Zone, path: &Path) -> String {
-    let shown = path.strip_prefix(&zone.root).unwrap_or(path);
-    shown.to_string_lossy().replace('\\', "/")
-}
-
-/// One count with its noun: one item, two items.
-fn plural(count: usize, word: &str) -> String {
-    match count {
-        1 => format!("1 {word}"),
-        _ => format!("{count} {word}s"),
     }
 }

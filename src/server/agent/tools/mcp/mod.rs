@@ -230,7 +230,7 @@ fn render(result: &McpResult) -> String {
 fn summary(call: &CallRecord) -> String {
     let op = summary::field(call, "type").unwrap_or_default();
     if op != "call" {
-        return summary::clip(&op, 96);
+        return summary::flat(&op);
     }
     let items = summary::array(call, "calls");
     let first = items
@@ -244,5 +244,5 @@ fn summary(call: &CallRecord) -> String {
             format!("call {server}/{tool}")
         })
         .unwrap_or_else(|| "call".to_string());
-    summary::clip(&summary::counted(&first, items.len()), 96)
+    summary::counted(&first, items.len())
 }

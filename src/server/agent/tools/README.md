@@ -4,6 +4,9 @@ The tool layer: one table of tools, one front door for a call, and one folder pe
 is a function over `Env`: it reads what it needs from `Env`, returns a `ToolOutput`, and never
 opens the database, the config file, or the loop.
 
+Each tool's own manual lives beside its code. This file holds only what every tool shares: the
+list, how a session enables one, the call's common path, and where each manual is.
+
 ## 1. Design / Schema
 
 ### The table
@@ -29,6 +32,8 @@ opens the database, the config file, or the loop.
 | 15 | `memo` | `memo/memo/tool.rs` |
 | 16 | `todo` | `memo/todo/tool.rs` |
 | 17 | `context` | `memo/context/tool.rs` |
+
+### Enabling a session
 
 **The session's list is the only gate.** `roster(names)` expands a list into manuals, keeping the
 rows whose names appear in it and nothing else. `engine` reads the same list through
@@ -65,12 +70,10 @@ a batch with the turn's stop signal
   → ToolResult
 ```
 
-After the batch's last call, every written call's shell reaches `fs/fault.rs`'s audit: one
-check per unit written into, run by the language that owns it, to completion, no deadline — the
-turn's stop is its only end. Every error and every warning lands exactly once: under the edit whose lines it hit, under
-the `write` that replaced the whole file, or in the unit's own list, which rides on the last
-written answer that can still take lines. `unfold: true` on any written call lifts that list's
-fold.
+After the batch's last call, every written call's shell reaches `fs/fault.rs`'s audit: one check
+per unit written into, run by the language that owns it. The audit's rules — where each
+diagnostic lands, the one insert pass, and what the last written answer carries — are in
+`fs/splice/README.md`.
 
 Unknown names error.
 
@@ -99,59 +102,28 @@ from that same table. An item error names itself, `files[2].path`.
   hears back the names `edit` takes.
 - The front door refuses a call whose `intent` is missing or blank.
 
-Every field but `intent` is optional in the schema; `always` below marks the ones every call of
-that tool needs (the tool checks them, not the schema).
+Every field but `intent` is optional in the schema; a tool checks the fields its own call needs.
 
-| tool | parameters, in index order |
-|---|---|
-| `grep` | `query` always, `regex` (default false), `scope` (paths named from the crate root and starting with `src/`: a directory, or a `.rs` or `.md` file; omitted, the whole `src/`), `lavish` (default false: the whole answer draws one tier denser, never a mixture) |
-| `read` | `files` always: one item per path, with its own `offset` (1-based, default 1), `limit` (omitted: 800 for a `.rs` file, 200 otherwise; a larger value is clamped to that cap) and `item` (a piece's own header: every piece under the path whose text carries it answers whole, every line numbered) |
-| `edit` | `path` always, `old` always (one unique run), `new` always |
-| `splice` | `path` always, `edits` always: one item per range, with `start` and `end` (both 1-based, inclusive; `end = start - 1` inserts) and `new` |
-| `write` | `path` always, `content` always |
-| `cd` | `path` always |
-| `bash` | `command` always |
-| `alias` | `type` (`add`/`list`/`del`), `aliases` (type=add: one item per alias, `name` and `command`), `names` (type=del) |
-| `kairos` | `type` (`now`/`after`/`every`/`list`/`status`/`result`/`cancel`), `tasks` (type=now/after/every: one item per task, with `content`, `kind` (`command`/`text`, default `command`), `timeout`, `delay`, `expr`, `count` (default 3)), `id` |
-| `task` | `tasks` always: one item per child, with `template`, `vars` (object of strings), `cwd`, `maxToolCalls`, `name`, `model`; `list` (default `false`, `true` prints the model roster instead of spawning) |
-| `final` | `type` (`write`/`edit`/`read`/`submit`), `content`, `old`, `new`, `range` |
-| `mcp` | `type` (`list`/`call`), `calls` (type=call: one item per call, `server`, `tool`, `args` (object)), `server` (type=list) |
-| `web` | `type` (`read`/`open`/`click`/`fill`/`select`/`scroll`/`eval`/`screenshot`), `url`, `raw` (default false), `selector`, `value`, `pixels` (default 600), `full_page` (default false) |
-| `search` | `query` always, `provider` always, `pages` (default 1) |
-| `memo` | `type` (`add`/`mod`/`del`/`show`/`history`/`list`), `scope` (`current`/`global`, default `current`), `name`, `content` |
-| `todo` | `type` (`set`/`tick`/`view`), `items` (the whole list), `ids` (item numbers, 1-based), `done` (default true) |
-| `context` | `type` (`query`/`show`), `anchor` (a `#<ref>` hash or a block id), `direction` (`before`/`after`, default `after`), `limit` (default 3), `tool` (a name or `all`, default `bash`), `ids` |
-
-`provider` is `search`'s alone: one search runs against exactly one provider, so a call that names
-none is refused rather than spread across several tabs.
-
-`cd` lands its result with `memo {kind: "cwd", path, from}`: the history card relativizes from it
-and the front end marks the directory as a temporary move.
+Each tool's parameters and their rules are in its manual, listed at the end of this file.
 
 ### Batched calls
 
 Five tools take an array where they used to take one item: `read`, `alias`, `kairos`, `mcp` and
-`task`. `edit`, `write`, `memo`, `context`, `final` and `web` stay single, because their
-payloads are large enough that a batch would only move the same bytes into one argument. `splice`
-takes an array for a different reason: its items are ranges of one file, applied to one snapshot,
-so a batch is one write instead of several that would each need the file read again.
+`task`. `edit`, `write`, `memo`, `context`, `final` and `web` stay single, because their payloads
+are large enough that a batch would only move the same bytes into one argument. `splice` takes an
+array for a different reason: its items are ranges of one file, applied to one snapshot, so a
+batch is one write instead of several that would each need the file read again.
 
 - Items run in the array's order, one after another; the answer is laid out in the same order.
 - Items are isolated: one item's failure is written where that item would have answered, and the
   rest still run and still answer. The call fails when any item failed, and `fail` counts them.
-- Every item states its own outcome in `items`, aligned with the arguments' order: the front end
-- `read` budgets belong to each path, not to the call: a Rust file gets its own 800-line and
-  256 KiB allowance, anything else 200 lines and 64 KiB; `limit` bounds the window below that
-  allowance and never above it; a line over the byte cap is cut where the characters still fit,
-  and that file's status line names the byte cap with no offset.
+- Every item states its own outcome in `items`, aligned with the arguments' order.
 - A query operation — `alias list`, `kairos list/status/result/cancel`, `mcp list` — takes no
   array and refuses one.
 - A batch whose items produce structured payloads answers a memo array, and the history cards
   draw one entry per item.
 - A call with exactly one item answers as the single-item call always did: its one item's failure
   is the call's failure, with no item label in the text.
-- `task` allocates every answer name against the ones the same call already handed out, so two
-  children with one stem get `probe` and `probe-1`, not the same file.
 
 ### ToolOutput
 
@@ -174,6 +146,16 @@ ImagePart  { format: String, data: String }  // base64; empty images is the text
 - `effects` are side effects that must land with this tool result. A tool appends one; the front
   door stamps its `ts` before returning.
 - `stop` asks the loop to end the round.
+
+### Query answers
+
+The tools that read history answer JSON, and the same value rides along as the memo: `context`
+`query`/`show`, `memo` `show`/`history`/`list`, `alias` `list`, `kairos`
+`now`/`after`/`every`/`list`/`status`, and `mcp` `list`. The front end draws what the memo carries
+and does not parse the text.
+
+Every tool declares `summary`, one line that names the call in a history listing; the field is not
+optional, so no tool joins the table without one. It carries only the least that locates the call.
 
 ### Contract
 
@@ -232,265 +214,11 @@ Workspace { shared }
   write the same handle, so a move lands for both at once.
 - `resolve` licenses two zones only: the live `cwd` and the temp directory. A path outside both is
   refused; `must_exist` adds the file checks.
-- `cd` is licensed by one rule, `may_stand_in`: not the filesystem root, not a top-level directory
-  (`/tmp` and its children excepted), and nowhere under the home tree. Everything deeper is fair
-  ground, and the licensed zones then follow `cwd`.
-- Where a session may stand is asked in two places only: `init` and `bind` land a barred or
-  missing launch directory in the temp dir (`standing_dir`: it must exist, be a directory, and pass
-  `may_stand_in`; a row whose directory has since gone lands there too), and `cd` refuses it
-  outright. `/cdp` asks only whether the directory exists.
 - `with_write(path, f)` takes a process-wide write lock keyed by that path; `write_atomic` writes a
   temp file beside the target and renames it into place. `read` takes no lock.
 - `bash` takes no lock.
 
-### Memo and todo
-
-- `memo` writes (`add`, `mod`, `del`) are `current` only; a `global` write is refused. Reads
-  (`show`, `history`, `list`) take both scopes.
-- A memo write returns placeholder text and one `Memo` effect; the loop lands it in the same
-  commit as the result block, so the tool itself never stores a note.
-- `memo` reads go through `Source::memo`; the tool never opens the database.
-- Three operations: `set` replaces the list (`items: []` clears it), `tick` marks item numbers done
-  or, with `done: false`, clears the tick, and `view` prints the list with those numbers. Numbers
-  are positions; an out-of-range number drops the whole call and nothing changes.
-- A todo result's memo carries the whole list, so a front end maintains it by replacement. A
-  fully-ticked list stays until the next `set`; nothing clears itself.
-
-### Shell order
-
-`admit` → `guard` → `shell::run`, and the shell a command finally runs in, are described in
-`shell/README.md`.
-
-### context
-
-- `query` needs `anchor` and `direction`; `tool` is one name or `all`. `anchor` takes a `#<ref>`
-  (the hash printed when a result was truncated) or a block id. The answer is a JSON array of
-  `{id, tool, ok, summary}`, one element per recorded call.
-- `show` answers a JSON array of `{id, request, result}`; request and result are the stored text
-  parsed back into JSON, `null` when the block carries none.
-- Past ten rows, or past three shown blocks, the text lands in `Export::dir()` (`<temp>/mypi`) and
-  the reply names the file. The name carries the session and the parameters, so the same query in
-  one session overwrites its own file and no two sessions collide. The memo still carries every row.
-
-### Query answers and summaries
-
-The tools that read history answer JSON, and the same value rides along as the memo: `context`
-`query`/`show`, `memo` `show`/`history`/`list`, `alias` `list`, `kairos`
-`now`/`after`/`every`/`list`/`status`, `mcp` `list`. A starting `kairos` operation answers one
-receipt per task, so its memo is an array. The front end draws what the memo carries and does not
-parse the text.
-
-Every tool declares `summary`, one line that names the call in a history listing; the field is not
-optional, so no tool joins the table without one. It carries only the least that locates the call:
-the first path plus a count for `read`, the path for `write`, `edit`, `splice` and `cd`, the truncated
-command for `bash`, the first name and command for `alias`, the operation for the tools whose
-parameters are the interesting part (`memo`, `todo`, `context`, `kairos`, `final`), the first
-server and tool for `mcp`, the first template and its answer name for `task`, the query for
-`search`, and for `web` the operation plus the argument it names: URL, selector or expression.
-A tool name the table no longer holds shows its clipped arguments.
-
-### edit and splice
-
-`edit` needs `old` (one unique run) and `new`. `splice` needs `edits`: one item per range, each
-with `start`, `end` and `new`; `new` may be empty to remove the range, and `end = start - 1`
-inserts instead of replacing. A field the table does not hold is refused, so `range` in an `edit`
-call and `old` in a `splice` call both fail on the name.
-
-A session gets one of the two, because two ways of locating one change pull the model apart. A
-profile's `tools.yaml` may name either; naming both keeps `splice` and drops `edit`, with a notice.
-A profile that names no list gets every tool but `edit` and `final`.
-
-### write
-
-`write` overwrites a file whole, and refuses nothing: it is the counterpart of `edit`, which refuses
-an ambiguous match. A `.rs` file goes through the formatter first, and the formatted text is what
-lands. A text the parser refuses still lands as it came, the answer says the file does not parse, and
-the batch's check still runs — the report names the file again. A formatter that did not finish or could not run says nothing about the
-text, so the content lands as it came, the answer says it was not formatted, and the type check
-still runs: `cargo check` does not need rustfmt.
-
-A written file joins the batch's audit (see the One call section): each of its errors and warnings
-stands under the answer as a source seam, once, and the crate's list carries only what no written
-call could hold. A stop before the write leaves the file untouched and the answer says so; nothing
-is said about the compiler when there is nothing wrong:
-
-```text
-overwrote /p/src/foo.rs (2311 bytes)
-```
-
-### edit
-
-`edit` answers one line naming what went, what took its place, and how far the rest moved:
-
-```text
-replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.rs
-```
-
-### splice
-
-The formatter and the checker are the file's language's own: a language names them, and one that
-names no formatter writes the text as it stands.
-
-A Rust file goes through rustfmt in one pass over the merged text. The formatter reports; it never
-withholds a change. When it agrees, its own layout is what lands. When it says the text does not
-parse, the merged text lands as it stands and the answer carries the parser's words. When it does
-not finish or cannot be run, the text lands as it stands, the answer says it was not formatted, and
-the type check still runs.
-
-`new` may name lines of the file instead of repeating them. `@@COPY(a..b)@@` stands for lines `a` to
-`b` of the file as it stands before the message, 1-based and inclusive; `@@CUT(a..b)@@` stands for
-the same lines and adds the change that removes them from where they were. Filling happens once,
-before any range is applied, so a token inside the copied lines is copied rather than followed. A
-macro may sit anywhere in `new`; a range a macro names may be cut once per call, and a change may not
-cut the range it replaces.
-
-The ranges are applied to one snapshot, from the bottom up, so the lines above keep their numbers
-while they are still being used. Two ranges of one call may not overlap; that is the model
-contradicting itself and the file is left alone. Every `splice` call on the same file in one message
-is one write: the calls are merged in arrival order, and a range that overlaps one from an earlier
-call is refused while the rest still land.
-
-Each change is wrapped in a marker comment before the formatter sees it, so the answer can say where
-that block ended up; the markers are stripped from what is written, and the blank lines they held
-open are folded back. The comment's word carries a fingerprint of the snapshot, so no line of the
-file can be read as one. A text the formatter could not parse was never formatted, so each change's
-landing is the one its own range puts it at.
-
-When the merged text does not parse, each change is tried on its own against the file as it was, so
-the answer can name the block the parser blames: a missing brace points below the change, never at
-it. That trial is a report only; nothing is filtered out by it.
-
-Every parse is one `rustfmt` run over stdin. The binary is looked for beside this executable first,
-then on PATH, and its edition comes from the nearest `Cargo.toml` above the file, read once per
-directory. Only a verdict rustfmt actually reached is remembered per edition and content; a timeout
-or a missing binary is not, since neither says anything about the text. Every child the gate starts
-leads a tree of its own and is stopped with that tree when its deadline passes or the turn
-is stopped, so a formatter can never hold the call that started it.
-
-Anything that is not a `.rs` file is spliced without a parse and without a format: there is no
-formatter to call, and no line numbers are trusted beyond the ones `read` gave.
-
-`splice` refuses a file that changed on disk after `read` described it, and it refuses it first:
-the session remembers every file's line count and content hash, and the call's first act after
-reading the bytes is to compare them. A mismatch ends the call there — no range is parsed, nothing
-is formatted — and the model is sent back for a fresh read instead of writing a range at
-coordinates that moved.
-
-#### splice's answer
-
-The shape is `grep`'s: a verdict line, then one block per edit, each opening with `path:line`, an
-`in:` line naming the item it sits in, and numbered source. A block that stands there carries `+`;
-a deletion shows what it removed with `-`. Nothing else marks a block or separates two of them.
-
-The verdict is `OK`, `PARTLY FAILED` (with `, LINES SHIFTED` when a refused edit's lines moved),
-`FAILED, NOTHING WRITTEN`, `WRITTEN, NOT PARSED`, or `WRITTEN, UNFORMATTED`, then the file's length:
-
-```text
-[Splice] OK · now 11 lines
-
-src/demo.rs:6-11
-  in: pub fn alpha() -> u8
-+   1|pub fn alpha() -> u8 {
-+   2|    1
-+   3|}
-+   4|pub fn beta() -> u8 {
-+   5|    2
-+   6|}
-src/demo.rs:3-5
--    |pub fn alpha() -> u8 {
--    |    1
--    |}
-+    |(nothing: the range is gone)
-```
-
-A written edit is named where it landed and shows the block that stands there now; the plus side
-counts inside the block. A deletion has no landing of its own: it is named by the range it took, and
-shows what left, unnumbered. A refused edit's lines are still in the file, so it is named where it
-now finds them, numbered where `read` would number it, and carries both halves; a range that cannot
-be found says so rather than printing a guess. Both sides fold in the middle past twelve rows, and a
-line is cut at 140 characters.
-
-A refusal carries its reason under the block. A block the parser blames carries the parser's words
-there; when no single block is to blame, one `[i]` line says what the whole text was refused for:
-
-```text
-[Splice] PARTLY FAILED, LINES SHIFTED · now 13 lines
-
-src/demo.rs:3-5
-  in: pub fn alpha
--   3|pub fn alpha() -> u8 {
--   5|}
-+   1|pub fn alpha() -> u16 {
-+   2|    1
-+   3|}
-  ! overlaps an earlier splice call on this file
-  ! line 3: mismatched types
-```
-
-A text that does not parse is written as it stands, and the answer says which edit the parser blames
-or, failing that, what it said:
-
-```text
-[Splice] WRITTEN, NOT PARSED · now 13 lines
-
-src/demo.rs:2
-+   1|pub fn broken( -> u8 {
-[i] the file does not parse: this file contains an unclosed delimiter
-```
-
-`WRITTEN, UNFORMATTED` is the same shape with a formatter that never answered:
-`[i] not formatted, written as it stands: rustfmt did not finish in 5 s, so it was killed`.
-
-A stop lands in one of two places, and the answer says which. Before the write, the formatter is
-killed and nothing reaches the file, so the call answers that the file is unchanged. After the write,
-the change stands and waits for the batch's audit: the answer is finished once the batch's last
-write has landed and the crate has been checked.
-
-A language that names a checker is checked in its own unit, whatever that unit is; a language that
-names none takes no part.
-
-The compiler answers once per batch, not per call, and every diagnostic lands once. One whose line
-falls on a written edit's own lines hangs under that edit; one in a file this batch wrote whole
-stands under that write as a seam; anything no written call can hold goes to the crate's list on
-the batch's last written answer that can still take lines — one line per diagnostic,
-`file:line: message | help: …`, capped at twelve unless a call set `unfold: true`, ending in a
-reminder to reach for `Grep`. The list's head counts what it holds:
-`[i] check · mypi 2 errors, 1 warn`. A crate with nothing to say is named once,
-`[i] check · mypi clean`; a crate whose faults all found a home gets no list at all.
-A file the parser refused says so before the list, and its check still runs: the compiler's
-faults are the reader's to weigh.
-
-### edit's and splice's memo
-
-```text
-edit:   { "atLine": 12, "scope": ["impl Greeter"], "excerpt": { "from": 8, "lines": [...] } }
-splice: { "segments": [ { "edit": 1, "state": "applied", "fromLine": 11, "atLine": 11,
-                          "old": "<lines that went>", "new": "<lines that took their place>" }, … ] }
-```
-
-`edit`'s memo describes one change: `atLine` is the old-file line it starts on, `scope` the
-breadcrumb of the blocks above the item, `excerpt` the item as it stood before the change — its
-first old-file line and every line of it — or a window around the change: five lines above it and
-five below, counted over the lines the change covers. The window is taken when the item does not
-hold the whole change, and when the item is longer than
-`config.server.agent.tools.edit.fullItembudget` lines (default 40), because a card folds a long body
-and the fold would hide the change. A window is not the item, so the item's own declaration joins
-the breadcrumb.
-
-The item is the nearest enclosing block that declares something; failing that, the nearest one that
-starts after a blank line, a comment or an attribute; failing that, the nearest block. Blank lines
-never end an item, and an item's own closing brace belongs to it. The front end renders the excerpt,
-signs the changed lines, and paints the rest.
-
-`splice`'s memo is one segment per range, in the call's order: the lines it took and the lines that
-stand there now, numbered on both sides. A range left out carries the lines it takes as they now
-read, its block, and what stopped it; its `atLine` is the line the range must name on a retry.
-`@@CUT(a..b)@@` adds a segment of its own — the lines it removed, with an empty `new`, under the
-same edit number. Segments that are not neighbours are drawn apart, and the card folds what it does
-not need.
-
-`edit`'s new line numbers, counts and the shift after the change are the front end's arithmetic.
-`splice`'s are not: the formatter moved them, so the tool carries them in the memo.
+Where a session may stand, and the rule `cd` answers, is in `shell/README.md`.
 
 ### Stopping
 
@@ -499,10 +227,10 @@ action once, on the caller's thread; `on_stop` registers an action and runs it a
 signal already fired; the returned `Hook` takes it off again when dropped. `reset` clears the flag
 at the start of a turn.
 
-A tool that blocks registers what stopping it means: `bash`, the gate and `mcp` all call one `stop()`
-on the tree they started; the platform owns the ladder below it. `mcp` also marks that server closed,
-so the next call starts a fresh one. A tool that finishes in microseconds registers nothing, and the
-front door does not pretend otherwise.
+A tool that blocks registers what stopping it means: `bash` TERMs its process group and KILLs it
+after `platform::proc`'s grace period; the gate kills the formatter or the compiler it started; `mcp`
+kills the group of the server a call waits on, and the next call starts that server again. A tool
+that finishes in microseconds registers nothing, and the front door does not pretend otherwise.
 
 What a stop leaves behind depends on how far the call got:
 
@@ -520,73 +248,14 @@ they never ran. A stop ends the work, never the record of it. A call's own deadl
 
 `final submit` is not a stop either: its result carries `stop`, and the turn settles as `finished`.
 
-### MCP
+### edit and splice
 
-`mcp` is one static tool with a fixed schema. Which servers exist and which tools each exposes is
-decided at runtime, so a new server needs no Rust change — only a line in `mcp.json`.
+A session gets one of the two, because two ways of locating one change pull the model apart. A
+profile's `tools.yaml` may name either; naming both keeps `splice` and drops `edit`, with a notice.
+A profile that names no list gets every tool but `edit` and `final`.
 
-The bridge belongs to a session: the tool asks `Source::mcp(session, cwd)`, which builds one on the
-first call and follows the session's cwd from then on (a move rescans the table and drops the old
-pool). A session that never calls `mcp` never starts a server.
-
-`mcp/setup.rs` reads the table for where the session stands: `<cwd>/.mypi/mcp.json` when it exists,
-else `<global root>/mcp.json`.
-
-**The project's file wins whole.** If it exists the global one is not read at all; the two are
-never merged. Neither existing means an empty table, and an empty table still mounts the bridge.
-The table is read where the session stood at its first `mcp` call; the next call after a `cd` reads
-it again, and a changed table or directory drops the process pool. An unchanged one is a no-op.
-
-```json
-{
-  "servers": {
-    "local": {
-      "command": "uv",
-      "args": ["run", "python", "service.py"],
-      "env": {},
-      "timeout_secs": 120
-    }
-  }
-}
-```
-
-`McpBridge` is the seam: `servers()`, `tools(server)`, `call(server, tool, args, stop)`,
-`rescan(cwd)`, `shutdown()`. Nothing above it knows JSON-RPC. `SyncMcpBridge` is the built-in implementation: one
-child process per name, started lazily and kept until a rescan; a server spawns in the session's
-working directory, so a `cwd` key in the file is not used. stdout is one JSON-RPC object per line,
-a reader thread dispatches by id, stderr is drained into a 20-line tail that only surfaces in
-errors; every call carries a deadline; a dead process fails every waiting call and is started again
-on the next one. Every server leads a tree of its own, and a stop kills that tree: the wait
-ends on the same tick, and the failure a dead server gives is the call's answer. It uses threads and
-channels only — no async runtime enters this tree.
-
-An answer is text content, concatenated in order. `isError` makes the call failed. Images, audio
-and structured content are reported as unsupported. MCP's own schema is not passed to the model and
-not checked here; a bad argument is the server's error to report.
-
-### Jobs and children
-
-- A job is created by the loop, never by a tool. The tool writes a `contract::job::JobSpec` and
-  holds the session's `JobHost`; the scheduler, the pool, the per-run files and the wakes live in
-  `loop/job`. A session's service is built the first time anything asks for it, so a session that
-  never runs a job keeps no scheduler and no output folder.
-- One job, one completion: a command finishes, a child submits, or the clock arrives. The receipt
-  names the job; the wake reports it done under the same id.
-- `kairos` is the tool face. A text job has no completion of its own, so it refuses `now`.
-- A child is a job too: `task` resolves a template and picks an answer name, the loop writes the
-  session row, and a loop-side runner books the child, nudges it three times when it ends without a
-  submit, then drops it.
-- The project folder is `<the parent's cwd>/.mypi`, taken where the `task` call is made: a child's
-  own `cwd` never moves it, and a `cd` before the call does. Nothing walks up to a parent folder.
-- Templates come from `<project>/agents`, then the user's global agents folder, then the path the
-  call names.
-- The answer file is `<project>/answers/<name>.md`, created when the first child of that project is
-  spawned; the name is fixed at spawn, from `name` or the template's stem, with `-1`, `-2` when a
-  file or another item of the same call already holds it. `final submit` writes it and is the only
-  thing that ends a child.
-- A child takes no user messages. `task` is the only tool a child cannot hold; `final` is the only
-  one it never has to ask for. A main session never resolves `final` at all: `init` drops it from
-  the profile's list and from the manuals.
+The field each one takes, and its own rules, are in `fs/edit/README.md` and
+`fs/splice/README.md`.
 
 ### Invariants
 
@@ -597,16 +266,29 @@ not checked here; a bad argument is the server's error to report.
 3. A tool names an effect kind; the front door stamps `call_id` and `ts`.
 4. File tools read and write only inside the licensed zones; atomically, under a per-path lock.
 5. The roster is the only way the model learns a tool exists.
-6. `edit` has one path in, one read, one atomic write; neither `edit` nor `write` takes an array.
-7. `alias` expands the head word of every command segment, once, and adds no variables, functions or
-   multi-line bodies. A name a session writes is one word the scanner accepts as a segment head; a
-   name the config fixes is read-only for the session.
-8. One call runs at a time inside a session; different sessions run concurrently.
-9. A tool starts no job and writes no session row; it describes both and the loop acts.
-10. The session's list is the whole gate; a tool adds no condition of its own.
-11. A stop is one `Stop`, and only a tool that blocks registers what stopping it means: `bash`, the
-    gate, and `mcp`.
-12. A call whose arguments arrived whole answers, whether or not it ran.
+6. One call runs at a time inside a session; different sessions run concurrently.
+7. A tool starts no job and writes no session row; it describes both and the loop acts.
+8. The session's list is the whole gate; a tool adds no condition of its own.
+9. A stop is one `Stop`, and only a tool that blocks registers what stopping it means: `bash`, the
+   gate, and `mcp`.
+10. A call whose arguments arrived whole answers, whether or not it ran.
+
+### Tool manuals
+
+| tool | manual |
+|---|---|
+| `read` | `fs/read/README.md` |
+| `grep` | `fs/grep/README.md` |
+| `edit` | `fs/edit/README.md` |
+| `splice` | `fs/splice/README.md` |
+| `write` | `fs/write/README.md` |
+| `cd`, `bash`, `alias` | `shell/README.md` |
+| `kairos` | `kairos/README.md` |
+| `task`, `final` | `subagent/README.md` |
+| `mcp` | `mcp/README.md` |
+| `web` | `web/README.md` |
+| `search` | `search/README.md` |
+| `memo`, `todo`, `context` | `memo/README.md` |
 
 ## 2. Design intent
 
@@ -626,45 +308,16 @@ not checked here; a bad argument is the server's error to report.
   children — arrive inside `Env` as traits, so the tools keep no database handle.
 - **Effects land with their block.** A memo, alias or sub-session cannot exist without the tool
   result that caused it; one transaction owns both.
-- **A guard, not a sandbox.** The model runs real shell commands; the classifier blocks the
-  machine-destroying shapes and warns on the rest, and it always judges the expanded command.
-- **Two questions, two rules.** File tools may touch the session's directory and the temp
-  directory; `cd` answers a different one — where may a session stand at all — and its rule is a
-  blacklist, not a zone list. The write lock is per path, so unrelated writes never queue behind
-  each other.
-- **Long work leaves the round.** `kairos` starts a job and returns; a finished job wakes the
-  session, so a slow command does not hold a round open.
-- **A child is a session.** Subagents reuse the loop, storage and stream; corrected lists keep a
-  child from spawning children of its own.
-- **One stdio server per name.** MCP servers start lazily and stay up for the process; the tool
-  only knows names, so a new server is a line of JSON.
-- **The browser is optional at build time.** `web` is a feature, not a runtime switch, because the
-  browser stack is the largest dependency in the crate.
 
 ## 3. Unresolved
 
-1. MCP carries text content only; a server-initiated request is answered `-32601`.
-2. Template front matter reads `tools` only.
+None at this layer.
 
 ## 4. Config fields
 
 | key | use |
 |---|---|
-| `config.server.agent.tools.bashTimeout` | one shell command's deadline; default 600 s |
-| `config.server.agent.tools.aliases` | user aliases as `name=command`; every session reads them, nothing shadows them |
-| `config.server.agent.tools.edit.fullItembudget` | lines an edited item may take and still be handed over whole, default 40; a longer item hands over the window around the change |
-| `config.server.agent.tools.grep.*` | `deepMax` 6, `foldMax` 25: the item thresholds, items being the smallest piece holding a run of nested hits. `xrayImpls` 8, `xrayItems` 12: the x-ray's own caps, which the item thresholds do not charge |
 | `config.server.agent.tools.outputMaxLines` | inline line budget, default 120; `read` keeps its own |
 | `config.server.agent.tools.outputMaxBytes` | inline byte budget, default 32768; `read` and `grep` keep their own |
-| `config.server.agent.tools.browser.bin` | the browser executable; empty = `$MYPI_BROWSER_BIN`, else `/opt/helium/helium` |
-| `config.server.agent.tools.browser.profileDir` | the persistent profile; empty = `<data dir>/browser/profile` |
-| `config.server.agent.tools.browser.port` | attach to a running debugging port instead of launching |
-| `config.server.agent.tools.browser.idleSecs` | seconds without activity before an owned browser is closed; default 600 |
-| `config.server.agent.tools.browser.userAgent` | override the launched browser's User-Agent; unset = the browser's own |
-| `config.server.agent.tools.browser.extraArgs` | extra browser argv |
-| `config.web.bringToFront` | raise the window when a verification challenge appears; default true |
-| `config.server.agent.tools.kairos.*` | `maxConcurrent`, `timeoutSecs`, `maxOutputBytes`, `maxRetained`; the job scheduler's numbers, read by the loop |
-| `config.server.agent.subagent.maxToolCalls` | one child's tool-call budget; read by the loop |
-| `config.server.agent.loop.tools.task.timeoutSecs` | how long one sub-session may run; default 3600 s |
 
-The browser keys are read by the web domain itself, not by the tool layer.
+Every other key belongs to one tool or one domain and is listed in its own manual.

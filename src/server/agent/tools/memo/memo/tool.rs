@@ -136,5 +136,5 @@ fn render(memo: MemoView) -> (String, Value) {
 
 /// One line for a history listing: the operation only.
 fn summary(call: &CallRecord) -> String {
-    summary::clip(&summary::field(call, "type").unwrap_or_default(), 96)
+    summary::flat(&summary::field(call, "type").unwrap_or_default())
 }

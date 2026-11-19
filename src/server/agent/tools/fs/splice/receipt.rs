@@ -1,124 +1,154 @@
-//! What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits —
-//! `path:line`, the item it sits in, and numbered source. A block that stands there carries `+`;
-//! a deletion shows the lines it removed with `-`. The batch's audit hangs its lines where each
-//! edit's block ended.
+// What the model reads back: the verdict, then one block per edit, shaped like `grep`'s hits —
+// `path:first-last`, the item it sits in, and numbered source. A block that stands there carries
+// `+`; a deletion shows the lines it removed with `-`. The batch's audit hangs its lines where each
+// edit's block ended.
 
 use serde_json::{Value, json};
 
-use super::edit::Place;
+use super::edit::{Edit, Why};
 use super::fmt::Word;
 use crate::server::agent::tools::fs::lang::Table;
+use crate::server::agent::tools::fs::skeleton;
 
-/// How many lines one side of a diff shows before its middle is folded away.
+// How many lines one side of a diff shows before its middle is folded away.
 const SIDE: usize = 12;
 
-/// How wide one source line reads inside the receipt.
-const WIDE: usize = 140;
-
-/// One edit of one call, as that call's answer shows it.
+// One edit of one call, as that call's answer shows it.
 pub(crate) struct Row {
-    /// Which item of the call's `edits`, 1-based; a range cut by a macro carries its owner's.
+    // Which item of the call's `edits`, 1-based; a range cut by a macro carries its owner's.
     pub index: usize,
-    /// The first line it named, 1-based, in the file as it was before the write.
+    // The first line it named, 1-based, in the file as it was before the write.
     pub from: usize,
     pub state: State,
 }
 
 pub(crate) enum State {
-    /// It was written: where it landed, the lines it took and the ones that stand there now.
+    // It was written: where it landed, the lines it took and the ones that stand there now.
     Applied {
-        at: Place,
+        first: usize,
+        last: usize,
         old: Vec<String>,
         new: Vec<String>,
-        /// The item holding it, innermost two, outermost first: `impl X for Y > fn z`.
+        // The item holding it, innermost two, outermost first: `impl X for Y > fn z`.
         item: Option<String>,
-        /// The parser's words, when its block does not parse on its own.
+        // The parser's words, when its block does not parse on its own.
         blame: Option<String>,
     },
 
-    /// It was left out: where its own lines sit now, the block it would have put there, and the
-    /// item those lines are in.
-    Refused {
-        at: Place,
-        taken: Vec<String>,
-        block: Vec<String>,
-        item: Option<String>,
+    // It lost to an edit the batch had already accepted.
+    Overlap,
+
+    // Its anchor words name a line that reads otherwise: the range it asked for, where its own
+    // lines sit now, and what it read instead.
+    Mismatch {
+        sent: (usize, usize),
+        now: (usize, usize),
+        why: String,
+    },
+
+    // The item could not be read at all: no range to name.
+    Broken {
         why: String,
     },
 }
 
-/// The answer's fixed points: the file, its length, the line table `read` numbers by, and whether a
-/// refused edit's lines moved.
+// The answer's fixed points: the file it writes and the formatter's verdict on the merged text.
 pub(crate) struct Sheet<'a> {
     pub path: &'a str,
-    pub after: usize,
-    pub table: &'a Table,
-    pub shifted: bool,
+    // How many lines the file holds now: the one gutter width every block numbers by.
+    pub lines: usize,
+    pub word: &'a Word,
 }
 
-/// The answer's text, the memo a front end draws from, and where each edit's audit lines hang.
-pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row], word: &Word) -> (String, Value, Vec<usize>) {
-    let Sheet {
-        path,
-        after,
-        table,
-        shifted,
-    } = sheet;
+// The answer's text, the memo a front end draws from, and where each edit's audit lines hang.
+pub(crate) fn build(sheet: Sheet<'_>, rows: &[Row]) -> (String, Value, Vec<usize>) {
+    let Sheet { path, lines, word } = sheet;
+    let width = skeleton::width(lines);
     let landed = rows
         .iter()
         .filter(|row| matches!(row.state, State::Applied { .. }))
         .count();
-
-    let mut out = vec![head(word, landed, rows.len(), after, shifted)];
-    let mut marks: Vec<usize> = Vec::new();
-    let width = after.to_string().len().max(3);
+    // A call that landed whole has nothing to show: the model's next move rests on the file itself,
+    // not on a diff it already knows it sent.
+    let head = head(path, word, landed, rows.len());
+    if landed == rows.len() && !rows.is_empty() && head.ends_with(": OK") {
+        return (head, memo(rows), Vec::new());
+    }
+    let mut out = vec![head];
+    let mut marks = Vec::with_capacity(rows.len());
     for row in rows {
-        out.push(heading(path, row));
-        if let Some(item) = item(row) {
-            out.push(format!("  in: {item}"));
-        }
+        out.push(String::new());
         match &row.state {
             State::Applied {
-                old, new, blame, ..
+                first,
+                last,
+                old,
+                new,
+                item,
+                blame,
             } => {
-                // What stands there now; a deletion has nothing to show and says what it removed.
-                if new.is_empty() {
-                    out.extend(taken_side(None, old, table, width));
+                out.push(format!("{path}:{}", span(*first, *last)));
+                if let Some(item) = item {
+                    out.push(format!("  in: {item}"));
                 }
-                out.extend(block_side(new, width));
+                if new.is_empty() {
+                    out.extend(side(old, *first, '-', width));
+                } else {
+                    out.extend(side(new, *first, '+', width));
+                }
                 if let Some(blame) = blame {
                     out.push(format!("  ! {blame}"));
                 }
             }
-            State::Refused {
-                at,
-                taken,
-                block,
-                why,
-                ..
-            } => {
-                out.extend(taken_side(at.map(|(first, _)| first), taken, table, width));
-                out.extend(block_side(block, width));
+            State::Overlap => out.push("OVERLAP".to_string()),
+            State::Mismatch { sent, now, why } => {
+                let word = match sent == now {
+                    true => "UNCHANGED",
+                    false => "SHIFTED",
+                };
+                out.push(format!(
+                    "{word}, the edit scope you requested earlier is now {}; reread or regrep to \
+                     issue another splice",
+                    span(now.0, now.1)
+                ));
                 out.push(format!("  ! {why}"));
             }
+            State::Broken { why } => out.push(format!("  ! {why}")),
         }
         marks.push(out.len());
     }
-    if let Some(line) = verdict_note(word, rows) {
-        out.push(line);
+    if landed > 0 {
+        let note = match word {
+            Word::Unparsed(why) => Some(format!(
+                "[i] fmt · {path} does not parse, written as it stands: {why}"
+            )),
+            Word::Undecided(why) => Some(format!("[i] fmt · {path} not formatted: {why}")),
+            _ => None,
+        };
+        if let Some(note) = note {
+            out.push(String::new());
+            out.push(note);
+        }
     }
     (out.join("\n"), memo(rows), marks)
 }
 
-/// The verdict, then the file's length: the whole point of the first line.
-fn head(word: &Word, landed: usize, total: usize, after: usize, shifted: bool) -> String {
+// A call that never reached its edits: the verdict, then the one reason.
+pub(crate) fn refused(path: &str, why: &str) -> String {
+    format!("splice {path}: FAILED, NOTHING WRITTEN\n\n! {why}")
+}
+
+// A call the user stopped before anything was written.
+pub(crate) fn interrupted(path: &str) -> String {
+    format!("splice {path}: FAILED, NOTHING WRITTEN\n\n! interrupted: the user stopped the turn")
+}
+
+// The verdict line: the file, what became of it, and the formatter's say when all of it landed.
+fn head(path: &str, word: &Word, landed: usize, total: usize) -> String {
     let verdict = if landed == 0 {
         "FAILED, NOTHING WRITTEN"
     } else if landed < total {
-        match shifted {
-            true => "PARTLY FAILED, LINES SHIFTED",
-            false => "PARTLY FAILED",
-        }
+        "PARTLY FAILED"
     } else {
         match word {
             Word::Plain | Word::Formatted => "OK",
@@ -126,165 +156,162 @@ fn head(word: &Word, landed: usize, total: usize, after: usize, shifted: bool) -
             Word::Undecided(_) => "WRITTEN, UNFORMATTED",
         }
     };
-    format!("[Splice] {verdict} · now {after} lines")
+    format!("splice {path}: {verdict}")
 }
 
-/// What the formatter said about the whole text, when no edit carries the words itself.
-fn verdict_note(word: &Word, rows: &[Row]) -> Option<String> {
-    let blamed = rows
-        .iter()
-        .any(|row| matches!(&row.state, State::Applied { blame: Some(_), .. }));
-    match word {
-        Word::Unparsed(why) if !blamed => Some(format!("[i] the file does not parse: {why}")),
-        Word::Undecided(why) => Some(format!("[i] not formatted, written as it stands: {why}")),
-        _ => None,
+// `first-last`, or the one line when both are the same.
+fn span(first: usize, last: usize) -> String {
+    match last > first {
+        true => format!("{first}-{last}"),
+        false => first.to_string(),
     }
 }
 
-/// One place as `grep` names a hit: `path:line`, `path:first-last`, or a line saying the range is
-/// no longer in the file.
-fn where_at(path: &str, at: Place) -> String {
-    match at {
-        Some((first, last)) if last > first => format!("{path}:{first}-{last}"),
-        Some((first, _)) => format!("{path}:{first}"),
-        None => format!("{path}: their lines are not in the file as it now stands"),
-    }
-}
-
-/// Where one edit sits, as `grep` names a hit. A written edit is named where it landed; a deletion
-/// has no landing of its own, so it keeps the range it named.
-fn heading(path: &str, row: &Row) -> String {
-    match &row.state {
-        State::Applied { old, new, at, .. } => {
-            if new.is_empty() && !old.is_empty() {
-                where_at(path, Some((row.from, row.from + old.len() - 1)))
-            } else {
-                where_at(path, *at)
-            }
-        }
-        State::Refused { at, .. } => where_at(path, *at),
-    }
-}
-
-fn item(row: &Row) -> Option<&str> {
-    match &row.state {
-        State::Applied { item, .. } => item.as_deref(),
-        State::Refused { item, .. } => item.as_deref(),
-    }
-}
-
-/// The lines an edit takes, unnumbered when they are gone and by their current numbers when they
-/// are still in the file, where `read` would number them.
-fn taken_side(first: Option<usize>, taken: &[String], table: &Table, width: usize) -> Vec<String> {
-    if taken.is_empty() {
-        return vec![format!("- {:>width$}|(nothing)", "", width = width)];
-    }
-    let Some(first) = first else {
-        return taken
-            .iter()
-            .map(|line| format!("- {:>width$}|{}", "", shown(line), width = width))
-            .collect();
-    };
-    let mut picked: Vec<(usize, &str)> = Vec::new();
-    for (offset, line) in taken.iter().enumerate() {
-        let number = first + offset;
-        if table.key(number - 1) {
-            picked.push((number, line));
-        }
-    }
-    // A range that holds no key line still took lines: its own ends are what a reader needs.
-    if picked.is_empty() {
-        picked.push((first, &taken[0]));
-        if taken.len() > 1 {
-            picked.push((first + taken.len() - 1, &taken[taken.len() - 1]));
-        }
-    }
-    fold(picked, |number, line| {
-        format!("- {number:>width$}|{}", shown(line), width = width)
-    })
-}
-
-/// A block, numbered inside itself.
-fn block_side(block: &[String], width: usize) -> Vec<String> {
-    if block.is_empty() {
-        return vec![format!(
-            "+ {:>width$}|(nothing: the range is gone)",
-            "",
-            width = width
-        )];
-    }
-    let rows: Vec<(usize, &str)> = block
+// One side of the diff, numbered by where its lines stand in the file.
+fn side(lines: &[String], first: usize, sign: char, width: usize) -> Vec<String> {
+    let rows: Vec<(usize, &str)> = lines
         .iter()
         .enumerate()
-        .map(|(at, line)| (at + 1, line.as_str()))
+        .map(|(at, line)| (first + at, line.as_str()))
         .collect();
-    fold(rows, |number, line| {
-        format!("+ {number:>width$}|{}", shown(line), width = width)
-    })
+    fold(rows, width, sign)
 }
 
-/// A side of the diff, its middle folded away once it grows past what one answer may take.
-fn fold(rows: Vec<(usize, &str)>, row: impl Fn(usize, &str) -> String) -> Vec<String> {
+// A side of the diff, its middle folded away once it grows past what one answer may take.
+fn fold(rows: Vec<(usize, &str)>, width: usize, sign: char) -> Vec<String> {
+    let draw = |at: usize, text: &str| format!("{sign} {at:>width$}|{text}", width = width);
     if rows.len() <= SIDE {
-        return rows.into_iter().map(|(at, line)| row(at, line)).collect();
+        return rows.iter().map(|(at, text)| draw(*at, text)).collect();
     }
     let half = SIDE / 2;
     let mut out: Vec<String> = rows[..half]
         .iter()
-        .map(|(at, line)| row(*at, line))
+        .map(|(at, text)| draw(*at, text))
         .collect();
-    out.push("  …".to_string());
+    out.push(format!("  [+{} lines]", rows.len() - SIDE));
     out.extend(
         rows[rows.len() - half..]
             .iter()
-            .map(|(at, line)| row(*at, line)),
+            .map(|(at, text)| draw(*at, text)),
     );
     out
 }
 
-/// One source line as a receipt row: its own indentation kept, its tail cut.
-fn shown(line: &str) -> String {
-    match line.char_indices().nth(WIDE) {
-        Some((cut, _)) => format!("{}…", &line[..cut]),
-        None => line.to_string(),
-    }
-}
-
-/// The memo a front end draws from: one segment per edit, in the call's order.
+// The memo a front end draws from: one segment per edit, in the call's order.
 fn memo(rows: &[Row]) -> Value {
     let mut segments = Vec::new();
     for row in rows {
         match &row.state {
-            State::Applied { at, old, new, .. } => {
-                segments.push(json!({
-                    "edit": row.index,
-                    "state": "applied",
-                    "fromLine": row.from,
-                    "atLine": at.map(|(first, _)| first).unwrap_or(row.from),
-                    "old": old.join("\n"),
-                    "new": new.join("\n"),
-                }));
-            }
-            State::Refused {
-                at,
-                taken,
-                block,
-                why,
-                ..
-            } => {
-                // The segment's own lines are the ones it takes now, not the ones it named before.
-                let now = at.map(|(first, _)| first).unwrap_or(row.from);
-                segments.push(json!({
-                    "edit": row.index,
-                    "state": "rejected",
-                    "fromLine": now,
-                    "atLine": now,
-                    "old": taken.join("\n"),
-                    "new": block.join("\n"),
-                    "error": why,
-                }));
-            }
+            State::Applied {
+                first, old, new, ..
+            } => segments.push(json!({
+                "edit": row.index,
+                "state": "applied",
+                "fromLine": row.from,
+                "atLine": first,
+                "old": old.join("\n"),
+                "new": new.join("\n"),
+            })),
+            State::Overlap => segments.push(json!({
+                "edit": row.index,
+                "state": "rejected",
+                "fromLine": row.from,
+                "atLine": row.from,
+                "error": "OVERLAP",
+            })),
+            State::Mismatch { now, why, .. } => segments.push(json!({
+                "edit": row.index,
+                "state": "rejected",
+                "fromLine": row.from,
+                "atLine": now.0,
+                "error": why,
+            })),
+            State::Broken { why } => segments.push(json!({
+                "edit": row.index,
+                "state": "rejected",
+                "fromLine": 0,
+                "atLine": 0,
+                "error": why,
+            })),
         }
     }
     json!({ "segments": segments })
+}
+
+// What the batch knows about one edit before its row is drawn.
+pub(crate) struct Fate {
+    // Written: where it landed. Refused: where its own lines sit now.
+    pub at: (usize, usize),
+
+    // The parser's words, when its block does not parse on its own.
+    pub blame: Option<String>,
+
+    // Why it was left out; `None` means it was written.
+    pub why: Option<Why>,
+}
+
+// One edit, as its own call's answer shows it.
+pub(crate) fn row(edit: &Edit, fate: &Fate, lines: &[&str], base: &[String], table: &Table) -> Row {
+    let from = edit.start + 1;
+    let Some(why) = &fate.why else {
+        let (first, last) = fate.at;
+        let item = match edit.cut {
+            true => None,
+            false => item_of(table, first),
+        };
+        return Row {
+            index: edit.index,
+            from,
+            state: State::Applied {
+                first,
+                last,
+                old: edit.taken(base).to_vec(),
+                new: take(lines, first, last),
+                item,
+                blame: fate.blame.clone(),
+            },
+        };
+    };
+    let state = match why {
+        Why::Overlap => State::Overlap,
+        Why::Mismatch(why) => State::Mismatch {
+            sent: (from, edit.end.max(from)),
+            now: fate.at,
+            why: why.clone(),
+        },
+    };
+    Row {
+        index: edit.index,
+        from,
+        state,
+    }
+}
+
+// The lines one 1-based inclusive range holds, owned.
+fn take(lines: &[&str], first: usize, last: usize) -> Vec<String> {
+    if lines.is_empty() || last < first {
+        return Vec::new();
+    }
+    let first = first.clamp(1, lines.len());
+    let last = last.min(lines.len());
+    if last < first {
+        return Vec::new();
+    }
+    lines[first - 1..last]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect()
+}
+
+// The innermost two items a landing sits in, outermost first.
+fn item_of(table: &Table, first: usize) -> Option<String> {
+    let chain = table.around(first.saturating_sub(1));
+    let tail: Vec<&str> = chain
+        .iter()
+        .rev()
+        .take(2)
+        .rev()
+        .filter_map(|(_, line)| line.exact.as_deref())
+        .collect();
+    (!tail.is_empty()).then(|| tail.join(" > "))
 }

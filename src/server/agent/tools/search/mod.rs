@@ -66,5 +66,5 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
 
 /// One line for a history listing: the query.
 fn summary(call: &CallRecord) -> String {
-    summary::clip(&summary::field(call, "query").unwrap_or_default(), 96)
+    summary::flat(&summary::field(call, "query").unwrap_or_default())
 }

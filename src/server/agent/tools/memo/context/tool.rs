@@ -175,7 +175,7 @@ fn parsed(text: Option<&Value>) -> Value {
 fn summary_of(record: &CallRecord) -> String {
     match registry::spec(&record.tool) {
         Some(tool) => (tool.summary)(record),
-        None => summary::clip(&record.args, 96),
+        None => summary::flat(&record.args),
     }
 }
 

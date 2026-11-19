@@ -1,0 +1,63 @@
+# edit
+
+One unique run of text replaced in place: `old` must match exactly one place in the file, and
+`new` takes its place. A call that cannot point at one run is refused, so an ambiguous match is
+never written somewhere the model did not mean.
+
+## 1. Design / Schema
+
+### One call
+
+`path`, `old`, `new`. `old` is one unique run of the file's text; a run that appears zero or
+several times is refused. `new` is whatever stands in its place.
+
+`edit` takes no array: its payload is large enough that a batch would move the same bytes into one
+argument. One call is one path in, one read, one atomic write.
+
+A session gets either `edit` or `splice`, never both; the rule is in `../../README.md`.
+
+### The answer
+
+One line names what went, what took its place, and how far the rest moved:
+
+```text
+replaced lines 12-14 (3) with 5 lines; below +2; file now 144 lines: /p/src/foo.rs
+```
+
+### The memo
+
+```text
+excerpt: { "atLine": 12, "scope": ["impl Greeter"], "excerpt": { "from": 8, "lines": [...] } }
+```
+
+The memo describes one change: `atLine` is the old-file line it starts on, `scope` the breadcrumb
+of the blocks above the item, `excerpt` the item as it stood before the change — its first
+old-file line and every line of it — or a window around the change: five lines above it and five
+below, counted over the lines the change covers. The window is taken when the item does not hold
+the whole change, and when the item is longer than `config.server.agent.tools.edit.fullItembudget`
+lines (default 40), because a card folds a long body and the fold would hide the change. A window
+is not the item, so the item's own declaration joins the breadcrumb.
+
+The item is the nearest enclosing block that declares something; failing that, the nearest one
+that starts after a blank line, a comment or an attribute; failing that, the nearest block. Blank
+lines never end an item, and an item's own closing brace belongs to it. The front end renders the
+excerpt, signs the changed lines, and paints the rest.
+
+## 2. Design intent
+
+- **One unique run.** The model quotes what it changes instead of counting lines; a match that is
+  not unique is a question, not a write.
+- **One path, one read, one write.** The tool holds the per-path lock across the whole change, so
+  no other call sees a half-applied edit.
+- **The receipt is the proof.** The answer says what moved below the change, so the model does not
+  re-read the file to learn the new coordinates.
+
+## 3. Unresolved
+
+None.
+
+## 4. Config fields
+
+| key | use |
+|---|---|
+| `config.server.agent.tools.edit.fullItembudget` | lines an edited item may take and still be handed over whole, default 40; a longer item hands over the window around the change |

@@ -155,22 +155,3 @@ pub(crate) fn boundary_line(base: &Path, b: &Boundary) -> String {
         plural(b.files, "file")
     )
 }
-
-// Keep a text inside a line budget and a byte budget, counting what was dropped.
-pub(crate) fn cut(text: String, lines: usize, bytes: usize) -> String {
-    let total = text.lines().count();
-    if total <= lines && text.len() <= bytes {
-        return text;
-    }
-    let mut out = String::new();
-    for line in text.lines().take(lines) {
-        if out.len() + line.len() + 1 > bytes {
-            break;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    let kept = out.lines().count();
-    out.push_str(&format!("[+{} lines]\n", total.saturating_sub(kept)));
-    out
-}

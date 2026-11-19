@@ -72,9 +72,6 @@ pub struct Shell {
     pub root: PathBuf,
     /// The written file itself.
     pub file: PathBuf,
-    /// The file does not parse, so the report says who is speaking.
-    pub parse_failed: bool,
-    /// Whether this call lifts the audit's fold.
     pub unfold: bool,
     /// The whole file was written: the fault's own seam stands under the answer.
     pub seam: bool,
@@ -101,10 +98,11 @@ pub struct Seen {
     pub files: BTreeMap<PathBuf, License>,
 }
 
-/// One file's licence to be written by `splice`: a read granted it, a drift check can revoke it.
+/// One file's licence to be written by `splice`: a read granted it, a batch that is not whole or a
+/// drift on disk can revoke it.
 #[derive(Debug, Clone)]
 pub struct License {
-    /// A read or a clean write granted it; a refusal that leaves the file unwritten revokes it.
+    /// A read or a clean write granted it; a batch that is not whole revokes it.
     pub approval: bool,
     /// The content hash at the granting moment; a write is refused if the file no longer matches.
     pub hash: String,

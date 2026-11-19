@@ -6,25 +6,26 @@ use std::sync::LazyLock;
 
 use crate::server::agent::tools::fs::gate;
 use crate::server::agent::tools::fs::lang::Checker;
+use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::verdict::{Check, Fault};
 use crate::server::platform::stop::Stop;
 
-/// What this language owes the tools as a checker.
+// What this language owes the tools as a checker.
 pub(crate) const CHECKER: Checker = Checker {
     unit,
     title,
-    shown,
+    shown: parts::rel,
     run,
 };
 
-/// The crate this file belongs to: the nearest directory above it that holds a manifest.
+// The crate this file belongs to: the nearest directory above it that holds a manifest.
 pub(super) fn unit(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .find(|dir| dir.join("Cargo.toml").is_file())
         .map(Path::to_path_buf)
 }
 
-/// The crate's own name, from the manifest's `[package] name`; the folder when unnamed.
+// The crate's own name, from the manifest's `[package] name`; the folder when unnamed.
 pub(super) fn title(root: &Path) -> String {
     let named = std::fs::read_to_string(root.join("Cargo.toml"))
         .ok()
@@ -36,17 +37,9 @@ pub(super) fn title(root: &Path) -> String {
     })
 }
 
-/// A path as a diagnostic names it: relative to the crate root the compiler reports against.
-pub(super) fn shown(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
-/// Type-check one crate to completion, in the compiler's own order. No deadline: a batch checks
-/// once, and only the turn's stop ends it. Cargo has no per-file mode, so the files this batch
-/// wrote only say which unit to check, never which part of one.
+// Type-check one crate to completion, in the compiler's own order. No deadline: a batch checks
+// once, and only the turn's stop ends it. Cargo has no per-file mode, so the files this batch
+// wrote only say which unit to check, never which part of one.
 fn run(root: &Path, _touched: &[PathBuf], stop: &Stop) -> Check {
     let mut cmd = Command::new(cargo());
     cmd.args(["check", "--message-format=json", "--quiet"])
@@ -67,7 +60,7 @@ fn run(root: &Path, _touched: &[PathBuf], stop: &Stop) -> Check {
     Check::Faults { faults, warns }
 }
 
-/// The errors and the warnings one `cargo check` reported, whatever file they sit in.
+// The errors and the warnings one `cargo check` reported, whatever file they sit in.
 pub(super) fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
     let mut errors: Vec<Fault> = Vec::new();
     let mut warns: Vec<Fault> = Vec::new();
@@ -143,7 +136,7 @@ pub(super) fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
             root.join(file)
         };
         list.push(Fault {
-            file: shown(root, &named),
+            file: parts::rel(root, &named),
             line,
             message: text,
             helps,
@@ -152,7 +145,7 @@ pub(super) fn diagnostics(root: &Path, out: &str) -> (Vec<Fault>, Vec<Fault>) {
     (errors, warns)
 }
 
-/// The first `name = "…"` under `[package]`.
+// The first `name = "…"` under `[package]`.
 fn package_name(manifest: &str) -> Option<String> {
     let mut inside = false;
     for line in manifest.lines() {
@@ -178,7 +171,7 @@ fn package_name(manifest: &str) -> Option<String> {
     None
 }
 
-/// The `cargo` to run: the one beside this executable first, then whatever PATH holds.
+// The `cargo` to run: the one beside this executable first, then whatever PATH holds.
 pub(super) fn cargo() -> PathBuf {
     static FOUND: LazyLock<PathBuf> = LazyLock::new(|| gate::beside("cargo"));
     FOUND.clone()

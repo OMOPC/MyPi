@@ -1,34 +1,29 @@
-//! The walk: the crate's own `src/`, the directories a call narrows it to, and the lines that match.
+// The walk: the crate's own `src/`, the directories a call narrows it to, and the lines that match.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
 
+use crate::server::agent::tools::fs::lang::graph::loader;
 use crate::server::agent::tools::fs::lang::{self, Table};
 use crate::server::agent::tools::workspace::canonicalize_lenient;
 
-/// A file this big is not read line by line.
-const LARGE: u64 = 4 * 1024 * 1024;
-
-/// Directories inside `src/` that are never source.
-const SKIP: &[&str] = &["target", "node_modules"];
-
-/// Whether a sorter claims this file: `grep` reads what the languages read.
+// Whether a sorter claims this file: `grep` reads what the languages read.
 fn readable(path: &Path) -> bool {
     lang::owner(path).is_some()
 }
 
-/// Threads one answer may read its files on.
+// Threads one answer may read its files on.
 const THREADS: usize = 8;
 
-/// Where the crate stands: its root, and the source tree under it.
+// Where the crate stands: its root, and the source tree under it.
 pub(crate) struct Zone {
     pub root: PathBuf,
     pub src: PathBuf,
 }
 
-/// The crate the session stands in: the nearest `Cargo.toml` above the working directory.
+// The crate the session stands in: the nearest `Cargo.toml` above the working directory.
 pub(crate) fn zone(cwd: &Path) -> Result<Zone> {
     for dir in cwd.ancestors() {
         if !dir.join("Cargo.toml").is_file() {
@@ -49,8 +44,11 @@ pub(crate) fn zone(cwd: &Path) -> Result<Zone> {
     ))
 }
 
-/// The files and directories to read, and one line per scope entry that could not be used.
-pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<String>) {
+// The files and directories to read, and one line per scope entry that could not be used.
+pub(crate) fn roots(
+    zone: &Zone,
+    scope: &mut Vec<String>,
+) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<String>) {
     if scope.is_empty() {
         return (vec![zone.src.clone()], Vec::new(), Vec::new());
     }
@@ -58,6 +56,13 @@ pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf
     let mut dirs: Vec<PathBuf> = Vec::new();
     let mut files: Vec<PathBuf> = Vec::new();
     let mut misses: Vec<String> = Vec::new();
+    // One entry per path, however many times the call named it.
+    let mut named: Vec<String> = Vec::new();
+    scope.retain(|entry| {
+        let repeated = named.contains(entry);
+        named.push(entry.clone());
+        !repeated
+    });
 
     for entry in scope {
         let raw = entry.trim();
@@ -91,7 +96,7 @@ pub(crate) fn roots(zone: &Zone, scope: &[String]) -> (Vec<PathBuf>, Vec<PathBuf
     (dirs, files, misses)
 }
 
-/// What the call looks for.
+// What the call looks for.
 pub(crate) enum Matcher {
     Text(String),
     Pattern(regex::Regex),
@@ -102,7 +107,7 @@ impl Matcher {
         Self::Text(query.to_string())
     }
 
-    /// A pattern as written; its own syntax errors are the model's to fix.
+    // A pattern as written; its own syntax errors are the model's to fix.
     pub fn pattern(query: &str) -> Result<Self> {
         regex::Regex::new(query).map(Self::Pattern).map_err(|e| {
             anyhow!("`query` is not a valid pattern: {e}; leave `regex` off to search it as text")
@@ -117,7 +122,7 @@ impl Matcher {
     }
 }
 
-/// One source file, the items its hits make, and its pieces.
+// One source file, the items its hits make, and its pieces.
 pub(crate) struct File {
     pub path: PathBuf,
     pub text: String,
@@ -125,16 +130,16 @@ pub(crate) struct File {
     pub table: Table,
 }
 
-/// One drawn unit: the smallest piece holding a run of nested hits, and those hits.
+// One drawn unit: the smallest piece holding a run of nested hits, and those hits.
 pub(crate) struct Item {
     pub open: usize,
     pub close: usize,
-    /// Hit lines, 0-based, ascending.
+    // Hit lines, 0-based, ascending.
     pub hits: Vec<usize>,
 }
 
-/// The items a file's hits make: each hit takes its nearest enclosing piece, a span that lands
-/// inside an item joins it, and a later span that swallows items absorbs them into one.
+// The items a file's hits make: each hit takes its nearest enclosing piece, a span that lands
+// inside an item joins it, and a later span that swallows items absorbs them into one.
 fn items(table: &Table, hits: &[usize]) -> Vec<Item> {
     let mut out: Vec<Item> = Vec::new();
     for &line in hits {
@@ -169,11 +174,11 @@ fn items(table: &Table, hits: &[usize]) -> Vec<Item> {
     out
 }
 
-/// Every named file, and every readable file under these directories; read in parallel.
+// Every named file, and every readable file under these directories; read in parallel.
 pub(crate) fn collect(dirs: &[PathBuf], files: &[PathBuf], matcher: &Matcher) -> Vec<File> {
     let mut named: BTreeSet<PathBuf> = files.iter().cloned().collect();
     for dir in dirs {
-        sources(dir, &mut named);
+        named.extend(lang::files(dir));
     }
     let paths: Vec<PathBuf> = named.into_iter().collect();
 
@@ -204,13 +209,9 @@ fn read_all(paths: &[PathBuf], matcher: &Matcher) -> Vec<File> {
         .collect()
 }
 
-/// One file's hits and its table; a file that cannot be read is simply not there.
+// One file's hits and its table; a file that cannot be read is simply not there.
 fn read(path: &Path, matcher: &Matcher) -> Option<File> {
-    let size = std::fs::metadata(path).ok()?.len();
-    if size > LARGE {
-        return None;
-    }
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = loader::text(path)?;
     let hits: Vec<usize> = text
         .lines()
         .enumerate()
@@ -225,27 +226,4 @@ fn read(path: &Path, matcher: &Matcher) -> Option<File> {
         items,
         table,
     })
-}
-
-/// One directory's readable files, recursively; dot entries and build trees stay out.
-fn sources(dir: &Path, out: &mut BTreeSet<PathBuf>) {
-    let Ok(read) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let Ok(kind) = entry.file_type() else {
-            continue;
-        };
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if kind.is_dir() {
-            if name.starts_with('.') || SKIP.contains(&name.as_str()) {
-                continue;
-            }
-            sources(&entry.path(), out);
-        } else if kind.is_file() && readable(&entry.path()) {
-            out.insert(entry.path());
-        }
-    }
 }

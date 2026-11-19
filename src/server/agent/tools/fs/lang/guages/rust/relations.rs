@@ -3,13 +3,13 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use crate::server::agent::tools::fs::lang::graph::parts;
 use crate::server::agent::tools::fs::lang::{self, Line, Relation, Relations, Row, Source, Table};
-use crate::server::agent::tools::summary;
 
-/// How Rust's relations read: a namespace or a type, indexed by `::`.
+// How Rust's relations read: a namespace or a type, indexed by `::`.
 pub(crate) const RELATIONS: Relations = Relations { scan };
 
-/// The rows a query answers: `A::b` a module or type member, a lone name its declarations and impls.
+// The rows a query answers: `A::b` a module or type member, a lone name its declarations and impls.
 fn scan(sources: &[Source], root: &Path, query: &str, items: usize, impls: usize) -> Relation {
     let mut used = Vec::new();
     if let Some((a, b)) = two_segments(query) {
@@ -73,7 +73,7 @@ fn scan(sources: &[Source], root: &Path, query: &str, items: usize, impls: usize
     }
 }
 
-/// `A::b` where `b` is declared on the type `A`: its `impl`, `trait`, `enum` or `struct` bodies.
+// `A::b` where `b` is declared on the type `A`: its `impl`, `trait`, `enum` or `struct` bodies.
 fn type_rows(
     sources: &[Source],
     root: &Path,
@@ -85,7 +85,7 @@ fn type_rows(
     let mut rows: Vec<Row> = Vec::new();
     for (at, src) in sources.iter().enumerate() {
         let raw: Vec<&str> = src.text.lines().collect();
-        let label = shown(root, src.path);
+        let label = parts::rel(root, src.path);
         for (index, piece) in src.table.pieces() {
             if !bears(src.table, piece) || !names(src.table, piece, a) {
                 continue;
@@ -101,7 +101,7 @@ fn type_rows(
             if matches!(lang::shape(src.table, piece), Some("enum" | "struct")) {
                 let end = src.table.end(index).unwrap_or(index);
                 for line in members(&raw, index + 1, end, b) {
-                    mine.push(format!("{}  {}", line + 1, summary::clip(raw[line], 120)));
+                    mine.push(format!("{}  {}", line + 1, raw[line]));
                 }
             }
             if mine.is_empty() {
@@ -110,11 +110,7 @@ fn type_rows(
             used.push(at);
             rows.push(Row {
                 heading: None,
-                text: format!(
-                    "  {label}:{}  {}",
-                    index + 1,
-                    summary::clip(exact(piece), 200)
-                ),
+                text: format!("  {label}:{}  {}", index + 1, exact(piece)),
             });
             for row in mine.iter().take(items) {
                 rows.push(Row {
@@ -133,7 +129,7 @@ fn type_rows(
     rows
 }
 
-/// `A::b` where `A` is a module: the item `b` that module declares.
+// `A::b` where `A` is a module: the item `b` that module declares.
 fn module_rows(
     sources: &[Source],
     root: &Path,
@@ -179,7 +175,7 @@ fn module_rows(
                 if !inside && !(inline && other == at) {
                     continue;
                 }
-                let label = shown(root, target.path);
+                let label = parts::rel(root, target.path);
                 for (item_at, item) in target.table.pieces() {
                     if !names(target.table, item, b)
                         || lang::shape(target.table, item) == Some("use")
@@ -198,7 +194,7 @@ fn module_rows(
                         text: format!(
                             "  {label}:{}  {}  ({}..{})",
                             item_at + 1,
-                            summary::clip(exact(item), 200),
+                            exact(item),
                             item_at + 1,
                             target.table.end(item_at).unwrap_or(item_at) + 1
                         ),
@@ -210,7 +206,7 @@ fn module_rows(
     (rows, known)
 }
 
-/// The type's own declaration, and every `impl` block for it, with their items' spans.
+// The type's own declaration, and every `impl` block for it, with their items' spans.
 fn x_ray_rows(
     sources: &[Source],
     root: &Path,
@@ -238,7 +234,7 @@ fn x_ray_rows(
         text: String::new(),
     }];
     for (at, src) in sources.iter().enumerate() {
-        let label = shown(root, src.path);
+        let label = parts::rel(root, src.path);
         for (index, line) in src.table.pieces() {
             if !declares(src, line) {
                 continue;
@@ -249,7 +245,7 @@ fn x_ray_rows(
                 text: format!(
                     "  {label}:{}  {}  ({}..{})",
                     index + 1,
-                    summary::clip(exact(line), 200),
+                    exact(line),
                     index + 1,
                     src.table.end(index).unwrap_or(index) + 1
                 ),
@@ -259,7 +255,7 @@ fn x_ray_rows(
     let mut blocks = 0usize;
     let mut listed = 0usize;
     for (at, src) in sources.iter().enumerate() {
-        let label = shown(root, src.path);
+        let label = parts::rel(root, src.path);
         for (index, line) in src.table.pieces() {
             if !is_impl(src.table, line) || !names(src.table, line, name) {
                 continue;
@@ -276,7 +272,7 @@ fn x_ray_rows(
                     "  {label}:{}..{}  {}",
                     index + 1,
                     src.table.end(index).unwrap_or(index) + 1,
-                    summary::clip(exact(line), 200)
+                    exact(line)
                 ),
             });
             let mine = src.table.inner(index);
@@ -308,12 +304,12 @@ fn x_ray_rows(
     rows
 }
 
-/// Whether this piece is an impl block, of either shape.
+// Whether this piece is an impl block, of either shape.
 fn is_impl(table: &Table, line: &Line) -> bool {
     matches!(lang::shape(table, line), Some("impl"))
 }
 
-/// Whether this piece is one of the kinds `A::b` asks about.
+// Whether this piece is one of the kinds `A::b` asks about.
 fn bears(table: &Table, line: &Line) -> bool {
     matches!(
         lang::shape(table, line),
@@ -321,7 +317,7 @@ fn bears(table: &Table, line: &Line) -> bool {
     )
 }
 
-/// Whether this piece's body declares functions, consts, types or statics by name.
+// Whether this piece's body declares functions, consts, types or statics by name.
 fn declared(table: &Table, line: &Line) -> bool {
     matches!(
         lang::shape(table, line),
@@ -329,17 +325,17 @@ fn declared(table: &Table, line: &Line) -> bool {
     )
 }
 
-/// Whether this piece binds `word`: its own name, or the trait and target of an `impl`.
+// Whether this piece binds `word`: its own name, or the trait and target of an `impl`.
 fn names(table: &Table, line: &Line, word: &str) -> bool {
     binds(table, line, word)
 }
 
-/// The line a row shows: the piece's own header, never the shape.
+// The line a row shows: the piece's own header, never the shape.
 fn exact(line: &Line) -> &str {
     line.exact.as_deref().unwrap_or("")
 }
 
-/// One member as a row: its span, and its own name.
+// One member as a row: its span, and its own name.
 fn member_row(table: &Table, at: usize) -> String {
     let end = table.end(at).unwrap_or(at);
     format!(
@@ -350,7 +346,7 @@ fn member_row(table: &Table, at: usize) -> String {
     )
 }
 
-/// Lines inside one piece's body whose own line binds `name`: a variant, a field, a const.
+// Lines inside one piece's body whose own line binds `name`: a variant, a field, a const.
 fn members(raw: &[&str], from: usize, to: usize, name: &str) -> Vec<usize> {
     let mut out = Vec::new();
     for at in from..to.min(raw.len()) {
@@ -369,7 +365,7 @@ fn members(raw: &[&str], from: usize, to: usize, name: &str) -> Vec<usize> {
     out
 }
 
-/// Whether this piece binds `word`: its own name, or the trait and target of an `impl`.
+// Whether this piece binds `word`: its own name, or the trait and target of an `impl`.
 fn binds(table: &Table, line: &Line, word: &str) -> bool {
     let (Some(kind), Some(exact)) = (lang::shape(table, line), line.exact.as_deref()) else {
         return false;
@@ -385,8 +381,8 @@ fn binds(table: &Table, line: &Line, word: &str) -> bool {
     }
 }
 
-/// `impl Tr for A` → `(A, Tr)`; `impl A` → `(A, None)`. A higher-ranked bound writes `for<'a>`,
-/// with no space before its angle, so only the spaced `for` splits a header.
+// `impl Tr for A` → `(A, Tr)`; `impl A` → `(A, None)`. A higher-ranked bound writes `for<'a>`,
+// with no space before its angle, so only the spaced `for` splits a header.
 fn impl_names(header: &str) -> (Option<String>, Option<String>) {
     match header.rfind(" for ") {
         Some(at) => (type_name(&header[at + 5..]), own_target(&header[..at])),
@@ -394,18 +390,18 @@ fn impl_names(header: &str) -> (Option<String>, Option<String>) {
     }
 }
 
-/// The text after the head word, once its modifiers are behind it.
+// The text after the head word, once its modifiers are behind it.
 fn after_word<'a>(header: &'a str, word: &str) -> Option<&'a str> {
     let at = header.find(word)?;
     Some(&header[at + word.len()..])
 }
 
-/// `impl A` → `A`; `impl<T> A<T>` → `A`.
+// `impl A` → `A`; `impl<T> A<T>` → `A`.
 fn own_target(header: &str) -> Option<String> {
     type_name(after_word(header, "impl")?)
 }
 
-/// The bare type a header names: references, `!`, `mut`, `dyn`, lifetimes and generics all go.
+// The bare type a header names: references, `!`, `mut`, `dyn`, lifetimes and generics all go.
 fn type_name(text: &str) -> Option<String> {
     let mut rest = text.trim();
     loop {
@@ -458,7 +454,7 @@ fn type_name(text: &str) -> Option<String> {
     }
 }
 
-/// Past a generic list: the text after its matching `>`.
+// Past a generic list: the text after its matching `>`.
 fn skip_angle(text: &str) -> Option<&str> {
     let mut depth = 1i64;
     let chars: Vec<char> = text.chars().collect();
@@ -480,7 +476,7 @@ fn skip_angle(text: &str) -> Option<&str> {
     None
 }
 
-/// The first identifier word of a header's tail: `MyStruct<T>` → `MyStruct`, `a;` → `a`.
+// The first identifier word of a header's tail: `MyStruct<T>` → `MyStruct`, `a;` → `a`.
 fn bare_name(tail: &str) -> Option<String> {
     let word: String = tail
         .trim_start()
@@ -490,7 +486,7 @@ fn bare_name(tail: &str) -> Option<String> {
     (!word.is_empty()).then_some(word)
 }
 
-/// `A::b`, exactly two identifiers.
+// `A::b`, exactly two identifiers.
 fn two_segments(query: &str) -> Option<(String, String)> {
     let query = query.trim();
     let (a, b) = query.split_once("::")?;
@@ -500,7 +496,7 @@ fn two_segments(query: &str) -> Option<(String, String)> {
     (ident(a) && ident(b)).then(|| (a.to_string(), b.to_string()))
 }
 
-/// A lone identifier.
+// A lone identifier.
 fn single_name(query: &str) -> Option<&str> {
     let query = query.trim();
     ident(query).then_some(query)
@@ -513,12 +509,4 @@ fn ident(text: &str) -> bool {
         _ => return false,
     }
     chars.all(|c| c.is_alphanumeric() || c == '_')
-}
-
-/// A path as the crate reads it: `src/server/...`.
-fn shown(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
 }

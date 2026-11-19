@@ -42,4 +42,4 @@ is one reference, at a file and line, to a unit or to nothing.
 
 ## 4. Config
 
-None. The view's line and byte budget belongs to the consumer, `read`.
+None. The view carries no budget: it is printed whole.

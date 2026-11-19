@@ -1,8 +1,8 @@
-//! The `write` tool: overwrite a whole file. The batch's audit type-checks it after the batch's
-//! last write; this call only formats, writes, and hands the file's shell to the audit.
+// The `write` tool: overwrite a whole file. The batch's audit type-checks it after the batch's
+// last write; this call only formats, writes, and hands the file's shell to the audit.
 use anyhow::Result;
 
-use crate::server::agent::tools::contract::env::{Env, Shell, Slot};
+use crate::server::agent::tools::contract::env::{Env, License, Shell, Slot};
 use crate::server::agent::tools::contract::halt::stopped;
 use crate::server::agent::tools::contract::output::ToolOutput;
 use crate::server::agent::tools::contract::view::CallRecord;
@@ -11,6 +11,7 @@ use crate::server::agent::tools::fs::lang;
 use crate::server::agent::tools::fs::lang::verdict::Outcome;
 use crate::server::agent::tools::spec::{Args, Kind, Param, Tool, ToolProgress};
 use crate::server::agent::tools::summary;
+use crate::server::agent::tools::workspace::write_atomic;
 
 const PATH: usize = 0;
 const CONTENT: usize = 1;
@@ -43,8 +44,8 @@ pub(crate) const TOOL: Tool = Tool {
     summary,
 };
 
-/// Write the whole file, **overwriting** an existing one. The counterpart of `edit`: `edit` refuses
-/// ambiguous matches, `write` refuses nothing. The caller brings the full content.
+// Write the whole file, **overwriting** an existing one. The counterpart of `edit`: `edit` refuses
+// ambiguous matches, `write` refuses nothing. The caller brings the full content.
 fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> Result<ToolOutput> {
     let path = args.str(PATH)?;
     let content = args.str(CONTENT)?;
@@ -86,13 +87,9 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
         content.clone()
     };
 
-    env.workspace.with_write(&p, || {
-        crate::server::agent::tools::workspace::write_atomic(&p, &written)
-    })?;
-    env.seen.files.insert(
-        p.clone(),
-        crate::server::agent::tools::contract::env::License::of(&written),
-    );
+    env.workspace
+        .with_write(&p, || write_atomic(&p, &written))?;
+    env.seen.files.insert(p.clone(), License::of(&written));
     let bytes = written.len();
     let mut text = format!(
         "{} {} ({bytes} bytes)",
@@ -119,7 +116,6 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
             mine: (checker.shown)(&root, &p),
             root,
             file: p.clone(),
-            parse_failed: unparsed.is_some(),
             unfold,
             seam: true,
             slots: vec![Slot {
@@ -131,7 +127,7 @@ fn run(env: &mut Env, args: &Args, _progress: &mut dyn FnMut(ToolProgress)) -> R
     Ok(ToolOutput::text(text))
 }
 
-/// One line for a history listing: which file.
+// One line for a history listing: which file.
 fn summary(call: &CallRecord) -> String {
-    summary::clip(&summary::field(call, "path").unwrap_or_default(), 96)
+    summary::path(call)
 }

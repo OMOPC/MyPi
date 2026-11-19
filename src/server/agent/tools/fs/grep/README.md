@@ -30,9 +30,11 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
   smallest piece holding its run of nested hits, and pieces that merely stand side by side never
   merge: two `impl`s each holding a hit are two items. A hit no piece holds is its own one-line
   item. Every hit belongs to exactly one item.
-- The answer opens with one header line — hits, items, files, mode, tier — then the three sections
-  the language's own relation index fills (`[type]`, `[module]`, `[x-ray]` for Rust; a language
-  that names none skips them), then the items.
+- The answer opens with two header lines: the counts, mode and tier, then what it searched —
+  `==> src/` by default, or `==> N paths, M used: …` listing the scope as the call wrote it with
+  repeats dropped, so the footer's skips have a denominator. The three sections the language's own relation index
+  fills follow (`[type]`, `[module]`, `[x-ray]` for Rust; a language that names none skips them),
+  then the items.
 - Tiers are judged by the answer's item count, against `deepMax` and `foldMax`:
   - Tier 1 — up to `deepMax` items: every line of every item, whole, whatever their length. Only
     key lines and hit lines carry a number; each block opens with `path:line` and an `in:`
@@ -41,16 +43,18 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
     then only the key lines and hit lines inside the item; the item's own head row ends with
     `..close`, so both ends of a splice are on the page. A piece that holds no hit is not drawn at
     all — no fold row, no count, nothing.
-  - Tier 3 — past `foldMax`: one row per file that holds an item, widest first, within the
-    answer's own 500-line room; what the room cannot hold is one `[+N more files]` line.
-  - A tier 2 or tier 3 answer carries `[folded: …]`: go `lavish`, or narrow the scope — whichever
-    moves are still open.
-- `lavish` lifts the whole answer one tier and never mixes two densities; tier 1 is already the
-  densest and stays. Under `lavish` the hint names the one move left, narrowing the scope.
+  - Tier 3 — past `foldMax`: one row per file that holds an item, widest first, within a 500-row
+    room. The room covers those rows alone: the header and the relation block never charge it.
+- The footer follows the body one blank line down, in this order: `DOWNSHIFTED: …` while the answer
+  is coarser than tier 1, `[+N more files]` when the census left files out, then one `[scope]` line
+  per scope entry that could not be used.
+- `lavish` raises the whole answer one tier and never mixes two densities; tier 1 is already the
+  finest and stays. With `lavish` on, the footer names the one move left: `DOWNSHIFTED: narrow
+  down the \`scope\`.`
 - Every file whose lines an answer showed is stamped in `env.seen` — line count and content hash,
   the stamp `read` writes — so `splice` works on it without a second `read`.
-- The front door does not measure a grep answer. Tiers 1 and 2 draw the whole truth by design;
-  tier 3 carries its own 500-line room, and that is the only cap the tool knows.
+- The front door does not measure a grep answer. Tiers 1 and 2 draw every line they pick whole,
+  never truncated; tier 3 carries its own 500-row room, and that is the only cap the tool knows.
 - What it does not read: anything a macro generates, the `impl`s a derive writes, `include!`,
   `#[path]`, and a type renamed by `use … as`. A hit inside such code is still a hit; only its
   breadcrumb is coarser.
@@ -66,9 +70,11 @@ The `grep` tool: one query over the crate's own `src/`, answered as text.
 - **The item is the unit of everything.** Counting, drawing and folding all speak in items: one hit
   line and a whole function are each one item, and a file's item count is what the tiers weigh.
 - **Density is the only dial.** Tier 1 and 2 never cut for length; tier 3 is counts alone, and its
-  500-line room is the one budget in the tool.
-- **A prompt that names the next move.** `[folded: …]` is printed only while a move is still open:
-  it offers `lavish` until the answer is already lavish, and narrowing otherwise.
+  500-row room is the one budget in the tool.
+- **A prompt that names the next move.** The footer calls the answer downshifted only while a move
+  is still open: it offers `lavish` until the answer already has it, and narrowing otherwise.
+- **The header explains the footer.** The scope line states how many paths went in, so the footer's
+  per-path skips read as a remainder, not as a mystery.
 
 ## Unresolved
 
